@@ -6,6 +6,7 @@ import { BottomNav, type Tab } from '@/components/app/bottom-nav'
 import { TodayTab } from '@/components/app/today-tab'
 import { BabyTab } from '@/components/app/baby-tab'
 import { InboxTab } from '@/components/app/inbox-tab'
+import { PlanTab } from '@/components/app/plan-tab'
 import { StubTab } from '@/components/app/stub-tab'
 import { SignIn } from '@/components/app/sign-in'
 import { supabaseBrowser } from '@/lib/supabase-browser'
@@ -15,6 +16,9 @@ export type Actions = {
   addLog: (entry: LogEntry) => void
   endSleep: (id: string) => void
   commitCapture: (items: PlanItem[], capture: InboxCapture) => void
+  // Toggle/patch a plan item (check off a task/shopping item, mark a question answered).
+  // `patch` uses the DB column names the API expects (e.g. { done: true }, { answered: true }).
+  updatePlanItem: (id: string, local: Partial<PlanItem>, patch: Record<string, unknown>) => void
 }
 
 type AuthStatus = 'checking' | 'signed-out' | 'signed-in'
@@ -117,7 +121,23 @@ export function MamaHqApp() {
     [babyId],
   )
 
-  const actions: Actions = { addLog, endSleep, commitCapture }
+  const updatePlanItem = useCallback(
+    (id: string, local: Partial<PlanItem>, patch: Record<string, unknown>) => {
+      setState((s) =>
+        s
+          ? { ...s, plan: s.plan.map((p) => (p.id === id ? ({ ...p, ...local } as PlanItem) : p)) }
+          : s,
+      )
+      fetch('/api/plan', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, patch }),
+      }).catch(() => {})
+    },
+    [],
+  )
+
+  const actions: Actions = { addLog, endSleep, commitCapture, updatePlanItem }
 
   if (auth === 'checking') {
     return (
@@ -161,7 +181,7 @@ export function MamaHqApp() {
         )}
         {tab === 'baby' && <BabyTab state={state} />}
         {tab === 'inbox' && <InboxTab actions={actions} />}
-        {tab === 'plan' && <StubTab title="Plan" note="Tasks, appointments, and lists live here — coming next." />}
+        {tab === 'plan' && <PlanTab state={state} actions={actions} />}
         {tab === 'memories' && (
           <StubTab title="Memories" note="Photos and small moments you don’t want to lose — coming next." />
         )}
