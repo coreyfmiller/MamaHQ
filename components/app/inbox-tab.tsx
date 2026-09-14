@@ -1,14 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import type { AppState, InboxCapture, PlanItem, ProposedAction } from '@/lib/types'
-import { addCapture, addPlan, newId } from '@/lib/store'
+import type { InboxCapture, PlanItem, ProposedAction } from '@/lib/types'
+import { newId } from '@/lib/store'
 import { CalendarClock, HelpCircle, ShoppingCart, CheckSquare, X, Loader2, Sparkles } from 'lucide-react'
+import type { Actions } from '@/components/app/mama-hq-app'
 
 const EXAMPLE =
   'Baby appointment Thursday at 10. Remind me to ask about her skin. We’re almost out of diapers and Matt needs to pick up formula tomorrow.'
 
-export function InboxTab({ state, update }: { state: AppState; update: (s: AppState) => void }) {
+export function InboxTab({ actions }: { actions: Actions }) {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,10 +50,7 @@ export function InboxTab({ state, update }: { state: AppState; update: (s: AppSt
   // Commit: only NOW do we create plan items — and we store the full provenance.
   function commit() {
     if (!proposal) return
-    let next = state
-    for (const a of proposal.actions) {
-      next = addPlan(next, actionToPlanItem(a))
-    }
+    const items = proposal.actions.map(actionToPlanItem)
     const capture: InboxCapture = {
       id: newId(),
       createdAt: new Date().toISOString(),
@@ -62,8 +60,7 @@ export function InboxTab({ state, update }: { state: AppState; update: (s: AppSt
       approved: proposal.actions,
       status: 'committed',
     }
-    next = addCapture(next, capture)
-    update(next)
+    actions.commitCapture(items, capture)
     setProposal(null)
     setInput('')
   }

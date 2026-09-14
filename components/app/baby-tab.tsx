@@ -6,7 +6,7 @@ import { Droplet, Milk, Moon, Baby as BabyIcon } from 'lucide-react'
 
 // Baby = logs + history. Per data-and-ai-standard: this screen DESCRIBES recorded data
 // (counts, times, durations). It never interprets the baby or scores anything.
-export function BabyTab({ state }: { state: AppState; update: (s: AppState) => void }) {
+export function BabyTab({ state }: { state: AppState }) {
   const now = new Date()
   const today = state.logs.filter((l) => isSameDay(l.createdAt, now))
   const counts = {

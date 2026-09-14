@@ -4,7 +4,6 @@ import { useState } from 'react'
 import type { AppState } from '@/lib/types'
 import {
   activeSleep,
-  addLog,
   clockTime,
   dayNumber,
   elapsed,
@@ -13,20 +12,20 @@ import {
   lastOfKind,
   newId,
   timeAgo,
-  updateLog,
 } from '@/lib/store'
 import { Droplet, Milk, Moon, Baby as BabyIcon } from 'lucide-react'
 import { LogSheet } from '@/components/app/log-sheet'
+import type { Actions } from '@/components/app/mama-hq-app'
 
 type SheetKind = 'feed' | 'diaper' | 'pump' | null
 
 export function TodayTab({
   state,
-  update,
+  actions,
   onGoInbox,
 }: {
   state: AppState
-  update: (s: AppState) => void
+  actions: Actions
   onGoInbox: () => void
 }) {
   const [sheet, setSheet] = useState<SheetKind>(null)
@@ -39,11 +38,9 @@ export function TodayTab({
   // Sleep is a direct toggle from Today (start/stop) — no sheet needed, keeps it 1 tap.
   function toggleSleep() {
     if (sleeping) {
-      update(updateLog(state, sleeping.id, { endedAt: new Date().toISOString() }))
+      actions.endSleep(sleeping.id)
     } else {
-      update(
-        addLog(state, { id: newId(), kind: 'sleep', createdAt: new Date().toISOString(), endedAt: null }),
-      )
+      actions.addLog({ id: newId(), kind: 'sleep', createdAt: new Date().toISOString(), endedAt: null })
     }
   }
 
@@ -172,7 +169,7 @@ export function TodayTab({
           babyName={state.baby.name}
           onClose={() => setSheet(null)}
           onLog={(entry) => {
-            update(addLog(state, entry))
+            actions.addLog(entry)
             setSheet(null)
           }}
         />

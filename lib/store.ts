@@ -1,67 +1,11 @@
-// Mama HQ — local-first store (localStorage). No auth/DB yet; perfect the loop first.
-// All reads/writes are SSR-guarded (localStorage is browser-only).
+// Mama HQ — pure derived helpers used by the UI (day counter, times, active-sleep, etc.).
+// Persistence now lives in Supabase (lib/db.ts + /api routes); this file has no storage.
 
-import type { AppState, LogEntry, PlanItem, InboxCapture, SleepEntry } from './types'
-
-const STORAGE_KEY = 'mama-hq:v1'
-
-function defaultState(): AppState {
-  const today = new Date()
-  const birth = new Date(today)
-  birth.setDate(birth.getDate() - 16) // "Day 17" — the mock's newborn era
-  return {
-    baby: { id: 'baby-1', name: 'Emma', birthDate: birth.toISOString().slice(0, 10) },
-    logs: [],
-    plan: [],
-    captures: [],
-  }
-}
-
-export function loadState(): AppState {
-  if (typeof window === 'undefined') return defaultState()
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return defaultState()
-    const p = JSON.parse(raw) as AppState
-    if (!p.baby || !Array.isArray(p.logs)) return defaultState()
-    return { baby: p.baby, logs: p.logs, plan: p.plan ?? [], captures: p.captures ?? [] }
-  } catch {
-    return defaultState()
-  }
-}
-
-export function saveState(state: AppState) {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {
-    // Never crash the parent's app over persistence.
-  }
-}
+import type { AppState, LogEntry, SleepEntry } from './types'
 
 export function newId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-// ----- immutable updates -----
-export function addLog(s: AppState, entry: LogEntry): AppState {
-  return { ...s, logs: [entry, ...s.logs] }
-}
-export function updateLog(s: AppState, id: string, patch: Partial<LogEntry>): AppState {
-  return { ...s, logs: s.logs.map((l) => (l.id === id ? ({ ...l, ...patch } as LogEntry) : l)) }
-}
-export function addPlan(s: AppState, item: PlanItem): AppState {
-  return { ...s, plan: [item, ...s.plan] }
-}
-export function updatePlan(s: AppState, id: string, patch: Partial<PlanItem>): AppState {
-  return { ...s, plan: s.plan.map((p) => (p.id === id ? ({ ...p, ...patch } as PlanItem) : p)) }
-}
-export function addCapture(s: AppState, capture: InboxCapture): AppState {
-  return { ...s, captures: [capture, ...s.captures] }
-}
-export function updateCapture(s: AppState, id: string, patch: Partial<InboxCapture>): AppState {
-  return { ...s, captures: s.captures.map((c) => (c.id === id ? { ...c, ...patch } : c)) }
 }
 
 // ----- derived: Today needs these -----
