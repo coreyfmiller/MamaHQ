@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { AppState, LogEntry, Side } from '@/lib/types'
+import type { AppState, LogEntry, Side, Appointment, Question } from '@/lib/types'
 import {
   activeFeed,
   activeSleep,
@@ -17,6 +17,7 @@ import {
 } from '@/lib/store'
 import { Droplet, Milk, Moon, Baby as BabyIcon, RotateCcw, MoreHorizontal } from 'lucide-react'
 import { LogSheet } from '@/components/app/log-sheet'
+import { VisitSheet } from '@/components/app/visit-sheet'
 import { CheckToggle } from '@/components/app/ui'
 import type { Actions } from '@/components/app/mama-hq-app'
 
@@ -41,6 +42,8 @@ export function TodayTab({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sheet, setSheet] = useState<SheetKind>(null)
+  // Appointment whose Visit-prep sheet is open (R4).
+  const [visitFor, setVisitFor] = useState<Appointment | null>(null)
   // Last just-logged entry, for a brief Undo (Step 7).
   const [undoable, setUndoable] = useState<{ id: string; label: string } | null>(null)
   const now = new Date()
@@ -117,10 +120,12 @@ export function TodayTab({
   // Today shows BABY-scoped plan items (Mom's own live in the Me tab). Calm and prioritized:
   // each section only renders when it has something worth surfacing.
   const babyPlan = state.plan.filter((p) => p.scope !== 'mom')
-  const openQuestions = babyPlan.filter((p) => p.kind === 'question' && !p.answered)
-  const todaysAppointments = babyPlan.filter(
-    (p) => p.kind === 'appointment' && (p.whenText || isSameDay(p.createdAt, now)),
-  )
+  const appointments = babyPlan.filter((p): p is Appointment => p.kind === 'appointment')
+  const allQuestions = babyPlan.filter((p): p is Question => p.kind === 'question')
+  // Questions linked to a specific appointment vs. standalone (still reachable via Inbox link).
+  const questionsFor = (apptId: string) =>
+    allQuestions.filter((q) => q.appointmentId === apptId && !q.answered)
+  const openQuestions = allQuestions.filter((q) => !q.answered && !q.appointmentId)
   const openTasks = babyPlan.filter((p) => p.kind === 'task' && !p.done)
   // Tasks handed to someone else — the partner-handoff glance.
   const handedOff = openTasks.filter((t) => t.kind === 'task' && t.assignee)
@@ -282,18 +287,35 @@ export function TodayTab({
         ) : null}
       </section>
 
-      {/* TODAY items */}
-      {todaysAppointments.length > 0 && (
-        <Section title="Today">
-          <ul className="space-y-2 text-sm">
-            {todaysAppointments.map((a) =>
-              a.kind === 'appointment' ? (
-                <li key={a.id} className="flex gap-2 text-foreground">
-                  <span className="tabular-nums text-muted-foreground">{a.whenText ?? clockTime(a.createdAt)}</span>
-                  {a.title}
+      {/* COMING UP — appointments with their prep. Tap to open the describe-only Visit sheet. */}
+      {appointments.length > 0 && (
+        <Section title="Coming up">
+          <ul className="space-y-2">
+            {appointments.map((a) => {
+              const qs = questionsFor(a.id)
+              return (
+                <li key={a.id}>
+                  <button
+                    onClick={() => setVisitFor(a)}
+                    className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left shadow-sm transition-transform active:scale-95"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm text-foreground">{a.title}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {[a.whenText ?? clockTime(a.createdAt), a.who].filter(Boolean).join(' · ')}
+                        {qs.length > 0 && (
+                          <span className="text-primary">
+                            {' · '}
+                            {qs.length} thing{qs.length === 1 ? '' : 's'} to ask
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs font-medium text-primary">Prep →</span>
+                  </button>
                 </li>
-              ) : null,
-            )}
+              )
+            })}
           </ul>
         </Section>
       )}
@@ -377,6 +399,16 @@ export function TodayTab({
             logWithUndo(entry, logLabel(entry))
             setSheet(null)
           }}
+        />
+      )}
+
+      {visitFor && (
+        <VisitSheet
+          appointment={visitFor}
+          questions={allQuestions.filter((q) => q.appointmentId === visitFor.id)}
+          state={state}
+          actions={actions}
+          onClose={() => setVisitFor(null)}
         />
       )}
 
