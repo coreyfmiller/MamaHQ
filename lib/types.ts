@@ -18,11 +18,17 @@ export type Side = 'left' | 'right' | 'both'
 export type FeedEntry = {
   id: string
   kind: 'feed'
-  createdAt: string // when it happened / was logged
+  createdAt: string // when it happened / was logged (for a session: the start)
   method: FeedMethod
   // breast:
   side?: Side
   durationMin?: number | null
+  // A running breastfeeding session: endedAt null = still feeding. When set, the feed is done.
+  // Elapsed is always DERIVED from createdAt/endedAt timestamps so it survives reload (Flow A/D).
+  endedAt?: string | null
+  // Optional per-side seconds accumulated during a session (left/right), for switch-side support.
+  leftSec?: number | null
+  rightSec?: number | null
   // bottle:
   contents?: BottleContents
   amountMl?: number | null

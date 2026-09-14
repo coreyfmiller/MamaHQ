@@ -31,7 +31,8 @@ function rowToLog(r: Record<string, unknown>): LogEntry {
         ...base,
         kind: 'feed',
         method: (r.feed_method as 'breast' | 'bottle') ?? 'bottle',
-        side: (r.feed_side as LogEntry extends { side: infer S } ? S : never) ?? undefined,
+        side: (r.feed_side as 'left' | 'right' | 'both') ?? undefined,
+        endedAt: (r.ended_at as string) ?? null,
         contents: (r.bottle_contents as 'breast-milk' | 'formula' | 'unspecified') ?? undefined,
         amountMl: (r.amount_ml as number) ?? null,
         note: (r.note as string) ?? null,
@@ -51,8 +52,11 @@ function logToRow(e: LogEntry, babyId: string): Record<string, unknown> {
   const row: Record<string, unknown> = { id: e.id, baby_id: babyId, kind: e.kind, occurred_at: e.createdAt }
   if (e.kind === 'feed') {
     row.feed_method = e.method
-    if (e.method === 'breast') row.feed_side = e.side ?? null
-    else {
+    if (e.method === 'breast') {
+      row.feed_side = e.side ?? null
+      // A breast feed may be a running session (endedAt null while feeding), like sleep.
+      row.ended_at = e.endedAt ?? null
+    } else {
       row.bottle_contents = e.contents ?? null
       row.amount_ml = e.amountMl ?? null
     }
@@ -205,6 +209,8 @@ export async function patchLog(id: string, patch: Partial<LogEntry>): Promise<vo
   await authedUser(supa)
   const update: Record<string, unknown> = {}
   if ('endedAt' in patch) update.ended_at = (patch as { endedAt: string | null }).endedAt
+  // Allow switching the active feeding side (Flow A).
+  if ('side' in patch) update.feed_side = (patch as { side: string | null }).side
   if (Object.keys(update).length === 0) return
   const { error } = await supa.from('logs').update(update).eq('id', id)
   if (error) throw error

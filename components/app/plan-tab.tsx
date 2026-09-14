@@ -1,9 +1,12 @@
 'use client'
 
-import { useMemo } from 'react'
+'use client'
+
+import { useMemo, useState } from 'react'
 import type { AppState, Appointment, PlanItem, Question, ShoppingItem, Task } from '@/lib/types'
 import type { Actions } from '@/components/app/mama-hq-app'
-import { CalendarClock, CheckSquare, HelpCircle, ShoppingCart, MapPin, User, Check } from 'lucide-react'
+import { CalendarClock, CheckSquare, HelpCircle, ShoppingCart, MapPin, User, Check, ClipboardList } from 'lucide-react'
+import { VisitSheet } from '@/components/app/visit-sheet'
 
 // The Plan tab is where everything the Inbox captured actually lives: appointments,
 // tasks, questions for the doctor, and shopping/supply lists. Mom can see it all and
@@ -11,6 +14,7 @@ import { CalendarClock, CheckSquare, HelpCircle, ShoppingCart, MapPin, User, Che
 
 export function PlanTab({ state, actions }: { state: AppState; actions: Actions }) {
   const groups = useMemo(() => groupPlan(state.plan), [state.plan])
+  const [visitFor, setVisitFor] = useState<Appointment | null>(null)
   const isEmpty =
     groups.appointments.length === 0 &&
     groups.tasks.length === 0 &&
@@ -42,6 +46,7 @@ export function PlanTab({ state, actions }: { state: AppState; actions: Actions 
                     appt={appt}
                     questions={groups.questionsByAppointment.get(appt.id) ?? []}
                     actions={actions}
+                    onPrepVisit={() => setVisitFor(appt)}
                   />
                 ))}
               </ul>
@@ -83,6 +88,15 @@ export function PlanTab({ state, actions }: { state: AppState; actions: Actions 
               </Section>
             ))}
         </div>
+      )}
+
+      {visitFor && (
+        <VisitSheet
+          appointment={visitFor}
+          questions={groups.questionsByAppointment.get(visitFor.id) ?? []}
+          state={state}
+          onClose={() => setVisitFor(null)}
+        />
       )}
     </div>
   )
@@ -135,10 +149,12 @@ function AppointmentRow({
   appt,
   questions,
   actions,
+  onPrepVisit,
 }: {
   appt: Appointment
   questions: Question[]
   actions: Actions
+  onPrepVisit: () => void
 }) {
   const meta = [appt.whenText, appt.who, appt.location].filter(Boolean)
   return (
@@ -179,6 +195,14 @@ function AppointmentRow({
           </ul>
         </div>
       )}
+
+      <button
+        onClick={onPrepVisit}
+        className="mt-3 flex items-center gap-1.5 text-sm font-medium text-primary"
+      >
+        <ClipboardList className="h-4 w-4" />
+        Prep for visit
+      </button>
     </li>
   )
 }

@@ -28,6 +28,24 @@ export function activeSleep(logs: LogEntry[]): SleepEntry | undefined {
   return logs.find((l) => l.kind === 'sleep' && l.endedAt === null) as SleepEntry | undefined
 }
 
+// The currently-running breastfeeding session (started, not yet ended), if any.
+export function activeFeed(logs: LogEntry[]): Extract<LogEntry, { kind: 'feed' }> | undefined {
+  return logs.find(
+    (l) => l.kind === 'feed' && l.method === 'breast' && l.endedAt === null,
+  ) as Extract<LogEntry, { kind: 'feed' }> | undefined
+}
+
+// The most recent bottle feed, so Today can offer a one-tap "repeat last bottle".
+export function lastBottle(
+  logs: LogEntry[],
+): { contents: 'breast-milk' | 'formula' | 'unspecified'; amountMl: number | null } | null {
+  const b = logs.find((l) => l.kind === 'feed' && l.method === 'bottle') as
+    | Extract<LogEntry, { kind: 'feed' }>
+    | undefined
+  if (!b) return null
+  return { contents: b.contents ?? 'unspecified', amountMl: b.amountMl ?? null }
+}
+
 export function isSameDay(iso: string, now = new Date()): boolean {
   const d = new Date(iso)
   return (

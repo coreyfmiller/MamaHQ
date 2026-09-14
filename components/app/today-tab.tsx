@@ -3,17 +3,20 @@
 import { useState } from 'react'
 import type { AppState } from '@/lib/types'
 import {
+  activeFeed,
   activeSleep,
   clockTime,
   dayNumber,
   elapsed,
   greeting,
   isSameDay,
+  lastBottle,
   lastOfKind,
   newId,
   timeAgo,
 } from '@/lib/store'
-import { Droplet, Milk, Moon, Baby as BabyIcon } from 'lucide-react'
+import type { Side } from '@/lib/types'
+import { Droplet, Milk, Moon, Baby as BabyIcon, RotateCcw, MoreHorizontal } from 'lucide-react'
 import { LogSheet } from '@/components/app/log-sheet'
 import type { Actions } from '@/components/app/mama-hq-app'
 
@@ -24,18 +27,25 @@ export function TodayTab({
   actions,
   onGoInbox,
   onSignOut,
+  onOpenPartner,
+  onOpenDay90,
 }: {
   state: AppState
   actions: Actions
   onGoInbox: () => void
   onSignOut: () => void
+  onOpenPartner: () => void
+  onOpenDay90: () => void
 }) {
+  const [menuOpen, setMenuOpen] = useState(false)
   const [sheet, setSheet] = useState<SheetKind>(null)
   const now = new Date()
 
   const lastFeed = lastOfKind(state.logs, 'feed')
   const lastDiaper = lastOfKind(state.logs, 'diaper')
   const sleeping = activeSleep(state.logs)
+  const feeding = activeFeed(state.logs)
+  const repeatable = lastBottle(state.logs)
 
   // Sleep is a direct toggle from Today (start/stop) — no sheet needed, keeps it 1 tap.
   function toggleSleep() {
@@ -44,6 +54,42 @@ export function TodayTab({
     } else {
       actions.addLog({ id: newId(), kind: 'sleep', createdAt: new Date().toISOString(), endedAt: null })
     }
+  }
+
+  // Flow A: breast feeding is a running session (start → switch side → stop), like sleep.
+  // Elapsed is derived from timestamps so it survives reload.
+  function startBreastFeed(side: Side) {
+    actions.addLog({
+      id: newId(),
+      kind: 'feed',
+      createdAt: new Date().toISOString(),
+      method: 'breast',
+      side,
+      endedAt: null,
+    })
+    setSheet(null)
+  }
+  function toggleFeed() {
+    if (feeding) actions.endFeed(feeding.id)
+    else setSheet('feed')
+  }
+  function switchSide() {
+    if (!feeding) return
+    const next: Side = feeding.side === 'left' ? 'right' : 'left'
+    actions.updateFeedSide(feeding.id, next)
+  }
+
+  // Flow B: one-tap repeat of the last bottle (no typing).
+  function repeatBottle() {
+    if (!repeatable) return
+    actions.addLog({
+      id: newId(),
+      kind: 'feed',
+      createdAt: new Date().toISOString(),
+      method: 'bottle',
+      contents: repeatable.contents,
+      amountMl: repeatable.amountMl,
+    })
   }
 
   const openQuestions = state.plan.filter((p) => p.kind === 'question' && !p.answered)
@@ -63,12 +109,50 @@ export function TodayTab({
             Day {dayNumber(state.baby.birthDate, now)}
           </p>
         </div>
-        <button
-          onClick={onSignOut}
-          className="mt-1 text-xs text-muted-foreground underline decoration-border underline-offset-4"
-        >
-          Sign out
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label="More"
+            aria-expanded={menuOpen}
+            className="mt-1 rounded-full p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+          </button>
+          {menuOpen && (
+            <>
+              <button
+                aria-hidden
+                tabIndex={-1}
+                onClick={() => setMenuOpen(false)}
+                className="fixed inset-0 z-10 cursor-default"
+              />
+              <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+                <MenuItem
+                  label="Partner"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onOpenPartner()
+                  }}
+                />
+                <MenuItem
+                  label="Your First 90 Days"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onOpenDay90()
+                  }}
+                />
+                <div className="border-t border-border" />
+                <MenuItem
+                  label="Sign out"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onSignOut()
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
       </header>
 
       {/* BABY — the recent status cards */}
@@ -79,8 +163,9 @@ export function TodayTab({
         <div className="grid grid-cols-3 gap-2.5">
           <StatusCard
             icon={<Milk className="h-4 w-4" />}
-            label="Last feed"
-            value={lastFeed ? timeAgo(lastFeed.createdAt, now) : '—'}
+            label={feeding ? `Feeding · ${feeding.side ?? ''}`.trim() : 'Last feed'}
+            value={feeding ? elapsed(feeding.createdAt, now) : lastFeed ? timeAgo(lastFeed.createdAt, now) : '—'}
+            highlight={!!feeding}
           />
           <StatusCard
             icon={<Droplet className="h-4 w-4" />}
@@ -106,7 +191,12 @@ export function TodayTab({
       {/* QUICK ACTIONS */}
       <section className="mt-5">
         <div className="grid grid-cols-4 gap-2.5">
-          <QuickAction label="Feed" icon={<Milk className="h-6 w-6" />} onClick={() => setSheet('feed')} />
+          <QuickAction
+            label={feeding ? 'End feed' : 'Feed'}
+            icon={<Milk className="h-6 w-6" />}
+            onClick={toggleFeed}
+            active={!!feeding}
+          />
           <QuickAction
             label={sleeping ? 'End sleep' : 'Sleep'}
             icon={<Moon className="h-6 w-6" />}
@@ -116,6 +206,25 @@ export function TodayTab({
           <QuickAction label="Diaper" icon={<Droplet className="h-6 w-6" />} onClick={() => setSheet('diaper')} />
           <QuickAction label="Pump" icon={<BabyIcon className="h-6 w-6" />} onClick={() => setSheet('pump')} />
         </div>
+
+        {/* While feeding: one-tap switch side. Otherwise: one-tap repeat last bottle (Flow B). */}
+        {feeding ? (
+          <button
+            onClick={switchSide}
+            className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-2xl border border-secondary bg-secondary/40 py-2.5 text-sm font-medium text-secondary-foreground transition-transform active:scale-95"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Switch side{feeding.side ? ` (now ${feeding.side})` : ''}
+          </button>
+        ) : repeatable ? (
+          <button
+            onClick={repeatBottle}
+            className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card py-2.5 text-sm font-medium text-foreground transition-transform active:scale-95"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Repeat last bottle{repeatable.amountMl ? ` · ${repeatable.amountMl} ml` : ''}
+          </button>
+        ) : null}
       </section>
 
       {/* TODAY items */}
@@ -177,6 +286,8 @@ export function TodayTab({
         <LogSheet
           kind={sheet}
           babyName={state.baby.name}
+          lastBottle={repeatable}
+          onStartBreastFeed={startBreastFeed}
           onClose={() => setSheet(null)}
           onLog={(entry) => {
             actions.addLog(entry)
@@ -249,4 +360,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Circle() {
   return <span className="mt-1 size-4 shrink-0 rounded-full border-[1.5px] border-muted-foreground/50" />
+}
+
+function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="block w-full px-4 py-3 text-left text-sm text-foreground transition-colors hover:bg-muted"
+    >
+      {label}
+    </button>
+  )
 }

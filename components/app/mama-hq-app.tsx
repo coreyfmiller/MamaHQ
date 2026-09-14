@@ -8,6 +8,8 @@ import { BabyTab } from '@/components/app/baby-tab'
 import { InboxTab } from '@/components/app/inbox-tab'
 import { PlanTab } from '@/components/app/plan-tab'
 import { MemoriesTab } from '@/components/app/memories-tab'
+import { PartnerPreview } from '@/components/app/partner-preview'
+import { Day90Preview } from '@/components/app/day90-preview'
 import { SignIn } from '@/components/app/sign-in'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 
@@ -15,6 +17,8 @@ import { supabaseBrowser } from '@/lib/supabase-browser'
 export type Actions = {
   addLog: (entry: LogEntry) => void
   endSleep: (id: string) => void
+  endFeed: (id: string) => void
+  updateFeedSide: (id: string, side: 'left' | 'right' | 'both') => void
   commitCapture: (items: PlanItem[], capture: InboxCapture) => void
   // Toggle/patch a plan item (check off a task/shopping item, mark a question answered).
   // `patch` uses the DB column names the API expects (e.g. { done: true }, { answered: true }).
@@ -30,6 +34,7 @@ export function MamaHqApp() {
   const [tab, setTab] = useState<Tab>('today')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [auth, setAuth] = useState<AuthStatus>('checking')
+  const [overlay, setOverlay] = useState<'partner' | 'day90' | null>(null)
   const [, force] = useState(0)
 
   // Watch the auth session. Signed-out shows the sign-in screen; signed-in loads state.
@@ -110,6 +115,31 @@ export function MamaHqApp() {
     [],
   )
 
+  // End a running breastfeeding session (Flow A). Same shape as endSleep.
+  const endFeed = useCallback((id: string) => {
+    const endedAt = new Date().toISOString()
+    setState((s) =>
+      s ? { ...s, logs: s.logs.map((l) => (l.id === id ? ({ ...l, endedAt } as LogEntry) : l)) } : s,
+    )
+    fetch('/api/log', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, patch: { endedAt } }),
+    }).catch(() => {})
+  }, [])
+
+  // Switch the active feeding side (Flow A).
+  const updateFeedSide = useCallback((id: string, side: 'left' | 'right' | 'both') => {
+    setState((s) =>
+      s ? { ...s, logs: s.logs.map((l) => (l.id === id ? ({ ...l, side } as LogEntry) : l)) } : s,
+    )
+    fetch('/api/log', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, patch: { side } }),
+    }).catch(() => {})
+  }, [])
+
   const commitCapture = useCallback(
     (items: PlanItem[], capture: InboxCapture) => {
       if (!babyId) return
@@ -161,7 +191,16 @@ export function MamaHqApp() {
     }).catch(() => {})
   }, [])
 
-  const actions: Actions = { addLog, endSleep, commitCapture, updatePlanItem, addMemory, deleteMemory }
+  const actions: Actions = {
+    addLog,
+    endSleep,
+    endFeed,
+    updateFeedSide,
+    commitCapture,
+    updatePlanItem,
+    addMemory,
+    deleteMemory,
+  }
 
   if (auth === 'checking') {
     return (
@@ -204,7 +243,14 @@ export function MamaHqApp() {
       <div className="relative flex min-h-dvh w-full max-w-md flex-col bg-background sm:min-h-0 sm:h-[calc(100dvh-3rem)] sm:overflow-hidden sm:rounded-[2rem] sm:border sm:border-border sm:shadow-[0_30px_60px_-30px_rgba(80,55,40,0.35)]">
         <main className="flex-1 overflow-y-auto pb-24">
           {tab === 'today' && (
-            <TodayTab state={state} actions={actions} onGoInbox={() => setTab('inbox')} onSignOut={signOut} />
+            <TodayTab
+              state={state}
+              actions={actions}
+              onGoInbox={() => setTab('inbox')}
+              onSignOut={signOut}
+              onOpenPartner={() => setOverlay('partner')}
+              onOpenDay90={() => setOverlay('day90')}
+            />
           )}
           {tab === 'baby' && <BabyTab state={state} />}
           {tab === 'inbox' && <InboxTab actions={actions} />}
@@ -213,6 +259,9 @@ export function MamaHqApp() {
         </main>
         <BottomNav tab={tab} onChange={setTab} />
       </div>
+
+      {overlay === 'partner' && <PartnerPreview onClose={() => setOverlay(null)} />}
+      {overlay === 'day90' && <Day90Preview state={state} onClose={() => setOverlay(null)} />}
     </div>
   )
 }
