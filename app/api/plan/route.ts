@@ -4,7 +4,7 @@
 import { NextResponse } from 'next/server'
 import { commitCapture, patchPlanItem, addPlanItem, editPlanItem, deletePlanItem, NotAuthedError } from '@/lib/db'
 import { hasSupabase } from '@/lib/supabase-server'
-import type { InboxCapture, PlanItem } from '@/lib/types'
+import type { InboxCapture, LogEntry, PlanItem } from '@/lib/types'
 
 export const runtime = 'nodejs'
 
@@ -17,15 +17,16 @@ function authFail(e: unknown) {
 export async function POST(req: Request) {
   if (!hasSupabase()) return NextResponse.json({ error: 'Not configured.' }, { status: 503 })
   try {
-    const { babyId, items, capture } = (await req.json()) as {
+    const { babyId, items, capture, logEntries } = (await req.json()) as {
       babyId?: string
       items?: PlanItem[]
       capture?: InboxCapture
+      logEntries?: LogEntry[]
     }
     if (!babyId || !Array.isArray(items) || !capture) {
       return NextResponse.json({ error: 'Missing data.' }, { status: 400 })
     }
-    await commitCapture(babyId, items, capture)
+    await commitCapture(babyId, items, capture, Array.isArray(logEntries) ? logEntries : [])
     return NextResponse.json({ ok: true })
   } catch (e) {
     return authFail(e)

@@ -247,11 +247,21 @@ export async function deleteLog(id: string): Promise<void> {
   if (error) throw error
 }
 
-export async function commitCapture(babyId: string, items: PlanItem[], capture: InboxCapture): Promise<void> {
+export async function commitCapture(
+  babyId: string,
+  items: PlanItem[],
+  capture: InboxCapture,
+  logEntries: LogEntry[] = [],
+): Promise<void> {
   const supa = await supabaseServerAuthed()
   await authedUser(supa)
   if (items.length > 0) {
     const { error } = await supa.from('plan_items').insert(items.map((p) => planToRow(p, babyId)))
+    if (error) throw error
+  }
+  // Baby events extracted by the Inbox go to the logs table (same shape as manual logging).
+  if (logEntries.length > 0) {
+    const { error } = await supa.from('logs').insert(logEntries.map((e) => logToRow(e, babyId)))
     if (error) throw error
   }
   const { error: capErr } = await supa.from('inbox_captures').insert({

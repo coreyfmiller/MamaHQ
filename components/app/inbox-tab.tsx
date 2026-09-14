@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import type { InboxCapture, PlanItem, ProposedAction } from '@/lib/types'
+import type { InboxCapture, LogEntry, PlanItem, ProposedAction } from '@/lib/types'
 import { newId } from '@/lib/store'
-import { CalendarClock, HelpCircle, ShoppingCart, CheckSquare, X, Loader2, Sparkles } from 'lucide-react'
+import { CalendarClock, HelpCircle, ShoppingCart, CheckSquare, X, Loader2, Sparkles, Milk, Droplet } from 'lucide-react'
 import type { Actions } from '@/components/app/mama-hq-app'
 
 const EXAMPLE =
@@ -47,10 +47,16 @@ export function InboxTab({ actions }: { actions: Actions }) {
     setProposal({ ...proposal, actions: proposal.actions.filter((_, i) => i !== idx) })
   }
 
-  // Commit: only NOW do we create plan items — and we store the full provenance.
+  // Commit: only NOW do we persist. Baby events (feed/diaper) become log entries; the rest become
+  // plan items. Full provenance is stored either way.
   function commit() {
     if (!proposal) return
-    const items = proposal.actions.map(actionToPlanItem)
+    const items: PlanItem[] = []
+    const logEntries: LogEntry[] = []
+    for (const a of proposal.actions) {
+      if (a.type === 'feed' || a.type === 'diaper') logEntries.push(actionToLogEntry(a))
+      else items.push(actionToPlanItem(a))
+    }
     const capture: InboxCapture = {
       id: newId(),
       createdAt: new Date().toISOString(),
@@ -60,7 +66,7 @@ export function InboxTab({ actions }: { actions: Actions }) {
       approved: proposal.actions,
       status: 'committed',
     }
-    actions.commitCapture(items, capture)
+    actions.commitCapture(items, capture, logEntries)
     setProposal(null)
     setInput('')
   }
@@ -171,6 +177,17 @@ function describeAction(a: ProposedAction): {
   meta?: string
 } {
   switch (a.type) {
+    case 'feed': {
+      const title =
+        a.method === 'breast'
+          ? `Nursed${a.side ? ` · ${a.side}` : ''}`
+          : `Bottle${a.amountMl ? ` · ${a.amountMl} ml` : ''}${
+              a.contents === 'formula' ? ' · formula' : a.contents === 'breast-milk' ? ' · breast milk' : ''
+            }`
+      return { icon: <Milk className="h-5 w-5" />, kind: 'Feed', title, meta: a.whenText ?? undefined }
+    }
+    case 'diaper':
+      return { icon: <Droplet className="h-5 w-5" />, kind: 'Diaper', title: a.diaper, meta: a.whenText ?? undefined }
     case 'appointment':
       return {
         icon: <CalendarClock className="h-5 w-5" />,
@@ -192,7 +209,40 @@ function describeAction(a: ProposedAction): {
   }
 }
 
-function actionToPlanItem(a: ProposedAction): PlanItem {
+// Resolve a loose time phrase ("around 2:10", "2 PM") to an ISO timestamp for TODAY.
+// If it can't be parsed, fall back to now. The user can always correct the time later (Step 7).
+function resolveWhen(whenText?: string | null): string {
+  if (!whenText) return new Date().toISOString()
+  const now = new Date()
+  const m = whenText.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/i)
+  if (!m) return now.toISOString()
+  let h = Number(m[1])
+  const min = m[2] ? Number(m[2]) : 0
+  const mer = m[3] ? m[3].toLowerCase().replace(/\./g, '') : ''
+  if (mer === 'pm' && h < 12) h += 12
+  if (mer === 'am' && h === 12) h = 0
+  if (h > 23 || min > 59) return now.toISOString()
+  const d = new Date(now)
+  d.setHours(h, min, 0, 0)
+  // If no meridiem was given and the resulting time is in the future, assume earlier today.
+  if (!mer && d.getTime() > now.getTime()) d.setHours(d.getHours() - 12)
+  return d.toISOString()
+}
+
+// Baby-event proposals become log entries (same shape as manual logging).
+function actionToLogEntry(a: Extract<ProposedAction, { type: 'feed' | 'diaper' }>): LogEntry {
+  const base = { id: newId(), createdAt: resolveWhen(a.whenText) }
+  if (a.type === 'feed') {
+    if (a.method === 'breast') {
+      return { ...base, kind: 'feed', method: 'breast', side: a.side ?? undefined, endedAt: null }
+    }
+    return { ...base, kind: 'feed', method: 'bottle', contents: a.contents ?? undefined, amountMl: a.amountMl ?? null }
+  }
+  return { ...base, kind: 'diaper', diaper: a.diaper }
+}
+
+// Non-baby-event proposals become plan items. (Feed/diaper are handled by actionToLogEntry.)
+function actionToPlanItem(a: Exclude<ProposedAction, { type: 'feed' | 'diaper' }>): PlanItem {
   const base = { id: newId(), createdAt: new Date().toISOString() }
   switch (a.type) {
     case 'appointment':

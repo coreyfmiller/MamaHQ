@@ -119,6 +119,17 @@ export type ProposedAction =
   | { type: 'question'; text: string }
   | { type: 'shopping'; item: string; list: ShoppingListName }
   | { type: 'task'; title: string; dueText?: string | null; assignee?: string | null }
+  // Baby events the AI can propose from a brain dump. whenText is the time phrase exactly as
+  // written ("around 2:10", "after that"), resolved to occurred_at on commit. Describe-only.
+  | {
+      type: 'feed'
+      method: FeedMethod
+      side?: Side | null
+      contents?: BottleContents | null
+      amountMl?: number | null
+      whenText?: string | null
+    }
+  | { type: 'diaper'; diaper: DiaperKind; whenText?: string | null }
 
 export type InboxCapture = {
   id: string

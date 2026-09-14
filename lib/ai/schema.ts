@@ -44,11 +44,40 @@ const taskSchema = z.object({
   assignee: nullableStr(120),
 })
 
+// Baby events. Amount is a non-negative int (or null); side/contents fall back safely.
+const nonNegIntOrNull = z
+  .union([z.number(), z.string(), z.null()])
+  .optional()
+  .transform((v) => {
+    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null
+  })
+
+const feedSchema = z.object({
+  type: z.literal('feed'),
+  method: z.union([z.literal('breast'), z.literal('bottle')]).catch('bottle'),
+  side: z.union([z.literal('left'), z.literal('right'), z.literal('both'), z.null()]).optional().transform((v) => v ?? null),
+  contents: z
+    .union([z.literal('breast-milk'), z.literal('formula'), z.literal('unspecified'), z.null()])
+    .optional()
+    .transform((v) => v ?? null),
+  amountMl: nonNegIntOrNull,
+  whenText: nullableStr(120),
+})
+
+const diaperSchema = z.object({
+  type: z.literal('diaper'),
+  diaper: z.union([z.literal('wet'), z.literal('dirty'), z.literal('both')]).catch('wet'),
+  whenText: nullableStr(120),
+})
+
 export const proposedActionSchema = z.discriminatedUnion('type', [
   appointmentSchema,
   questionSchema,
   shoppingSchema,
   taskSchema,
+  feedSchema,
+  diaperSchema,
 ])
 
 export const extractionSchema = z.object({

@@ -24,7 +24,7 @@ export type Actions = {
   // Edit a log (time correction/amount/diaper/note) or delete it (undo a mislog).
   patchLog: (id: string, local: Partial<LogEntry>, patch: Record<string, unknown>) => void
   deleteLog: (id: string) => void
-  commitCapture: (items: PlanItem[], capture: InboxCapture) => void
+  commitCapture: (items: PlanItem[], capture: InboxCapture, logEntries?: LogEntry[]) => void
   // Toggle/patch a plan item (check off a task/shopping item, mark a question answered).
   // `patch` uses the DB column names the API expects (e.g. { done: true }, { answered: true }).
   updatePlanItem: (id: string, local: Partial<PlanItem>, patch: Record<string, unknown>) => void
@@ -173,13 +173,22 @@ export function MamaHqApp() {
   }, [])
 
   const commitCapture = useCallback(
-    (items: PlanItem[], capture: InboxCapture) => {
+    (items: PlanItem[], capture: InboxCapture, logEntries: LogEntry[] = []) => {
       if (!babyId) return
-      setState((s) => (s ? { ...s, plan: [...items, ...s.plan], captures: [capture, ...s.captures] } : s))
+      setState((s) =>
+        s
+          ? {
+              ...s,
+              plan: [...items, ...s.plan],
+              logs: [...logEntries, ...s.logs],
+              captures: [capture, ...s.captures],
+            }
+          : s,
+      )
       fetch('/api/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ babyId, items, capture }),
+        body: JSON.stringify({ babyId, items, capture, logEntries }),
       }).catch(() => {})
     },
     [babyId],
