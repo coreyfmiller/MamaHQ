@@ -21,3 +21,7 @@ tsconfig.tsbuildinfo
 
 .vercel
 .env*
+
+# UI prototype reference (not part of the app build)
+_ui_prototype/
+mama-hq-ui-prototype.zip

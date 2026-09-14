@@ -38,6 +38,18 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  /* MamaHQ accent palette (from the UI prototype) */
+  --color-sage: var(--sage);
+  --color-sage-soft: var(--sage-soft);
+  --color-blush: var(--blush);
+  --color-blush-soft: var(--blush-soft);
+  --color-blue: var(--blue);
+  --color-blue-soft: var(--blue-soft);
+  --color-peach: var(--peach);
+  --color-peach-soft: var(--peach-soft);
+  --color-beige: var(--beige);
+  --color-beige-soft: var(--beige-soft);
+  --color-live: var(--live);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,45 +61,63 @@
 
 :root {
   color-scheme: light;
-  /* warm cream */
-  --background: oklch(0.968 0.013 83);
-  /* deep warm charcoal-brown */
-  --foreground: oklch(0.315 0.018 55);
-  /* warm white */
-  --card: oklch(0.99 0.007 85);
-  --card-foreground: oklch(0.315 0.018 55);
-  --popover: oklch(0.99 0.007 85);
-  --popover-foreground: oklch(0.315 0.018 55);
-  /* soft clay / dusty rose */
-  --primary: oklch(0.63 0.088 32);
-  --primary-foreground: oklch(0.98 0.01 85);
-  /* muted sage */
-  --secondary: oklch(0.86 0.028 140);
-  --secondary-foreground: oklch(0.36 0.03 130);
-  /* oatmeal */
-  --muted: oklch(0.93 0.014 80);
-  --muted-foreground: oklch(0.52 0.022 60);
-  /* dusty rose accent */
-  --accent: oklch(0.9 0.03 30);
-  --accent-foreground: oklch(0.4 0.06 32);
-  --destructive: oklch(0.577 0.18 27);
-  --border: oklch(0.9 0.016 75);
-  --input: oklch(0.9 0.016 75);
-  --ring: oklch(0.63 0.088 32);
-  --chart-1: oklch(0.63 0.088 32);
-  --chart-2: oklch(0.7 0.05 140);
-  --chart-3: oklch(0.75 0.04 60);
-  --chart-4: oklch(0.6 0.06 40);
-  --chart-5: oklch(0.5 0.03 90);
-  --radius: 1rem;
-  --sidebar: oklch(0.968 0.013 83);
-  --sidebar-foreground: oklch(0.315 0.018 55);
-  --sidebar-primary: oklch(0.63 0.088 32);
-  --sidebar-primary-foreground: oklch(0.98 0.01 85);
-  --sidebar-accent: oklch(0.9 0.03 30);
-  --sidebar-accent-foreground: oklch(0.4 0.06 32);
-  --sidebar-border: oklch(0.9 0.016 75);
-  --sidebar-ring: oklch(0.63 0.088 32);
+  /* Sage-forward palette adopted from the UI prototype. Fonts stay Fraunces (serif) + Inter (sans). */
+  --background: oklch(0.972 0.008 83);
+  --foreground: oklch(0.3 0.022 255);
+
+  --card: oklch(0.995 0.004 83);
+  --card-foreground: oklch(0.3 0.022 255);
+  --popover: oklch(0.995 0.004 83);
+  --popover-foreground: oklch(0.3 0.022 255);
+
+  /* deep sage */
+  --primary: oklch(0.4 0.045 160);
+  --primary-foreground: oklch(0.97 0.012 90);
+
+  --secondary: oklch(0.93 0.016 78);
+  --secondary-foreground: oklch(0.3 0.022 255);
+
+  --muted: oklch(0.945 0.009 82);
+  --muted-foreground: oklch(0.52 0.016 258);
+
+  /* soft sage accent */
+  --accent: oklch(0.915 0.03 150);
+  --accent-foreground: oklch(0.36 0.04 160);
+
+  --destructive: oklch(0.58 0.14 25);
+  --border: oklch(0.9 0.012 80);
+  --input: oklch(0.9 0.012 80);
+  --ring: oklch(0.62 0.04 160);
+
+  --chart-1: oklch(0.62 0.05 158);
+  --chart-2: oklch(0.58 0.06 248);
+  --chart-3: oklch(0.72 0.09 55);
+  --chart-4: oklch(0.7 0.08 32);
+  --chart-5: oklch(0.6 0.04 75);
+
+  /* named accents (chips, category dots, etc.) */
+  --sage: oklch(0.62 0.05 158);
+  --sage-soft: oklch(0.92 0.033 152);
+  --blush: oklch(0.7 0.08 32);
+  --blush-soft: oklch(0.93 0.035 45);
+  --blue: oklch(0.58 0.06 248);
+  --blue-soft: oklch(0.92 0.03 242);
+  --peach: oklch(0.72 0.09 55);
+  --peach-soft: oklch(0.93 0.045 58);
+  --beige: oklch(0.6 0.04 75);
+  --beige-soft: oklch(0.92 0.028 78);
+  --live: oklch(0.6 0.13 150);
+
+  --radius: 1.15rem;
+
+  --sidebar: oklch(0.972 0.008 83);
+  --sidebar-foreground: oklch(0.3 0.022 255);
+  --sidebar-primary: oklch(0.4 0.045 160);
+  --sidebar-primary-foreground: oklch(0.97 0.012 90);
+  --sidebar-accent: oklch(0.915 0.03 150);
+  --sidebar-accent-foreground: oklch(0.36 0.04 160);
+  --sidebar-border: oklch(0.9 0.012 80);
+  --sidebar-ring: oklch(0.62 0.04 160);
   --font-serif: var(--font-fraunces), Georgia, serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }

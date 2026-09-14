@@ -18,7 +18,7 @@ import {
 import { Droplet, Milk, Moon, Baby as BabyIcon, RotateCcw, MoreHorizontal } from 'lucide-react'
 import { LogSheet } from '@/components/app/log-sheet'
 import { VisitSheet } from '@/components/app/visit-sheet'
-import { CheckToggle } from '@/components/app/ui'
+import { CheckToggle, Card, CardLabel, LiveDot } from '@/components/app/ui'
 import type { Actions } from '@/components/app/mama-hq-app'
 
 type SheetKind = 'feed' | 'diaper' | 'pump' | null
@@ -206,11 +206,12 @@ export function TodayTab({
         </div>
       </header>
 
-      {/* BABY — the recent status cards */}
-      <section className="mt-6">
-        <h2 className="mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-primary">
-          Baby
-        </h2>
+      {/* RIGHT NOW — recent baby status, in a prototype-style card. */}
+      <Card className="mt-6 space-y-3">
+        <div className="flex items-center justify-between">
+          <CardLabel className="text-foreground">Right now</CardLabel>
+          {(feeding || sleeping) && <LiveDot />}
+        </div>
         <div className="grid grid-cols-3 gap-2.5">
           <StatusCard
             icon={<Milk className="h-4 w-4" />}
@@ -237,7 +238,7 @@ export function TodayTab({
             highlight={!!sleeping}
           />
         </div>
-      </section>
+      </Card>
 
       {/* Near Day 90: gently offer the keepsake. Not intrusive; disappears otherwise. */}
       {nearNinety && (
@@ -454,12 +455,8 @@ function StatusCard({
   highlight?: boolean
 }) {
   return (
-    <div
-      className={`rounded-2xl border p-3 shadow-sm ${
-        highlight ? 'border-secondary bg-secondary/40' : 'border-border bg-card'
-      }`}
-    >
-      <div className="flex items-center gap-1.5 text-muted-foreground">{icon}</div>
+    <div className={`rounded-2xl p-3 ${highlight ? 'bg-sage-soft/60' : 'bg-muted/60'}`}>
+      <div className={`flex items-center gap-1.5 ${highlight ? 'text-sage' : 'text-muted-foreground'}`}>{icon}</div>
       <p className="mt-2 font-serif text-lg leading-none text-foreground">{value}</p>
       <p className="mt-1 text-[11px] text-muted-foreground">{label}</p>
     </div>

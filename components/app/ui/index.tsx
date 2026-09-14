@@ -5,7 +5,7 @@
 // Behavior preserved from the originals; this is a refactor, not a redesign.
 
 import { cn } from '@/lib/utils'
-import { Check, X } from 'lucide-react'
+import { Check, X, Mic, Camera } from 'lucide-react'
 
 // ---------- BottomSheet ----------
 // The modal sheet pattern (was local to log-sheet). Backdrop dismiss + safe-area padding.
@@ -189,6 +189,98 @@ export function PrimaryButton({
     >
       {children}
     </button>
+  )
+}
+
+// ---------- Card (from the UI prototype) ----------
+export function Card({
+  children,
+  className,
+  onClick,
+}: {
+  children: React.ReactNode
+  className?: string
+  onClick?: () => void
+}) {
+  const Comp = onClick ? 'button' : 'div'
+  return (
+    <Comp
+      onClick={onClick}
+      className={cn(
+        'rounded-3xl border border-border/70 bg-card p-5 text-left shadow-[0_1px_2px_rgba(38,50,56,0.04),0_10px_30px_-18px_rgba(38,50,56,0.18)]',
+        onClick && 'w-full transition-transform active:scale-[0.99]',
+        className,
+      )}
+    >
+      {children}
+    </Comp>
+  )
+}
+
+export function CardLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <h3 className={cn('text-[13px] font-semibold tracking-wide text-muted-foreground', className)}>
+      {children}
+    </h3>
+  )
+}
+
+// ---------- LiveDot ----------
+export function LiveDot({ label = 'Live' }: { label?: string }) {
+  return (
+    <span className="flex items-center gap-1.5 text-[12px] font-medium text-live">
+      <span className="relative flex size-2">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-live opacity-60" />
+        <span className="relative inline-flex size-2 rounded-full bg-live" />
+      </span>
+      {label}
+    </span>
+  )
+}
+
+// ---------- AIInputBar (the Inbox capture entry, from the prototype) ----------
+export function AIInputBar({
+  placeholder = 'Tell Mama HQ anything…',
+  onOpen,
+  onMic,
+  onCamera,
+  className,
+}: {
+  placeholder?: string
+  onOpen?: () => void
+  onMic?: () => void
+  onCamera?: () => void
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 rounded-full border border-border/80 bg-card py-2 pr-2 pl-5 shadow-[0_6px_20px_-10px_rgba(38,50,56,0.25)]',
+        className,
+      )}
+    >
+      <button onClick={onOpen} className="flex-1 truncate py-1.5 text-left text-[15px] text-muted-foreground">
+        {placeholder}
+      </button>
+      {onCamera && (
+        <button
+          onClick={onCamera}
+          aria-label="Capture a photo"
+          className="flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-muted"
+        >
+          <Camera className="size-[20px]" strokeWidth={1.75} />
+        </button>
+      )}
+      {onMic && (
+        <button
+          onClick={onMic}
+          aria-label="Speak to Mama HQ"
+          className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95"
+        >
+          <Mic className="size-[19px]" strokeWidth={1.75} />
+        </button>
+      )}
+    </div>
   )
 }
 
