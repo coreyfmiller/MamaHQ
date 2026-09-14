@@ -123,10 +123,23 @@ export type InboxCapture = {
   status: 'proposed' | 'committed' | 'dismissed'
 }
 
+// ---------- Memories (the tiny moments hiding in the chaos) ----------
+// V1 is text-only: a dated moment you don't want to forget. Photo attachments
+// are a planned follow-up (Supabase Storage) — not faked here.
+
+export type Memory = {
+  id: string
+  createdAt: string // when it was logged
+  occurredOn: string // ISO date (YYYY-MM-DD) — the day the moment happened
+  title: string // short label ("First real smile")
+  note?: string | null // optional longer detail
+}
+
 // ---------- Whole app state ----------
 export type AppState = {
   baby: Baby
   logs: LogEntry[]
   plan: PlanItem[]
   captures: InboxCapture[]
+  memories: Memory[]
 }

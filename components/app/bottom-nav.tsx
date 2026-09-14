@@ -14,7 +14,7 @@ const TABS: { id: Tab; label: string; Icon: typeof Home }[] = [
 
 export function BottomNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md border-t border-border bg-card/95 backdrop-blur">
+    <nav className="sticky inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur">
       <ul className="flex items-stretch justify-around px-1 pb-[max(0.4rem,env(safe-area-inset-bottom))] pt-1.5">
         {TABS.map(({ id, label, Icon }) => {
           const active = tab === id

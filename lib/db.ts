@@ -3,7 +3,7 @@
 // Maps typed app shapes (lib/types.ts) to/from the hardened columns in migration 0001.
 
 import { supabaseServerAuthed } from './supabase-server'
-import type { AppState, Baby, InboxCapture, LogEntry, PlanItem } from './types'
+import type { AppState, Baby, InboxCapture, LogEntry, Memory, PlanItem } from './types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const BABY_NAME_DEFAULT = 'Baby'
@@ -114,6 +114,16 @@ function rowToCapture(r: Record<string, unknown>): InboxCapture {
   }
 }
 
+function rowToMemory(r: Record<string, unknown>): Memory {
+  return {
+    id: r.id as string,
+    createdAt: r.created_at as string,
+    occurredOn: r.occurred_on as string,
+    title: r.title as string,
+    note: (r.note as string) ?? null,
+  }
+}
+
 // ---------- provisioning: family + baby for the signed-in user ----------
 
 async function getOrCreateBaby(supa: SupabaseClient, userId: string): Promise<Baby> {
@@ -157,19 +167,22 @@ async function currentBaby(supa: SupabaseClient): Promise<Baby> {
 export async function loadAppState(): Promise<AppState> {
   const supa = await supabaseServerAuthed()
   const baby = await currentBaby(supa)
-  const [logs, plan, caps] = await Promise.all([
+  const [logs, plan, caps, mems] = await Promise.all([
     supa.from('logs').select('*').eq('baby_id', baby.id).order('occurred_at', { ascending: false }).limit(500),
     supa.from('plan_items').select('*').eq('baby_id', baby.id).order('created_at', { ascending: false }).limit(500),
     supa.from('inbox_captures').select('*').eq('baby_id', baby.id).order('created_at', { ascending: false }).limit(200),
+    supa.from('memories').select('*').eq('baby_id', baby.id).order('occurred_on', { ascending: false }).limit(500),
   ])
   if (logs.error) throw logs.error
   if (plan.error) throw plan.error
   if (caps.error) throw caps.error
+  if (mems.error) throw mems.error
   return {
     baby,
     logs: (logs.data ?? []).map(rowToLog),
     plan: (plan.data ?? []).map(rowToPlan),
     captures: (caps.data ?? []).map(rowToCapture),
+    memories: (mems.data ?? []).map(rowToMemory),
   }
 }
 
@@ -213,5 +226,27 @@ export async function patchPlanItem(id: string, patch: Record<string, unknown>):
   const supa = await supabaseServerAuthed()
   await authedUser(supa)
   const { error } = await supa.from('plan_items').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+// ---------- memories ----------
+
+export async function insertMemory(babyId: string, memory: Memory): Promise<void> {
+  const supa = await supabaseServerAuthed()
+  await authedUser(supa)
+  const { error } = await supa.from('memories').insert({
+    id: memory.id,
+    baby_id: babyId,
+    occurred_on: memory.occurredOn,
+    title: memory.title,
+    note: memory.note ?? null,
+  })
+  if (error) throw error
+}
+
+export async function deleteMemory(id: string): Promise<void> {
+  const supa = await supabaseServerAuthed()
+  await authedUser(supa)
+  const { error } = await supa.from('memories').delete().eq('id', id)
   if (error) throw error
 }

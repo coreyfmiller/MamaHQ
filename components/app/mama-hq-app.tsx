@@ -1,13 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import type { AppState, InboxCapture, LogEntry, PlanItem } from '@/lib/types'
+import type { AppState, InboxCapture, LogEntry, Memory, PlanItem } from '@/lib/types'
 import { BottomNav, type Tab } from '@/components/app/bottom-nav'
 import { TodayTab } from '@/components/app/today-tab'
 import { BabyTab } from '@/components/app/baby-tab'
 import { InboxTab } from '@/components/app/inbox-tab'
 import { PlanTab } from '@/components/app/plan-tab'
-import { StubTab } from '@/components/app/stub-tab'
+import { MemoriesTab } from '@/components/app/memories-tab'
 import { SignIn } from '@/components/app/sign-in'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 
@@ -19,6 +19,8 @@ export type Actions = {
   // Toggle/patch a plan item (check off a task/shopping item, mark a question answered).
   // `patch` uses the DB column names the API expects (e.g. { done: true }, { answered: true }).
   updatePlanItem: (id: string, local: Partial<PlanItem>, patch: Record<string, unknown>) => void
+  addMemory: (memory: Memory) => void
+  deleteMemory: (id: string) => void
 }
 
 type AuthStatus = 'checking' | 'signed-out' | 'signed-in'
@@ -137,7 +139,29 @@ export function MamaHqApp() {
     [],
   )
 
-  const actions: Actions = { addLog, endSleep, commitCapture, updatePlanItem }
+  const addMemory = useCallback(
+    (memory: Memory) => {
+      if (!babyId) return
+      setState((s) => (s ? { ...s, memories: [memory, ...s.memories] } : s))
+      fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ babyId, memory }),
+      }).catch(() => {})
+    },
+    [babyId],
+  )
+
+  const deleteMemory = useCallback((id: string) => {
+    setState((s) => (s ? { ...s, memories: s.memories.filter((m) => m.id !== id) } : s))
+    fetch('/api/memory', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(() => {})
+  }, [])
+
+  const actions: Actions = { addLog, endSleep, commitCapture, updatePlanItem, addMemory, deleteMemory }
 
   if (auth === 'checking') {
     return (
@@ -174,19 +198,21 @@ export function MamaHqApp() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-background">
-      <main className="flex-1 pb-24">
-        {tab === 'today' && (
-          <TodayTab state={state} actions={actions} onGoInbox={() => setTab('inbox')} onSignOut={signOut} />
-        )}
-        {tab === 'baby' && <BabyTab state={state} />}
-        {tab === 'inbox' && <InboxTab actions={actions} />}
-        {tab === 'plan' && <PlanTab state={state} actions={actions} />}
-        {tab === 'memories' && (
-          <StubTab title="Memories" note="Photos and small moments you don’t want to lose — coming next." />
-        )}
-      </main>
-      <BottomNav tab={tab} onChange={setTab} />
+    // On phones the app is full-bleed. On larger screens we center a phone-width
+    // column with a soft frame so it reads as an intentional app, not stranded content.
+    <div className="flex min-h-dvh justify-center bg-muted/30 sm:py-6">
+      <div className="relative flex min-h-dvh w-full max-w-md flex-col bg-background sm:min-h-0 sm:h-[calc(100dvh-3rem)] sm:overflow-hidden sm:rounded-[2rem] sm:border sm:border-border sm:shadow-[0_30px_60px_-30px_rgba(80,55,40,0.35)]">
+        <main className="flex-1 overflow-y-auto pb-24">
+          {tab === 'today' && (
+            <TodayTab state={state} actions={actions} onGoInbox={() => setTab('inbox')} onSignOut={signOut} />
+          )}
+          {tab === 'baby' && <BabyTab state={state} />}
+          {tab === 'inbox' && <InboxTab actions={actions} />}
+          {tab === 'plan' && <PlanTab state={state} actions={actions} />}
+          {tab === 'memories' && <MemoriesTab state={state} actions={actions} />}
+        </main>
+        <BottomNav tab={tab} onChange={setTab} />
+      </div>
     </div>
   )
 }
