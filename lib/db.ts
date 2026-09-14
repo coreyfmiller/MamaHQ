@@ -147,7 +147,7 @@ async function getOrCreateBaby(supa: SupabaseClient, userId: string): Promise<Ba
   if (babyRes.error) throw babyRes.error
   if (babyRes.data && babyRes.data.length > 0) {
     const b = babyRes.data[0]
-    return { id: b.id, name: b.name, birthDate: b.birth_date }
+    return { id: b.id, name: b.name, birthDate: b.birth_date, onboarded: b.onboarded ?? true }
   }
   const birth = new Date()
   birth.setDate(birth.getDate() - 16)
@@ -157,7 +157,13 @@ async function getOrCreateBaby(supa: SupabaseClient, userId: string): Promise<Ba
     .select('*')
     .single()
   if (madeBaby.error) throw madeBaby.error
-  return { id: madeBaby.data.id, name: madeBaby.data.name, birthDate: madeBaby.data.birth_date }
+  // A freshly provisioned baby is NOT onboarded — the app shows the guided setup once.
+  return {
+    id: madeBaby.data.id,
+    name: madeBaby.data.name,
+    birthDate: madeBaby.data.birth_date,
+    onboarded: madeBaby.data.onboarded ?? false,
+  }
 }
 
 // Resolve the signed-in user's baby, or throw NotAuthedError.
@@ -240,6 +246,45 @@ export async function patchPlanItem(id: string, patch: Record<string, unknown>):
   await authedUser(supa)
   const { error } = await supa.from('plan_items').update(patch).eq('id', id)
   if (error) throw error
+}
+
+// ---------- onboarding ----------
+
+export type OnboardingInput = {
+  babyName: string
+  birthDate: string // YYYY-MM-DD
+  country?: string | null // ISO 3166-1 alpha-2
+  region?: string | null
+}
+
+// Complete the guided setup: set the real baby name + birth date (marks onboarded), and store
+// the family's country/region. Runs as the authed member (RLS-enforced).
+export async function completeOnboarding(input: OnboardingInput): Promise<Baby> {
+  const supa = await supabaseServerAuthed()
+  const userId = await authedUser(supa)
+  const baby = await getOrCreateBaby(supa, userId)
+
+  const name = input.babyName.trim().slice(0, 100) || BABY_NAME_DEFAULT
+  const { data, error } = await supa
+    .from('babies')
+    .update({ name, birth_date: input.birthDate, onboarded: true })
+    .eq('id', baby.id)
+    .select('*')
+    .single()
+  if (error) throw error
+
+  // Store country/region on the family (data-only; unread by V1 UI). Best-effort.
+  if (input.country || input.region) {
+    const fam = await supa.from('families').select('id').eq('owner_id', userId).limit(1)
+    if (!fam.error && fam.data && fam.data.length > 0) {
+      await supa
+        .from('families')
+        .update({ country: input.country ?? null, region: input.region ?? null })
+        .eq('id', fam.data[0].id)
+    }
+  }
+
+  return { id: data.id, name: data.name, birthDate: data.birth_date, onboarded: true }
 }
 
 // ---------- memories ----------

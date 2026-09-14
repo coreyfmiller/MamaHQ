@@ -10,6 +10,8 @@ import { PlanTab } from '@/components/app/plan-tab'
 import { MemoriesTab } from '@/components/app/memories-tab'
 import { PartnerPreview } from '@/components/app/partner-preview'
 import { Day90Preview } from '@/components/app/day90-preview'
+import { Onboarding } from '@/components/app/onboarding'
+import type { Baby } from '@/lib/types'
 import { SignIn } from '@/components/app/sign-in'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 
@@ -233,6 +235,15 @@ export function MamaHqApp() {
       <div className="grid min-h-dvh place-items-center bg-background text-muted-foreground">
         <span className="text-sm">Loading…</span>
       </div>
+    )
+  }
+
+  // First run: short guided setup before the app (Step 6). Once onboarded, updates state in place.
+  if (!state.baby.onboarded) {
+    return (
+      <Onboarding
+        onDone={(baby: Baby) => setState((s) => (s ? { ...s, baby } : s))}
+      />
     )
   }
 

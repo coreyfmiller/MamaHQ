@@ -6,6 +6,7 @@ export type Baby = {
   id: string
   name: string
   birthDate: string // ISO date (YYYY-MM-DD); drives the Day N counter
+  onboarded: boolean // false until the guided setup (real name + birth date) is completed
 }
 
 // ---------- Baby log entries ----------
