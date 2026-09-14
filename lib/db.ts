@@ -177,24 +177,36 @@ async function currentBaby(supa: SupabaseClient): Promise<Baby> {
 export async function loadAppState(): Promise<AppState> {
   const supa = await supabaseServerAuthed()
   const baby = await currentBaby(supa)
-  const [logs, plan, caps, mems] = await Promise.all([
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const [logs, plan, caps, mems, checkins] = await Promise.all([
     supa.from('logs').select('*').eq('baby_id', baby.id).order('occurred_at', { ascending: false }).limit(500),
     supa.from('plan_items').select('*').eq('baby_id', baby.id).order('created_at', { ascending: false }).limit(500),
     supa.from('inbox_captures').select('*').eq('baby_id', baby.id).order('created_at', { ascending: false }).limit(200),
     supa.from('memories').select('*').eq('baby_id', baby.id).order('occurred_on', { ascending: false }).limit(500),
+    supa.from('mom_checkins').select('item,done').eq('baby_id', baby.id).eq('on_date', todayStr),
   ])
   if (logs.error) throw logs.error
   if (plan.error) throw plan.error
   if (caps.error) throw caps.error
-  // Memories degrade gracefully: if the table isn't there yet (migration lag),
-  // load the rest of the app rather than failing the whole state fetch.
+  // Optional tables degrade gracefully if not migrated yet (migration lag): load the rest.
   if (mems.error && !isMissingTable(mems.error)) throw mems.error
+  if (checkins.error && !isMissingTable(checkins.error)) throw checkins.error
+
+  const momCheckin = { water: false, eat: false, rest: false }
+  if (!checkins.error) {
+    for (const r of checkins.data ?? []) {
+      const item = r.item as 'water' | 'eat' | 'rest'
+      if (item in momCheckin) momCheckin[item] = !!r.done
+    }
+  }
+
   return {
     baby,
     logs: (logs.data ?? []).map(rowToLog),
     plan: (plan.data ?? []).map(rowToPlan),
     captures: (caps.data ?? []).map(rowToCapture),
     memories: mems.error ? [] : (mems.data ?? []).map(rowToMemory),
+    momCheckin,
   }
 }
 
@@ -298,6 +310,29 @@ export async function completeOnboarding(input: OnboardingInput): Promise<Baby> 
   }
 
   return { id: data.id, name: data.name, birthDate: data.birth_date, onboarded: true }
+}
+
+// ---------- Mom check-in ----------
+
+// Tick (done=true) upserts a row for today; un-tick (done=false) deletes it. Idempotent.
+export async function setMomCheckin(babyId: string, item: 'water' | 'eat' | 'rest', done: boolean): Promise<void> {
+  const supa = await supabaseServerAuthed()
+  await authedUser(supa)
+  const onDate = new Date().toISOString().slice(0, 10)
+  if (done) {
+    const { error } = await supa
+      .from('mom_checkins')
+      .upsert({ baby_id: babyId, on_date: onDate, item, done: true }, { onConflict: 'baby_id,on_date,item' })
+    if (error) throw error
+  } else {
+    const { error } = await supa
+      .from('mom_checkins')
+      .delete()
+      .eq('baby_id', babyId)
+      .eq('on_date', onDate)
+      .eq('item', item)
+    if (error) throw error
+  }
 }
 
 // ---------- memories ----------

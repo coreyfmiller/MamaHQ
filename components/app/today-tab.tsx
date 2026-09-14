@@ -17,6 +17,7 @@ import {
 } from '@/lib/store'
 import { Droplet, Milk, Moon, Baby as BabyIcon, RotateCcw, MoreHorizontal } from 'lucide-react'
 import { LogSheet } from '@/components/app/log-sheet'
+import { CheckToggle } from '@/components/app/ui'
 import type { Actions } from '@/components/app/mama-hq-app'
 
 type SheetKind = 'feed' | 'diaper' | 'pump' | null
@@ -286,15 +287,27 @@ export function TodayTab({
         </Section>
       )}
 
-      {/* FOR YOU — gentle, supportive, never evaluative */}
+      {/* FOR YOU — gentle, supportive, never evaluative. Ticking persists for today. */}
       <section className="mb-4 mt-6 rounded-2xl bg-accent/50 p-4">
         <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-accent-foreground">
           For you
         </h2>
-        <ul className="mt-2 space-y-2 text-sm text-foreground">
-          <li className="flex items-start gap-2"><Circle /> Drink some water</li>
-          <li className="flex items-start gap-2"><Circle /> Eat something</li>
-          <li className="flex items-start gap-2"><Circle /> Take ten minutes for yourself</li>
+        <ul className="mt-2 space-y-1">
+          <CheckinItem
+            label="Drink some water"
+            done={state.momCheckin.water}
+            onToggle={() => actions.toggleCheckin('water', !state.momCheckin.water)}
+          />
+          <CheckinItem
+            label="Eat something"
+            done={state.momCheckin.eat}
+            onToggle={() => actions.toggleCheckin('eat', !state.momCheckin.eat)}
+          />
+          <CheckinItem
+            label="Take ten minutes for yourself"
+            done={state.momCheckin.rest}
+            onToggle={() => actions.toggleCheckin('rest', !state.momCheckin.rest)}
+          />
         </ul>
       </section>
 
@@ -394,6 +407,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Circle() {
   return <span className="mt-1 size-4 shrink-0 rounded-full border-[1.5px] border-muted-foreground/50" />
+}
+
+function CheckinItem({ label, done, onToggle }: { label: string; done: boolean; onToggle: () => void }) {
+  return (
+    <li className="flex items-center gap-3 py-1">
+      <CheckToggle checked={done} onToggle={onToggle} label={done ? `Undo: ${label}` : label} />
+      <button
+        onClick={onToggle}
+        className={`text-left text-sm ${done ? 'text-muted-foreground line-through' : 'text-foreground'}`}
+      >
+        {label}
+      </button>
+    </li>
+  )
 }
 
 function logLabel(e: LogEntry): string {

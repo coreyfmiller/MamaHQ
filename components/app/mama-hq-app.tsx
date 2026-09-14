@@ -30,6 +30,7 @@ export type Actions = {
   updatePlanItem: (id: string, local: Partial<PlanItem>, patch: Record<string, unknown>) => void
   addMemory: (memory: Memory) => void
   deleteMemory: (id: string) => void
+  toggleCheckin: (item: 'water' | 'eat' | 'rest', done: boolean) => void
 }
 
 type AuthStatus = 'checking' | 'signed-out' | 'signed-in'
@@ -218,6 +219,20 @@ export function MamaHqApp() {
     }).catch(() => {})
   }, [])
 
+  // Mom self-care check-in (Today "For you"). Optimistic + POST.
+  const toggleCheckin = useCallback(
+    (item: 'water' | 'eat' | 'rest', done: boolean) => {
+      if (!babyId) return
+      setState((s) => (s ? { ...s, momCheckin: { ...s.momCheckin, [item]: done } } : s))
+      fetch('/api/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ babyId, item, done }),
+      }).catch(() => {})
+    },
+    [babyId],
+  )
+
   const actions: Actions = {
     addLog,
     endSleep,
@@ -229,6 +244,7 @@ export function MamaHqApp() {
     updatePlanItem,
     addMemory,
     deleteMemory,
+    toggleCheckin,
   }
 
   if (auth === 'checking') {

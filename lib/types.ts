@@ -142,6 +142,11 @@ export type Memory = {
   note?: string | null // optional longer detail
 }
 
+// ---------- Mom check-in (gentle self-care prompts on Today) ----------
+// Support for Mom, never evaluation. Records only that she ticked a prompt today. No scores.
+export type MomCheckinItem = 'water' | 'eat' | 'rest'
+export type MomCheckinToday = Record<MomCheckinItem, boolean>
+
 // ---------- Whole app state ----------
 export type AppState = {
   baby: Baby
@@ -149,4 +154,6 @@ export type AppState = {
   plan: PlanItem[]
   captures: InboxCapture[]
   memories: Memory[]
+  // Which self-care prompts Mom has ticked TODAY (derived from mom_checkins).
+  momCheckin: MomCheckinToday
 }
