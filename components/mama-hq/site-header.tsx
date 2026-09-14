@@ -30,12 +30,12 @@ export function SiteHeader() {
           ))}
         </nav>
 
-        <a
-          href="#start"
+        <Link
+          href="/app"
           className="inline-flex h-9 items-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           Get started
-        </a>
+        </Link>
       </div>
     </header>
   )

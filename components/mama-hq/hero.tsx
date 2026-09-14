@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { PhoneFrame } from './phone-frame'
 import { TodayScreen } from './today-screen'
@@ -5,7 +6,7 @@ import { RotatingImage } from './rotating-image'
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden" id="start">
+    <section className="relative overflow-hidden">
       <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-14 lg:grid-cols-2 lg:gap-8 lg:pb-28 lg:pt-20">
         <div className="max-w-xl">
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground">
@@ -22,13 +23,13 @@ export function Hero() {
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <a
-              href="#start"
+            <Link
+              href="/app"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-primary px-7 text-base font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               Start your first 90 days
               <ArrowRight className="size-4" />
-            </a>
+            </Link>
             <a
               href="#how-it-works"
               className="inline-flex h-12 items-center justify-center rounded-full border border-border bg-card px-7 text-base font-medium text-foreground transition-colors hover:bg-muted"

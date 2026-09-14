@@ -64,6 +64,8 @@ export function MamaHqApp() {
     await supabaseBrowser().auth.signOut()
     setState(null)
     setAuth('signed-out')
+    // Return to the public landing after signing out.
+    window.location.href = '/'
   }, [])
 
   // keep relative times fresh

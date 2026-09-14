@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 
 export function CtaFooter() {
@@ -14,13 +15,13 @@ export function CtaFooter() {
             One calm place for the first 90 days—so nothing important slips through, including you.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <a
-              href="#start"
+            <Link
+              href="/app"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-primary px-7 text-base font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
               Start your first 90 days
               <ArrowRight className="size-4" />
-            </a>
+            </Link>
             <a
               href="#how-it-works"
               className="inline-flex h-12 items-center justify-center rounded-full border border-border bg-card px-7 text-base font-medium text-foreground transition-colors hover:bg-muted"
