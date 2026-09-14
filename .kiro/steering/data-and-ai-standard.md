@@ -1,5 +1,9 @@
 # Mama HQ — Data & AI Standard (ABSOLUTE, NON-NEGOTIABLE)
 
+> **Canonical source:** the root **`SAFETY.md`** consolidates these rules and is the primary
+> human-readable constitution. This steering file is the operational mirror of `SAFETY.md`;
+> the two agree. If they ever diverge, `SAFETY.md` wins and this file must be reconciled to it.
+
 This file outranks every other standard, including product-standard.md. Mama HQ handles a
 newborn's logged data and uses AI to organize a parent's life. Two rules are absolute and govern
 every feature, screen, and model prompt. When any instinct (helpfulness, cleverness, engagement)

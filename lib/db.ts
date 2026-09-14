@@ -176,14 +176,21 @@ export async function loadAppState(): Promise<AppState> {
   if (logs.error) throw logs.error
   if (plan.error) throw plan.error
   if (caps.error) throw caps.error
-  if (mems.error) throw mems.error
+  // Memories degrade gracefully: if the table isn't there yet (migration lag),
+  // load the rest of the app rather than failing the whole state fetch.
+  if (mems.error && !isMissingTable(mems.error)) throw mems.error
   return {
     baby,
     logs: (logs.data ?? []).map(rowToLog),
     plan: (plan.data ?? []).map(rowToPlan),
     captures: (caps.data ?? []).map(rowToCapture),
-    memories: (mems.data ?? []).map(rowToMemory),
+    memories: mems.error ? [] : (mems.data ?? []).map(rowToMemory),
   }
+}
+
+// PostgREST reports a not-yet-migrated table as PGRST205 ("Could not find the table").
+function isMissingTable(err: { code?: string; message?: string }): boolean {
+  return err?.code === 'PGRST205' || /Could not find the table/i.test(err?.message ?? '')
 }
 
 export async function insertLog(babyId: string, entry: LogEntry): Promise<void> {

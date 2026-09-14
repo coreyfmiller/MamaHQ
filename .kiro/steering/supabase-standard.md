@@ -1,8 +1,20 @@
 # Mama HQ — Supabase / Persistence Standard
 
+> **⚠️ SUPERSEDED (historical). Do not follow this file for new work.**
+> This describes the earlier **Phase-A** approach (implicit single family, no auth wall, jsonb
+> `data` columns). The product has moved past it. The authoritative guidance is now:
+> - **`SAFETY.md`** (root) — absolute data/AI/privacy law.
+> - **`.kiro/steering/database-standard.md`** — the current DBA constitution (auth-rooted
+>   ownership, real typed columns + CHECK constraints, versioned forward-only migrations).
+> - **`PRODUCT.md`** / **`ROADMAP.md`** (root) — product law and sequencing.
+>
+> Where this file conflicts with any of the above, the above win. It is kept only as a record of
+> the Phase-A intent and is scheduled for removal (see `ROADMAP.md`: `REMOVE LATER`).
+
+---
+
 How Mama HQ stores family data. Persistence is the moat: a family's logs, plans, and captures
-must be durable, private, and never lost. This file governs the database layer. The
-data-and-ai-standard.md still outranks it (immutable original input, no derived clinical scores).
+must be durable, private, and never lost. This file governed the early database layer.
 
 ## Sequencing
 

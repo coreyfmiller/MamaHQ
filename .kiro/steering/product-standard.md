@@ -1,5 +1,10 @@
 # Mama HQ — Product Standard (governing)
 
+> **Canonical source:** the root **`PRODUCT.md`** is the primary product constitution, and
+> **`ROADMAP.md`** governs sequencing. This steering file is the operational mirror of
+> `PRODUCT.md`; the two agree. `SAFETY.md` outranks both. If this file ever diverges from the root
+> docs, the root docs win and this file must be reconciled to them.
+
 This is the product contract for Mama HQ. It outranks convenience, speed, and the urge to add
 features. When any instinct conflicts with this file, this file wins. (The data-and-ai-standard.md
 file outranks even this one — the "describe, don't diagnose" and "propose, don't auto-commit"

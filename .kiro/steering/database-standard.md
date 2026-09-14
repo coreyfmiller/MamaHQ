@@ -1,5 +1,10 @@
 # Mama HQ — Database Standard (DBA constitution)
 
+> **Canonical source:** the root **`SAFETY.md`** (privacy/RLS/provenance/no-clinical-scores) and
+> **`ROADMAP.md`** (Step 5 authorization-model migration for Partner Mode) are authoritative. This
+> steering file is the detailed DBA operational standard and agrees with them. `SAFETY.md` wins on
+> any conflict. It supersedes the older `supabase-standard.md`.
+
 How the Mama HQ database is designed and changed. This governs all schema and data-access work.
 The data-and-ai-standard.md still outranks it (immutable provenance, no derived clinical scores).
 Supersedes the looser Phase-A approach in the earlier supabase-standard.md where they conflict.
