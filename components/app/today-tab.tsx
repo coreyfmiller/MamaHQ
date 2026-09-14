@@ -23,10 +23,12 @@ export function TodayTab({
   state,
   actions,
   onGoInbox,
+  onSignOut,
 }: {
   state: AppState
   actions: Actions
   onGoInbox: () => void
+  onSignOut: () => void
 }) {
   const [sheet, setSheet] = useState<SheetKind>(null)
   const now = new Date()
@@ -52,13 +54,21 @@ export function TodayTab({
 
   return (
     <div className="px-5 pt-10">
-      <header>
-        <h1 className="font-serif text-2xl leading-tight text-foreground">
-          {greeting(now)}, {state.baby.name === 'Emma' ? 'Emma' : state.baby.name}.
-        </h1>
-        <p className="mt-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          Day {dayNumber(state.baby.birthDate, now)}
-        </p>
+      <header className="flex items-start justify-between">
+        <div>
+          <h1 className="font-serif text-2xl leading-tight text-foreground">
+            {greeting(now)}, {state.baby.name}.
+          </h1>
+          <p className="mt-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            Day {dayNumber(state.baby.birthDate, now)}
+          </p>
+        </div>
+        <button
+          onClick={onSignOut}
+          className="mt-1 text-xs text-muted-foreground underline decoration-border underline-offset-4"
+        >
+          Sign out
+        </button>
       </header>
 
       {/* BABY — the recent status cards */}

@@ -1,11 +1,17 @@
-// POST /api/log — insert a baby log entry. Body: { babyId, entry }.
-// PATCH /api/log — patch a log (used to end an active sleep). Body: { id, patch }.
+// POST /api/log — insert a baby log (RLS-enforced). Body: { babyId, entry }.
+// PATCH /api/log — patch a log (end active sleep). Body: { id, patch }.
 import { NextResponse } from 'next/server'
-import { insertLog, patchLog } from '@/lib/db'
-import { hasSupabase } from '@/lib/supabase'
+import { insertLog, patchLog, NotAuthedError } from '@/lib/db'
+import { hasSupabase } from '@/lib/supabase-server'
 import type { LogEntry } from '@/lib/types'
 
 export const runtime = 'nodejs'
+
+function authFail(e: unknown) {
+  if (e instanceof NotAuthedError) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
+  console.error('[log] failed:', e instanceof Error ? e.message : e)
+  return NextResponse.json({ error: 'Could not save that.' }, { status: 500 })
+}
 
 export async function POST(req: Request) {
   if (!hasSupabase()) return NextResponse.json({ error: 'Not configured.' }, { status: 503 })
@@ -15,8 +21,7 @@ export async function POST(req: Request) {
     await insertLog(babyId, entry)
     return NextResponse.json({ ok: true })
   } catch (e) {
-    console.error('[log] insert failed:', e instanceof Error ? e.message : e)
-    return NextResponse.json({ error: 'Could not save that.' }, { status: 500 })
+    return authFail(e)
   }
 }
 
@@ -28,7 +33,6 @@ export async function PATCH(req: Request) {
     await patchLog(id, patch)
     return NextResponse.json({ ok: true })
   } catch (e) {
-    console.error('[log] patch failed:', e instanceof Error ? e.message : e)
-    return NextResponse.json({ error: 'Could not update that.' }, { status: 500 })
+    return authFail(e)
   }
 }

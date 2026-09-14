@@ -1,12 +1,18 @@
-// POST /api/plan — commit an approved inbox capture: create plan items + store the capture
-// (with immutable provenance). Body: { babyId, items: PlanItem[], capture: InboxCapture }.
-// PATCH /api/plan — toggle a plan item (done/answered). Body: { id, kind, patch }.
+// POST /api/plan — commit an approved capture: create plan items + store capture (RLS-enforced).
+// Body: { babyId, items, capture }.
+// PATCH /api/plan — update a plan item (done/answered). Body: { id, patch }.
 import { NextResponse } from 'next/server'
-import { insertCapture, insertPlanItems, patchPlanItem } from '@/lib/db'
-import { hasSupabase } from '@/lib/supabase'
+import { commitCapture, patchPlanItem, NotAuthedError } from '@/lib/db'
+import { hasSupabase } from '@/lib/supabase-server'
 import type { InboxCapture, PlanItem } from '@/lib/types'
 
 export const runtime = 'nodejs'
+
+function authFail(e: unknown) {
+  if (e instanceof NotAuthedError) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
+  console.error('[plan] failed:', e instanceof Error ? e.message : e)
+  return NextResponse.json({ error: 'Could not save that.' }, { status: 500 })
+}
 
 export async function POST(req: Request) {
   if (!hasSupabase()) return NextResponse.json({ error: 'Not configured.' }, { status: 503 })
@@ -19,28 +25,21 @@ export async function POST(req: Request) {
     if (!babyId || !Array.isArray(items) || !capture) {
       return NextResponse.json({ error: 'Missing data.' }, { status: 400 })
     }
-    await insertPlanItems(babyId, items)
-    await insertCapture(babyId, capture)
+    await commitCapture(babyId, items, capture)
     return NextResponse.json({ ok: true })
   } catch (e) {
-    console.error('[plan] commit failed:', e instanceof Error ? e.message : e)
-    return NextResponse.json({ error: 'Could not save that.' }, { status: 500 })
+    return authFail(e)
   }
 }
 
 export async function PATCH(req: Request) {
   if (!hasSupabase()) return NextResponse.json({ error: 'Not configured.' }, { status: 503 })
   try {
-    const { id, kind, patch } = (await req.json()) as {
-      id?: string
-      kind?: PlanItem['kind']
-      patch?: Record<string, unknown>
-    }
-    if (!id || !kind || !patch) return NextResponse.json({ error: 'Missing data.' }, { status: 400 })
-    await patchPlanItem(id, kind, patch)
+    const { id, patch } = (await req.json()) as { id?: string; patch?: Record<string, unknown> }
+    if (!id || !patch) return NextResponse.json({ error: 'Missing data.' }, { status: 400 })
+    await patchPlanItem(id, patch)
     return NextResponse.json({ ok: true })
   } catch (e) {
-    console.error('[plan] patch failed:', e instanceof Error ? e.message : e)
-    return NextResponse.json({ error: 'Could not update that.' }, { status: 500 })
+    return authFail(e)
   }
 }
