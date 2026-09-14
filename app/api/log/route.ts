@@ -1,7 +1,7 @@
 // POST /api/log — insert a baby log (RLS-enforced). Body: { babyId, entry }.
 // PATCH /api/log — patch a log (end active sleep). Body: { id, patch }.
 import { NextResponse } from 'next/server'
-import { insertLog, patchLog, NotAuthedError } from '@/lib/db'
+import { insertLog, patchLog, deleteLog, NotAuthedError } from '@/lib/db'
 import { hasSupabase } from '@/lib/supabase-server'
 import type { LogEntry } from '@/lib/types'
 
@@ -28,9 +28,21 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   if (!hasSupabase()) return NextResponse.json({ error: 'Not configured.' }, { status: 503 })
   try {
-    const { id, patch } = (await req.json()) as { id?: string; patch?: Partial<LogEntry> }
+    const { id, patch } = (await req.json()) as { id?: string; patch?: Record<string, unknown> }
     if (!id || !patch) return NextResponse.json({ error: 'Missing data.' }, { status: 400 })
     await patchLog(id, patch)
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    return authFail(e)
+  }
+}
+
+export async function DELETE(req: Request) {
+  if (!hasSupabase()) return NextResponse.json({ error: 'Not configured.' }, { status: 503 })
+  try {
+    const { id } = (await req.json()) as { id?: string }
+    if (!id) return NextResponse.json({ error: 'Missing data.' }, { status: 400 })
+    await deleteLog(id)
     return NextResponse.json({ ok: true })
   } catch (e) {
     return authFail(e)

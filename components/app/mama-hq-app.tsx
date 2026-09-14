@@ -21,6 +21,9 @@ export type Actions = {
   endSleep: (id: string) => void
   endFeed: (id: string) => void
   updateFeedSide: (id: string, side: 'left' | 'right' | 'both') => void
+  // Edit a log (time correction/amount/diaper/note) or delete it (undo a mislog).
+  patchLog: (id: string, local: Partial<LogEntry>, patch: Record<string, unknown>) => void
+  deleteLog: (id: string) => void
   commitCapture: (items: PlanItem[], capture: InboxCapture) => void
   // Toggle/patch a plan item (check off a task/shopping item, mark a question answered).
   // `patch` uses the DB column names the API expects (e.g. { done: true }, { answered: true }).
@@ -142,6 +145,28 @@ export function MamaHqApp() {
     }).catch(() => {})
   }, [])
 
+  // Edit a log (time correction, amount, diaper kind, note). Optimistic local + PATCH.
+  const patchLog = useCallback((id: string, local: Partial<LogEntry>, patch: Record<string, unknown>) => {
+    setState((s) =>
+      s ? { ...s, logs: s.logs.map((l) => (l.id === id ? ({ ...l, ...local } as LogEntry) : l)) } : s,
+    )
+    fetch('/api/log', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, patch }),
+    }).catch(() => {})
+  }, [])
+
+  // Delete a log (undo a mislog). Optimistic removal + DELETE.
+  const deleteLog = useCallback((id: string) => {
+    setState((s) => (s ? { ...s, logs: s.logs.filter((l) => l.id !== id) } : s))
+    fetch('/api/log', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(() => {})
+  }, [])
+
   const commitCapture = useCallback(
     (items: PlanItem[], capture: InboxCapture) => {
       if (!babyId) return
@@ -198,6 +223,8 @@ export function MamaHqApp() {
     endSleep,
     endFeed,
     updateFeedSide,
+    patchLog,
+    deleteLog,
     commitCapture,
     updatePlanItem,
     addMemory,
@@ -263,7 +290,7 @@ export function MamaHqApp() {
               onOpenDay90={() => setOverlay('day90')}
             />
           )}
-          {tab === 'baby' && <BabyTab state={state} />}
+          {tab === 'baby' && <BabyTab state={state} actions={actions} />}
           {tab === 'inbox' && <InboxTab actions={actions} />}
           {tab === 'plan' && <PlanTab state={state} actions={actions} />}
           {tab === 'memories' && <MemoriesTab state={state} actions={actions} />}

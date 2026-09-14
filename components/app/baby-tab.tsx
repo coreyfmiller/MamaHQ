@@ -1,13 +1,17 @@
 'use client'
 
+import { useState } from 'react'
 import type { AppState, LogEntry } from '@/lib/types'
 import { clockTime, elapsed, isSameDay, timeAgo } from '@/lib/store'
-import { Droplet, Milk, Moon, Baby as BabyIcon } from 'lucide-react'
+import { Droplet, Milk, Moon, Baby as BabyIcon, Pencil } from 'lucide-react'
+import { LogEditSheet } from '@/components/app/log-edit-sheet'
+import type { Actions } from '@/components/app/mama-hq-app'
 
 // Baby = logs + history. Per data-and-ai-standard: this screen DESCRIBES recorded data
 // (counts, times, durations). It never interprets the baby or scores anything.
-export function BabyTab({ state }: { state: AppState }) {
+export function BabyTab({ state, actions }: { state: AppState; actions: Actions }) {
   const now = new Date()
+  const [editing, setEditing] = useState<LogEntry | null>(null)
   const today = state.logs.filter((l) => isSameDay(l.createdAt, now))
   const counts = {
     feed: today.filter((l) => l.kind === 'feed').length,
@@ -43,9 +47,18 @@ export function BabyTab({ state }: { state: AppState }) {
       ) : (
         <ul className="space-y-2 pb-4">
           {state.logs.slice(0, 60).map((l) => (
-            <LogRow key={l.id} entry={l} now={now} />
+            <LogRow key={l.id} entry={l} now={now} onEdit={() => setEditing(l)} />
           ))}
         </ul>
+      )}
+
+      {editing && (
+        <LogEditSheet
+          entry={editing}
+          onClose={() => setEditing(null)}
+          onSave={actions.patchLog}
+          onDelete={actions.deleteLog}
+        />
       )}
     </div>
   )
@@ -60,17 +73,23 @@ function Count({ label, value }: { label: string; value: number }) {
   )
 }
 
-function LogRow({ entry, now }: { entry: LogEntry; now: Date }) {
+function LogRow({ entry, now, onEdit }: { entry: LogEntry; now: Date; onEdit: () => void }) {
   const { icon, title } = describe(entry, now)
   return (
-    <li className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm">
-      <span className="flex items-center gap-2.5 text-sm text-foreground">
-        <span className="text-muted-foreground">{icon}</span>
-        {title}
-      </span>
-      <span className="shrink-0 text-xs text-muted-foreground">
-        {clockTime(entry.createdAt)} · {timeAgo(entry.createdAt, now)}
-      </span>
+    <li>
+      <button
+        onClick={onEdit}
+        className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left shadow-sm transition-colors hover:border-primary/40"
+      >
+        <span className="flex items-center gap-2.5 text-sm text-foreground">
+          <span className="text-muted-foreground">{icon}</span>
+          {title}
+        </span>
+        <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          {clockTime(entry.createdAt)} · {timeAgo(entry.createdAt, now)}
+          <Pencil className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
+        </span>
+      </button>
     </li>
   )
 }

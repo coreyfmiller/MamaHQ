@@ -210,15 +210,28 @@ export async function insertLog(babyId: string, entry: LogEntry): Promise<void> 
   if (error) throw error
 }
 
-export async function patchLog(id: string, patch: Partial<LogEntry>): Promise<void> {
+// Patch a log. Whitelisted, typed corrections only (time, end, side, amount, diaper, note).
+export async function patchLog(id: string, patch: Record<string, unknown>): Promise<void> {
   const supa = await supabaseServerAuthed()
   await authedUser(supa)
   const update: Record<string, unknown> = {}
-  if ('endedAt' in patch) update.ended_at = (patch as { endedAt: string | null }).endedAt
-  // Allow switching the active feeding side (Flow A).
-  if ('side' in patch) update.feed_side = (patch as { side: string | null }).side
+  // Time correction (Flow D / Step 7): the moment it happened / the sleep-or-feed start.
+  if ('createdAt' in patch) update.occurred_at = patch.createdAt
+  if ('endedAt' in patch) update.ended_at = patch.endedAt
+  if ('side' in patch) update.feed_side = patch.side
+  if ('amountMl' in patch) update.amount_ml = patch.amountMl
+  if ('diaper' in patch) update.diaper_kind = patch.diaper
+  if ('note' in patch) update.note = patch.note
   if (Object.keys(update).length === 0) return
   const { error } = await supa.from('logs').update(update).eq('id', id)
+  if (error) throw error
+}
+
+// Delete a log (undo a mislog / remove a wrong entry). RLS-enforced.
+export async function deleteLog(id: string): Promise<void> {
+  const supa = await supabaseServerAuthed()
+  await authedUser(supa)
+  const { error } = await supa.from('logs').delete().eq('id', id)
   if (error) throw error
 }
 

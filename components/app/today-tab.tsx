@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import type { AppState } from '@/lib/types'
+import { useEffect, useState } from 'react'
+import type { AppState, LogEntry, Side } from '@/lib/types'
 import {
   activeFeed,
   activeSleep,
@@ -15,7 +15,6 @@ import {
   newId,
   timeAgo,
 } from '@/lib/store'
-import type { Side } from '@/lib/types'
 import { Droplet, Milk, Moon, Baby as BabyIcon, RotateCcw, MoreHorizontal } from 'lucide-react'
 import { LogSheet } from '@/components/app/log-sheet'
 import type { Actions } from '@/components/app/mama-hq-app'
@@ -39,7 +38,21 @@ export function TodayTab({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sheet, setSheet] = useState<SheetKind>(null)
+  // Last just-logged entry, for a brief Undo (Step 7).
+  const [undoable, setUndoable] = useState<{ id: string; label: string } | null>(null)
   const now = new Date()
+
+  // Auto-dismiss the Undo toast after a few seconds.
+  useEffect(() => {
+    if (!undoable) return
+    const t = setTimeout(() => setUndoable(null), 6000)
+    return () => clearTimeout(t)
+  }, [undoable])
+
+  function logWithUndo(entry: LogEntry, label: string) {
+    actions.addLog(entry)
+    setUndoable({ id: entry.id, label })
+  }
 
   const lastFeed = lastOfKind(state.logs, 'feed')
   const lastDiaper = lastOfKind(state.logs, 'diaper')
@@ -82,14 +95,17 @@ export function TodayTab({
   // Flow B: one-tap repeat of the last bottle (no typing).
   function repeatBottle() {
     if (!repeatable) return
-    actions.addLog({
-      id: newId(),
-      kind: 'feed',
-      createdAt: new Date().toISOString(),
-      method: 'bottle',
-      contents: repeatable.contents,
-      amountMl: repeatable.amountMl,
-    })
+    logWithUndo(
+      {
+        id: newId(),
+        kind: 'feed',
+        createdAt: new Date().toISOString(),
+        method: 'bottle',
+        contents: repeatable.contents,
+        amountMl: repeatable.amountMl,
+      },
+      `Bottle logged${repeatable.amountMl ? ` · ${repeatable.amountMl} ml` : ''}`,
+    )
   }
 
   const openQuestions = state.plan.filter((p) => p.kind === 'question' && !p.answered)
@@ -290,10 +306,28 @@ export function TodayTab({
           onStartBreastFeed={startBreastFeed}
           onClose={() => setSheet(null)}
           onLog={(entry) => {
-            actions.addLog(entry)
+            logWithUndo(entry, logLabel(entry))
             setSheet(null)
           }}
         />
+      )}
+
+      {/* Undo toast — brief window to remove a just-logged entry (Step 7). */}
+      {undoable && (
+        <div className="fixed inset-x-0 bottom-24 z-30 mx-auto flex max-w-md items-center justify-between gap-3 px-5">
+          <div className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-xl">
+            <span className="text-sm text-foreground">{undoable.label}</span>
+            <button
+              onClick={() => {
+                actions.deleteLog(undoable.id)
+                setUndoable(null)
+              }}
+              className="shrink-0 text-sm font-semibold text-primary"
+            >
+              Undo
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -360,6 +394,21 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Circle() {
   return <span className="mt-1 size-4 shrink-0 rounded-full border-[1.5px] border-muted-foreground/50" />
+}
+
+function logLabel(e: LogEntry): string {
+  switch (e.kind) {
+    case 'feed':
+      return e.method === 'breast'
+        ? 'Feed logged'
+        : `Bottle logged${e.amountMl ? ` · ${e.amountMl} ml` : ''}`
+    case 'diaper':
+      return `Diaper logged · ${e.diaper}`
+    case 'pump':
+      return `Pump logged${e.amountMl ? ` · ${e.amountMl} ml` : ''}`
+    case 'sleep':
+      return 'Sleep logged'
+  }
 }
 
 function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
