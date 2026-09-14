@@ -366,6 +366,44 @@ export async function completeOnboarding(input: OnboardingInput): Promise<Baby> 
   return { id: data.id, name: data.name, birthDate: data.birth_date, onboarded: true }
 }
 
+// ---------- account: export + delete (beta readiness / SAFETY.md privacy) ----------
+
+// Export everything this family recorded, as a plain JSON object the user can keep.
+// RLS-enforced: only the signed-in user's own data is returned.
+export async function exportFamilyData(): Promise<Record<string, unknown>> {
+  const supa = await supabaseServerAuthed()
+  const baby = await currentBaby(supa)
+  const [logs, plan, caps, mems, checkins] = await Promise.all([
+    supa.from('logs').select('*').eq('baby_id', baby.id).order('occurred_at', { ascending: true }),
+    supa.from('plan_items').select('*').eq('baby_id', baby.id).order('created_at', { ascending: true }),
+    supa.from('inbox_captures').select('*').eq('baby_id', baby.id).order('created_at', { ascending: true }),
+    supa.from('memories').select('*').eq('baby_id', baby.id).order('occurred_on', { ascending: true }),
+    supa.from('mom_checkins').select('*').eq('baby_id', baby.id).order('on_date', { ascending: true }),
+  ])
+  return {
+    exportedAt: new Date().toISOString(),
+    app: 'Mama HQ',
+    baby: { id: baby.id, name: baby.name, birthDate: baby.birthDate },
+    logs: logs.data ?? [],
+    plan: plan.data ?? [],
+    inbox_captures: caps.data ?? [],
+    memories: mems.error ? [] : (mems.data ?? []),
+    mom_checkins: checkins.error ? [] : (checkins.data ?? []),
+  }
+}
+
+// Delete the signed-in user's family. ON DELETE CASCADE removes babies -> logs/plan/captures/
+// memories/checkins/family_members. Irreversible. The auth user itself remains (they can sign
+// in again and get a fresh empty family), which is the expected "delete my data" behavior.
+export async function deleteAccount(): Promise<void> {
+  const supa = await supabaseServerAuthed()
+  const userId = await authedUser(supa)
+  // Delete families the user OWNS (cascades everything beneath). Membership-only rows are left
+  // to their owner. Scoped to owner_id so a non-owner can't nuke a shared family.
+  const { error } = await supa.from('families').delete().eq('owner_id', userId)
+  if (error) throw error
+}
+
 // ---------- Mom check-in ----------
 
 // Tick (done=true) upserts a row for today; un-tick (done=false) deletes it. Idempotent.

@@ -31,6 +31,7 @@ export function TodayTab({
   onOpenPartner,
   onOpenDay90,
   onOpenMemories,
+  onOpenSettings,
 }: {
   state: AppState
   actions: Actions
@@ -39,6 +40,7 @@ export function TodayTab({
   onOpenPartner: () => void
   onOpenDay90: () => void
   onOpenMemories: () => void
+  onOpenSettings: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sheet, setSheet] = useState<SheetKind>(null)
@@ -181,6 +183,13 @@ export function TodayTab({
                   onClick={() => {
                     setMenuOpen(false)
                     onOpenDay90()
+                  }}
+                />
+                <MenuItem
+                  label="Settings"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onOpenSettings()
                   }}
                 />
                 <div className="border-t border-border" />

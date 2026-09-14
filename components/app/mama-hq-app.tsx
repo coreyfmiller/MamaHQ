@@ -10,6 +10,7 @@ import { MeTab } from '@/components/app/me-tab'
 import { MemoriesTab } from '@/components/app/memories-tab'
 import { PartnerPreview } from '@/components/app/partner-preview'
 import { Day90 } from '@/components/app/day90'
+import { SettingsSheet } from '@/components/app/settings-sheet'
 import { Onboarding } from '@/components/app/onboarding'
 import type { Baby } from '@/lib/types'
 import { SignIn } from '@/components/app/sign-in'
@@ -44,7 +45,7 @@ export function MamaHqApp() {
   const [tab, setTab] = useState<Tab>('today')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [auth, setAuth] = useState<AuthStatus>('checking')
-  const [overlay, setOverlay] = useState<'partner' | 'day90' | 'memories' | null>(null)
+  const [overlay, setOverlay] = useState<'partner' | 'day90' | 'memories' | 'settings' | null>(null)
   const [, force] = useState(0)
 
   // Watch the auth session. Signed-out shows the sign-in screen; signed-in loads state.
@@ -356,6 +357,7 @@ export function MamaHqApp() {
               onOpenPartner={() => setOverlay('partner')}
               onOpenDay90={() => setOverlay('day90')}
               onOpenMemories={() => setOverlay('memories')}
+              onOpenSettings={() => setOverlay('settings')}
             />
           )}
           {tab === 'baby' && <BabyTab state={state} actions={actions} />}
@@ -367,6 +369,9 @@ export function MamaHqApp() {
 
       {overlay === 'partner' && <PartnerPreview onClose={() => setOverlay(null)} />}
       {overlay === 'day90' && <Day90 state={state} onClose={() => setOverlay(null)} />}
+      {overlay === 'settings' && (
+        <SettingsSheet onClose={() => setOverlay(null)} onSignOut={signOut} />
+      )}
       {overlay === 'memories' && (
         <div className="fixed inset-0 z-40 overflow-y-auto bg-background">
           <div className="mx-auto max-w-md pb-8">
