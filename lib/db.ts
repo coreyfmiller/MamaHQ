@@ -273,6 +273,43 @@ export async function patchPlanItem(id: string, patch: Record<string, unknown>):
   if (error) throw error
 }
 
+// Manually add a plan item (task/appointment/question/shopping) — no AI involved (Step 9).
+export async function addPlanItem(babyId: string, item: PlanItem): Promise<void> {
+  const supa = await supabaseServerAuthed()
+  await authedUser(supa)
+  const { error } = await supa.from('plan_items').insert(planToRow(item, babyId))
+  if (error) throw error
+}
+
+// Edit a plan item's editable fields (title/text, whenText, who, location, assignee, dueText,
+// appointment link, note). Maps app field names to the hardened columns.
+export async function editPlanItem(id: string, patch: Record<string, unknown>): Promise<void> {
+  const supa = await supabaseServerAuthed()
+  await authedUser(supa)
+  const update: Record<string, unknown> = {}
+  if ('title' in patch) update.title = patch.title
+  if ('text' in patch) update.title = patch.text // question text is stored in title
+  if ('item' in patch) update.title = patch.item // shopping item is stored in title
+  if ('whenText' in patch) update.when_text = patch.whenText
+  if ('dueText' in patch) update.due_text = patch.dueText
+  if ('assignee' in patch) update.assignee = patch.assignee
+  if ('location' in patch) update.location = patch.location
+  if ('who' in patch) update.who = patch.who
+  if ('list' in patch) update.list = patch.list
+  if ('appointmentId' in patch) update.appointment_id = patch.appointmentId
+  if ('note' in patch) update.note = patch.note
+  if (Object.keys(update).length === 0) return
+  const { error } = await supa.from('plan_items').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deletePlanItem(id: string): Promise<void> {
+  const supa = await supabaseServerAuthed()
+  await authedUser(supa)
+  const { error } = await supa.from('plan_items').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ---------- onboarding ----------
 
 export type OnboardingInput = {

@@ -28,6 +28,10 @@ export type Actions = {
   // Toggle/patch a plan item (check off a task/shopping item, mark a question answered).
   // `patch` uses the DB column names the API expects (e.g. { done: true }, { answered: true }).
   updatePlanItem: (id: string, local: Partial<PlanItem>, patch: Record<string, unknown>) => void
+  // Manual plan management (Step 9): add / edit fields / delete.
+  addPlanItem: (item: PlanItem) => void
+  editPlanItem: (id: string, local: Partial<PlanItem>, patch: Record<string, unknown>) => void
+  deletePlanItem: (id: string) => void
   addMemory: (memory: Memory) => void
   deleteMemory: (id: string) => void
   toggleCheckin: (item: 'water' | 'eat' | 'rest', done: boolean) => void
@@ -197,6 +201,41 @@ export function MamaHqApp() {
     [],
   )
 
+  // Manually add a plan item (Step 9). Optimistic + PUT.
+  const addPlanItem = useCallback(
+    (item: PlanItem) => {
+      if (!babyId) return
+      setState((s) => (s ? { ...s, plan: [item, ...s.plan] } : s))
+      fetch('/api/plan', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ babyId, item }),
+      }).catch(() => {})
+    },
+    [babyId],
+  )
+
+  // Edit a plan item's fields (title/whenText/assignee/etc.). Optimistic + PATCH edit.
+  const editPlanItem = useCallback((id: string, local: Partial<PlanItem>, patch: Record<string, unknown>) => {
+    setState((s) =>
+      s ? { ...s, plan: s.plan.map((p) => (p.id === id ? ({ ...p, ...local } as PlanItem) : p)) } : s,
+    )
+    fetch('/api/plan', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, patch, edit: true }),
+    }).catch(() => {})
+  }, [])
+
+  const deletePlanItem = useCallback((id: string) => {
+    setState((s) => (s ? { ...s, plan: s.plan.filter((p) => p.id !== id) } : s))
+    fetch('/api/plan', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(() => {})
+  }, [])
+
   const addMemory = useCallback(
     (memory: Memory) => {
       if (!babyId) return
@@ -242,6 +281,9 @@ export function MamaHqApp() {
     deleteLog,
     commitCapture,
     updatePlanItem,
+    addPlanItem,
+    editPlanItem,
+    deletePlanItem,
     addMemory,
     deleteMemory,
     toggleCheckin,

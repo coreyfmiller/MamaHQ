@@ -5,8 +5,9 @@
 import { useMemo, useState } from 'react'
 import type { AppState, Appointment, PlanItem, Question, ShoppingItem, Task } from '@/lib/types'
 import type { Actions } from '@/components/app/mama-hq-app'
-import { CalendarClock, CheckSquare, HelpCircle, ShoppingCart, MapPin, User, Check, ClipboardList } from 'lucide-react'
+import { CalendarClock, CheckSquare, HelpCircle, ShoppingCart, MapPin, User, Check, ClipboardList, Plus, X } from 'lucide-react'
 import { VisitSheet } from '@/components/app/visit-sheet'
+import { PlanAddSheet } from '@/components/app/plan-add-sheet'
 
 // The Plan tab is where everything the Inbox captured actually lives: appointments,
 // tasks, questions for the doctor, and shopping/supply lists. Mom can see it all and
@@ -15,6 +16,7 @@ import { VisitSheet } from '@/components/app/visit-sheet'
 export function PlanTab({ state, actions }: { state: AppState; actions: Actions }) {
   const groups = useMemo(() => groupPlan(state.plan), [state.plan])
   const [visitFor, setVisitFor] = useState<Appointment | null>(null)
+  const [adding, setAdding] = useState(false)
   const isEmpty =
     groups.appointments.length === 0 &&
     groups.tasks.length === 0 &&
@@ -23,16 +25,28 @@ export function PlanTab({ state, actions }: { state: AppState; actions: Actions 
 
   return (
     <div className="px-5 pt-10">
-      <h1 className="font-serif text-2xl text-foreground">Plan</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Appointments, tasks, questions, and lists — everything you’ve set down.
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-serif text-2xl text-foreground">Plan</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Appointments, tasks, questions, and lists — everything you’ve set down.
+          </p>
+        </div>
+        <button
+          onClick={() => setAdding(true)}
+          className="mt-1 flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform active:scale-95"
+        >
+          <Plus className="h-4 w-4" />
+          Add
+        </button>
+      </div>
 
       {isEmpty ? (
         <div className="mt-10 rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center">
           <p className="font-serif text-lg text-foreground">Nothing here yet</p>
           <p className="mx-auto mt-2 max-w-xs text-sm text-muted-foreground">
-            Head to the Inbox and brain-dump what’s on your mind. Anything you keep shows up here.
+            Tap <span className="text-foreground">Add</span> to jot something down, or brain-dump in
+            the Inbox and keep what it finds.
           </p>
         </div>
       ) : (
@@ -96,6 +110,14 @@ export function PlanTab({ state, actions }: { state: AppState; actions: Actions 
           questions={groups.questionsByAppointment.get(visitFor.id) ?? []}
           state={state}
           onClose={() => setVisitFor(null)}
+        />
+      )}
+
+      {adding && (
+        <PlanAddSheet
+          appointments={groups.appointments}
+          onClose={() => setAdding(false)}
+          onAdd={actions.addPlanItem}
         />
       )}
     </div>
@@ -222,7 +244,20 @@ function TaskRow({ task, actions }: { task: Task; actions: Actions }) {
         </p>
         {meta && <p className="mt-0.5 text-xs text-muted-foreground">{meta}</p>}
       </div>
+      <DeleteX label="Delete task" onClick={() => actions.deletePlanItem(task.id)} />
     </li>
+  )
+}
+
+function DeleteX({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      className="shrink-0 rounded-full p-1 text-muted-foreground/50 transition-colors hover:text-destructive"
+    >
+      <X className="h-4 w-4" />
+    </button>
   )
 }
 
@@ -247,6 +282,7 @@ function QuestionRow({
       <p className={`flex-1 text-sm ${question.answered ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
         {question.text}
       </p>
+      {!dense && <DeleteX label="Delete question" onClick={() => actions.deletePlanItem(question.id)} />}
     </li>
   )
 }
@@ -262,6 +298,7 @@ function ShoppingRow({ item, actions }: { item: ShoppingItem; actions: Actions }
       <p className={`flex-1 text-sm ${item.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
         {item.item}
       </p>
+      <DeleteX label="Delete item" onClick={() => actions.deletePlanItem(item.id)} />
     </li>
   )
 }
