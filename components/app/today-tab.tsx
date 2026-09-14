@@ -17,6 +17,7 @@ import {
 } from '@/lib/store'
 import { Droplet, Milk, Moon, Baby as BabyIcon, RotateCcw, MoreHorizontal } from 'lucide-react'
 import { LogSheet } from '@/components/app/log-sheet'
+import { CheckToggle } from '@/components/app/ui'
 import type { Actions } from '@/components/app/mama-hq-app'
 
 type SheetKind = 'feed' | 'diaper' | 'pump' | null
@@ -112,11 +113,20 @@ export function TodayTab({
 
   const day = dayNumber(state.baby.birthDate, now)
   const nearNinety = day >= 80
-  const openQuestions = state.plan.filter((p) => p.kind === 'question' && !p.answered)
-  const todaysAppointments = state.plan.filter(
+
+  // Today shows BABY-scoped plan items (Mom's own live in the Me tab). Calm and prioritized:
+  // each section only renders when it has something worth surfacing.
+  const babyPlan = state.plan.filter((p) => p.scope !== 'mom')
+  const openQuestions = babyPlan.filter((p) => p.kind === 'question' && !p.answered)
+  const todaysAppointments = babyPlan.filter(
     (p) => p.kind === 'appointment' && (p.whenText || isSameDay(p.createdAt, now)),
   )
-  const openTasks = state.plan.filter((p) => p.kind === 'task' && !p.done)
+  const openTasks = babyPlan.filter((p) => p.kind === 'task' && !p.done)
+  // Tasks handed to someone else — the partner-handoff glance.
+  const handedOff = openTasks.filter((t) => t.kind === 'task' && t.assignee)
+  const myTasks = openTasks.filter((t) => t.kind === 'task' && !t.assignee)
+  // An Inbox capture left in 'proposed' (not yet committed) — nudge to finish it.
+  const unresolvedCaptures = state.captures.filter((c) => c.status === 'proposed').length
 
   return (
     <div className="px-5 pt-10">
@@ -288,18 +298,32 @@ export function TodayTab({
         </Section>
       )}
 
-      {/* DON'T FORGET */}
-      {(openTasks.length > 0 || openQuestions.length > 0) && (
+      {/* Unfinished Inbox capture — gently nudge Mom to finish reviewing it. */}
+      {unresolvedCaptures > 0 && (
+        <button
+          onClick={onGoInbox}
+          className="mt-5 flex w-full items-center justify-between rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 text-left transition-transform active:scale-95"
+        >
+          <span className="text-sm text-foreground">
+            You have {unresolvedCaptures} capture{unresolvedCaptures === 1 ? '' : 's'} to review
+          </span>
+          <span className="text-primary">→</span>
+        </button>
+      )}
+
+      {/* DON'T FORGET — tap a task to check it off right here. */}
+      {(myTasks.length > 0 || openQuestions.length > 0) && (
         <Section title="Don't forget">
-          <ul className="space-y-2 text-sm text-foreground">
-            {openTasks.map((t) =>
+          <ul className="space-y-1.5">
+            {myTasks.map((t) =>
               t.kind === 'task' ? (
-                <li key={t.id} className="flex items-start gap-2">
-                  <Circle />
-                  <span>
-                    {t.title}
-                    {t.assignee ? <span className="text-muted-foreground"> · {t.assignee}</span> : null}
-                  </span>
+                <li key={t.id} className="flex items-start gap-2.5">
+                  <CheckToggle
+                    checked={false}
+                    onToggle={() => actions.updatePlanItem(t.id, { done: true }, { done: true })}
+                    label={`Mark done: ${t.title}`}
+                  />
+                  <span className="text-sm text-foreground">{t.title}</span>
                 </li>
               ) : null,
             )}
@@ -312,6 +336,25 @@ export function TodayTab({
               {openQuestions.length} question{openQuestions.length === 1 ? '' : 's'} saved to ask
             </button>
           )}
+        </Section>
+      )}
+
+      {/* PARTNER HANDOFF — what someone else is taking off Mom's plate. */}
+      {handedOff.length > 0 && (
+        <Section title="Handed off">
+          <ul className="space-y-1.5 text-sm text-foreground">
+            {handedOff.map((t) =>
+              t.kind === 'task' ? (
+                <li key={t.id} className="flex items-center gap-2">
+                  <Circle />
+                  <span>
+                    {t.title}
+                    <span className="text-muted-foreground"> · {t.assignee}</span>
+                  </span>
+                </li>
+              ) : null,
+            )}
+          </ul>
         </Section>
       )}
 
