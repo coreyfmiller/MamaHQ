@@ -109,6 +109,7 @@ export function PlanTab({ state, actions }: { state: AppState; actions: Actions 
           appointment={visitFor}
           questions={groups.questionsByAppointment.get(visitFor.id) ?? []}
           state={state}
+          actions={actions}
           onClose={() => setVisitFor(null)}
         />
       )}
