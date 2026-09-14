@@ -9,7 +9,7 @@ import { InboxTab } from '@/components/app/inbox-tab'
 import { PlanTab } from '@/components/app/plan-tab'
 import { MemoriesTab } from '@/components/app/memories-tab'
 import { PartnerPreview } from '@/components/app/partner-preview'
-import { Day90Preview } from '@/components/app/day90-preview'
+import { Day90 } from '@/components/app/day90'
 import { Onboarding } from '@/components/app/onboarding'
 import type { Baby } from '@/lib/types'
 import { SignIn } from '@/components/app/sign-in'
@@ -357,7 +357,7 @@ export function MamaHqApp() {
       </div>
 
       {overlay === 'partner' && <PartnerPreview onClose={() => setOverlay(null)} />}
-      {overlay === 'day90' && <Day90Preview state={state} onClose={() => setOverlay(null)} />}
+      {overlay === 'day90' && <Day90 state={state} onClose={() => setOverlay(null)} />}
     </div>
   )
 }

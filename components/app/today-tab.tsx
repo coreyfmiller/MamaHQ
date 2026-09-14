@@ -109,6 +109,8 @@ export function TodayTab({
     )
   }
 
+  const day = dayNumber(state.baby.birthDate, now)
+  const nearNinety = day >= 80
   const openQuestions = state.plan.filter((p) => p.kind === 'question' && !p.answered)
   const todaysAppointments = state.plan.filter(
     (p) => p.kind === 'appointment' && (p.whenText || isSameDay(p.createdAt, now)),
@@ -123,7 +125,7 @@ export function TodayTab({
             {greeting(now)}, {state.baby.name}.
           </h1>
           <p className="mt-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Day {dayNumber(state.baby.birthDate, now)}
+            Day {day}
           </p>
         </div>
         <div className="relative">
@@ -204,6 +206,24 @@ export function TodayTab({
           />
         </div>
       </section>
+
+      {/* Near Day 90: gently offer the keepsake. Not intrusive; disappears otherwise. */}
+      {nearNinety && (
+        <button
+          onClick={onOpenDay90}
+          className="mt-5 flex w-full items-center justify-between rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 text-left transition-transform active:scale-95"
+        >
+          <span>
+            <span className="block font-serif text-base text-foreground">
+              {day >= 90 ? 'Your First 90 Days' : `Day ${day} — your keepsake is filling up`}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              The moments you’ve saved, gathered together.
+            </span>
+          </span>
+          <span className="text-primary">→</span>
+        </button>
+      )}
 
       {/* QUICK ACTIONS */}
       <section className="mt-5">
