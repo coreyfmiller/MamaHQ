@@ -242,8 +242,9 @@ function actionToLogEntry(a: Extract<ProposedAction, { type: 'feed' | 'diaper' }
 }
 
 // Non-baby-event proposals become plan items. (Feed/diaper are handled by actionToLogEntry.)
+// Inbox-extracted items default to baby scope; Mom can reassign later.
 function actionToPlanItem(a: Exclude<ProposedAction, { type: 'feed' | 'diaper' }>): PlanItem {
-  const base = { id: newId(), createdAt: new Date().toISOString() }
+  const base = { id: newId(), createdAt: new Date().toISOString(), scope: 'baby' as const }
   switch (a.type) {
     case 'appointment':
       return {

@@ -66,11 +66,16 @@ export type PumpEntry = {
 export type LogEntry = FeedEntry | SleepEntry | DiaperEntry | PumpEntry
 
 // ---------- Plan (tasks, appointments, questions, lists) ----------
+// scope tags whether an item is ABOUT the baby or ABOUT Mom. Today surfaces baby-scoped items;
+// Me surfaces mom-scoped ones. Same table, different views. Defaults to 'baby'.
+
+export type PlanScope = 'baby' | 'mom'
 
 export type Task = {
   id: string
   kind: 'task'
   createdAt: string
+  scope: PlanScope
   title: string
   dueText?: string | null // human phrase ("tomorrow")
   assignee?: string | null // e.g. "Matt", or null = Mom/unassigned
@@ -82,6 +87,7 @@ export type Appointment = {
   id: string
   kind: 'appointment'
   createdAt: string
+  scope: PlanScope
   title: string
   whenText?: string | null // "Thursday at 10"
   location?: string | null
@@ -94,6 +100,7 @@ export type Question = {
   id: string
   kind: 'question'
   createdAt: string
+  scope: PlanScope
   text: string
   appointmentId?: string | null
   answered: boolean
@@ -104,6 +111,7 @@ export type ShoppingItem = {
   id: string
   kind: 'shopping'
   createdAt: string
+  scope: PlanScope
   item: string
   list: ShoppingListName
   done: boolean

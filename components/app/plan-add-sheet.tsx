@@ -13,10 +13,12 @@ type Kind = 'task' | 'appointment' | 'question' | 'shopping'
 
 export function PlanAddSheet({
   appointments,
+  scope = 'baby',
   onClose,
   onAdd,
 }: {
   appointments: Appointment[]
+  scope?: 'baby' | 'mom'
   onClose: () => void
   onAdd: (item: PlanItem) => void
 }) {
@@ -33,7 +35,7 @@ export function PlanAddSheet({
   function add() {
     const t = title.trim()
     if (!t) return
-    const base = { id: newId(), createdAt: new Date().toISOString() }
+    const base = { id: newId(), createdAt: new Date().toISOString(), scope }
     let item: PlanItem
     switch (kind) {
       case 'task':

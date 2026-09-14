@@ -6,7 +6,7 @@ import { BottomNav, type Tab } from '@/components/app/bottom-nav'
 import { TodayTab } from '@/components/app/today-tab'
 import { BabyTab } from '@/components/app/baby-tab'
 import { InboxTab } from '@/components/app/inbox-tab'
-import { PlanTab } from '@/components/app/plan-tab'
+import { MeTab } from '@/components/app/me-tab'
 import { MemoriesTab } from '@/components/app/memories-tab'
 import { PartnerPreview } from '@/components/app/partner-preview'
 import { Day90 } from '@/components/app/day90'
@@ -44,7 +44,7 @@ export function MamaHqApp() {
   const [tab, setTab] = useState<Tab>('today')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [auth, setAuth] = useState<AuthStatus>('checking')
-  const [overlay, setOverlay] = useState<'partner' | 'day90' | null>(null)
+  const [overlay, setOverlay] = useState<'partner' | 'day90' | 'memories' | null>(null)
   const [, force] = useState(0)
 
   // Watch the auth session. Signed-out shows the sign-in screen; signed-in loads state.
@@ -355,18 +355,31 @@ export function MamaHqApp() {
               onSignOut={signOut}
               onOpenPartner={() => setOverlay('partner')}
               onOpenDay90={() => setOverlay('day90')}
+              onOpenMemories={() => setOverlay('memories')}
             />
           )}
           {tab === 'baby' && <BabyTab state={state} actions={actions} />}
           {tab === 'inbox' && <InboxTab actions={actions} />}
-          {tab === 'plan' && <PlanTab state={state} actions={actions} />}
-          {tab === 'memories' && <MemoriesTab state={state} actions={actions} />}
+          {tab === 'me' && <MeTab state={state} actions={actions} />}
         </main>
         <BottomNav tab={tab} onChange={setTab} />
       </div>
 
       {overlay === 'partner' && <PartnerPreview onClose={() => setOverlay(null)} />}
       {overlay === 'day90' && <Day90 state={state} onClose={() => setOverlay(null)} />}
+      {overlay === 'memories' && (
+        <div className="fixed inset-0 z-40 overflow-y-auto bg-background">
+          <div className="mx-auto max-w-md pb-8">
+            <button
+              onClick={() => setOverlay(null)}
+              className="sticky top-0 z-10 w-full bg-background/90 px-5 py-3 text-left text-sm font-medium text-primary backdrop-blur"
+            >
+              ← Back
+            </button>
+            <MemoriesTab state={state} actions={actions} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

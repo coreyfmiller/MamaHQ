@@ -72,7 +72,8 @@ function logToRow(e: LogEntry, babyId: string): Record<string, unknown> {
 }
 
 function rowToPlan(r: Record<string, unknown>): PlanItem {
-  const base = { id: r.id as string, createdAt: r.created_at as string }
+  const scope = (r.scope as 'baby' | 'mom') ?? 'baby'
+  const base = { id: r.id as string, createdAt: r.created_at as string, scope }
   switch (r.kind) {
     case 'task':
       return { ...base, kind: 'task', title: r.title as string, dueText: (r.due_text as string) ?? null, assignee: (r.assignee as string) ?? null, done: !!r.done, note: (r.note as string) ?? null }
@@ -88,7 +89,13 @@ function rowToPlan(r: Record<string, unknown>): PlanItem {
 }
 
 function planToRow(p: PlanItem, babyId: string): Record<string, unknown> {
-  const row: Record<string, unknown> = { id: p.id, baby_id: babyId, kind: p.kind, created_at: p.createdAt }
+  const row: Record<string, unknown> = {
+    id: p.id,
+    baby_id: babyId,
+    kind: p.kind,
+    created_at: p.createdAt,
+    scope: p.scope ?? 'baby',
+  }
   switch (p.kind) {
     case 'task':
       row.title = p.title; row.due_text = p.dueText ?? null; row.assignee = p.assignee ?? null; row.done = p.done; row.note = p.note ?? null

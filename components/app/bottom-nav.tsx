@@ -1,15 +1,17 @@
 'use client'
 
-import { CalendarCheck, Home, Inbox, ImageIcon, Baby } from 'lucide-react'
+import { Home, Inbox, Baby, Heart } from 'lucide-react'
 
-export type Tab = 'today' | 'baby' | 'inbox' | 'plan' | 'memories'
+// Simplified V1 nav: Today (command center) · Baby (factual log) · Inbox (the hero capture) ·
+// Me (Mom's own things). Plan is now infrastructure surfaced through Today/Me; Memories is
+// reached contextually. See docs / ROADMAP R2.
+export type Tab = 'today' | 'baby' | 'inbox' | 'me'
 
 const TABS: { id: Tab; label: string; Icon: typeof Home }[] = [
   { id: 'today', label: 'Today', Icon: Home },
   { id: 'baby', label: 'Baby', Icon: Baby },
   { id: 'inbox', label: 'Inbox', Icon: Inbox },
-  { id: 'plan', label: 'Plan', Icon: CalendarCheck },
-  { id: 'memories', label: 'Memories', Icon: ImageIcon },
+  { id: 'me', label: 'Me', Icon: Heart },
 ]
 
 export function BottomNav({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) {

@@ -17,7 +17,6 @@ import {
 } from '@/lib/store'
 import { Droplet, Milk, Moon, Baby as BabyIcon, RotateCcw, MoreHorizontal } from 'lucide-react'
 import { LogSheet } from '@/components/app/log-sheet'
-import { CheckToggle } from '@/components/app/ui'
 import type { Actions } from '@/components/app/mama-hq-app'
 
 type SheetKind = 'feed' | 'diaper' | 'pump' | null
@@ -29,6 +28,7 @@ export function TodayTab({
   onSignOut,
   onOpenPartner,
   onOpenDay90,
+  onOpenMemories,
 }: {
   state: AppState
   actions: Actions
@@ -36,6 +36,7 @@ export function TodayTab({
   onSignOut: () => void
   onOpenPartner: () => void
   onOpenDay90: () => void
+  onOpenMemories: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [sheet, setSheet] = useState<SheetKind>(null)
@@ -146,6 +147,13 @@ export function TodayTab({
                 className="fixed inset-0 z-10 cursor-default"
               />
               <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+                <MenuItem
+                  label="Memories"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onOpenMemories()
+                  }}
+                />
                 <MenuItem
                   label="Partner"
                   onClick={() => {
@@ -307,28 +315,12 @@ export function TodayTab({
         </Section>
       )}
 
-      {/* FOR YOU — gentle, supportive, never evaluative. Ticking persists for today. */}
+      {/* Mom's gentle check-in now lives in the Me tab. A soft nudge to it stays here. */}
       <section className="mb-4 mt-6 rounded-2xl bg-accent/50 p-4">
-        <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-accent-foreground">
-          For you
-        </h2>
-        <ul className="mt-2 space-y-1">
-          <CheckinItem
-            label="Drink some water"
-            done={state.momCheckin.water}
-            onToggle={() => actions.toggleCheckin('water', !state.momCheckin.water)}
-          />
-          <CheckinItem
-            label="Eat something"
-            done={state.momCheckin.eat}
-            onToggle={() => actions.toggleCheckin('eat', !state.momCheckin.eat)}
-          />
-          <CheckinItem
-            label="Take ten minutes for yourself"
-            done={state.momCheckin.rest}
-            onToggle={() => actions.toggleCheckin('rest', !state.momCheckin.rest)}
-          />
-        </ul>
+        <p className="text-sm text-foreground">
+          There’s a mom in there too.{' '}
+          <span className="text-muted-foreground">Your own check-in and things live in the Me tab.</span>
+        </p>
       </section>
 
       {sheet && (
@@ -429,19 +421,7 @@ function Circle() {
   return <span className="mt-1 size-4 shrink-0 rounded-full border-[1.5px] border-muted-foreground/50" />
 }
 
-function CheckinItem({ label, done, onToggle }: { label: string; done: boolean; onToggle: () => void }) {
-  return (
-    <li className="flex items-center gap-3 py-1">
-      <CheckToggle checked={done} onToggle={onToggle} label={done ? `Undo: ${label}` : label} />
-      <button
-        onClick={onToggle}
-        className={`text-left text-sm ${done ? 'text-muted-foreground line-through' : 'text-foreground'}`}
-      >
-        {label}
-      </button>
-    </li>
-  )
-}
+
 
 function logLabel(e: LogEntry): string {
   switch (e.kind) {
