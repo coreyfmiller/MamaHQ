@@ -133,3 +133,28 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* --- UI prototype support utilities (used by /proto screens) --- */
+
+/* Hide scrollbars inside phone frames while keeping scroll */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes mama-wave {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.mama-wave-bar {
+  animation: mama-wave 1.1s ease-in-out infinite;
+  transform-origin: center;
+}

@@ -1,8 +1,8 @@
-import { MamaHqApp } from '@/components/app/mama-hq-app'
+import { Prototype } from '@/components/mama/prototype'
 
-// The gated product. Public visitors land on the marketing page at `/`;
-// this route is the actual Mama HQ app, shown once signed in (and shows the
-// sign-in screen when signed out).
+// The app. Public visitors land on the marketing page at `/`; this route is
+// Mama HQ itself — onboarding on first run, then the Today/Baby/Inbox/Me tabs.
+// State is persisted locally (localStorage); there is no backend.
 export default function AppPage() {
-  return <MamaHqApp />
+  return <Prototype />
 }

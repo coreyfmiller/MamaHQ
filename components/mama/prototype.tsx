@@ -1,0 +1,142 @@
+'use client'
+
+import { useEffect } from 'react'
+import { PrototypeProvider, useNav } from './context'
+import { ProfileProvider, useProfile } from './profile'
+import { LogsProvider } from './logs'
+import { MomProvider } from './mom'
+import { MemoriesProvider } from './memories'
+import { AppointmentsProvider } from './appointments'
+import { InboxProvider } from './inbox/store'
+import { BottomSheet, FullOverlay, Toast } from './sheet'
+import { OnboardingScreen } from './screens/onboarding'
+import { SettingsScreen } from './screens/settings'
+import { ResetScreen } from './screens/reset'
+import { ApptComposeScreen } from './screens/appt-compose'
+import { CaptureContent } from './screens/capture'
+import { TodayScreen } from './screens/today'
+import { BabyScreen } from './screens/baby'
+import { InboxScreen } from './screens/inbox'
+import { MeScreen } from './screens/me'
+import { QuickLogContent } from './screens/quick-log'
+import { AppointmentScreen } from './screens/appointment'
+import { VoiceScreen } from './screens/voice'
+import { PhotoScreen } from './screens/photo'
+import { UpcomingScreen } from './screens/upcoming'
+import { MemoriesScreen } from './screens/memories'
+import { PartnerScreen } from './screens/partner'
+import { Beyond90Screen } from './screens/beyond90'
+import { ReminderScreen } from './screens/reminder'
+
+function ActiveTab() {
+  const { tab } = useNav()
+  switch (tab) {
+    case 'baby':
+      return <BabyScreen />
+    case 'inbox':
+      return <InboxScreen />
+    case 'me':
+      return <MeScreen />
+    default:
+      return <TodayScreen />
+  }
+}
+
+function Stage() {
+  const { phase, setPhase, overlay, closeOverlay, toast } = useNav()
+  const { profile, hydrated } = useProfile()
+
+  // Once storage is read: if a profile already exists, skip straight into the app.
+  // Onboarding itself flips phase to 'app' when it finishes, so we only need to
+  // handle the returning-user case here.
+  useEffect(() => {
+    if (hydrated && profile && phase === 'onboarding') {
+      setPhase('app')
+    }
+  }, [hydrated, profile, phase, setPhase])
+
+  // Avoid flashing onboarding before we know whether a profile exists.
+  if (!hydrated) {
+    return (
+      <div className="grid h-full place-items-center bg-background text-muted-foreground">
+        <span className="text-sm">Loading…</span>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {phase === 'onboarding' ? <OnboardingScreen /> : <ActiveTab />}
+
+      <BottomSheet open={overlay === 'capture'} onClose={closeOverlay}>
+        <CaptureContent />
+      </BottomSheet>
+
+      <BottomSheet open={overlay === 'quicklog'} onClose={closeOverlay}>
+        <QuickLogContent />
+      </BottomSheet>
+
+      <FullOverlay open={overlay === 'appointment'}>
+        <AppointmentScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'apptCompose'}>
+        <ApptComposeScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'voice'} dark>
+        <VoiceScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'photo'} dark>
+        <PhotoScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'upcoming'}>
+        <UpcomingScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'memories'}>
+        <MemoriesScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'partner'}>
+        <PartnerScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'beyond90'}>
+        <Beyond90Screen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'settings'}>
+        <SettingsScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'reset'}>
+        <ResetScreen />
+      </FullOverlay>
+      {overlay === 'reminder' && (
+        <div className="absolute inset-0 z-40">
+          <ReminderScreen />
+        </div>
+      )}
+
+      <Toast message={toast} />
+    </>
+  )
+}
+
+export function Prototype() {
+  return (
+    <main className="flex min-h-[100dvh] w-full items-center justify-center bg-[oklch(0.93_0.018_82)] sm:p-6">
+      <div className="relative flex h-[100dvh] w-full max-w-[404px] flex-col overflow-hidden bg-background sm:h-[868px] sm:rounded-[3rem] sm:border-[13px] sm:border-foreground sm:shadow-[0_40px_80px_-30px_rgba(38,50,56,0.5)]">
+        <ProfileProvider>
+          <LogsProvider>
+            <MomProvider>
+              <MemoriesProvider>
+                <AppointmentsProvider>
+                  <InboxProvider>
+                    <PrototypeProvider initialPhase="onboarding" initialTab="today">
+                      <Stage />
+                    </PrototypeProvider>
+                  </InboxProvider>
+                </AppointmentsProvider>
+              </MemoriesProvider>
+            </MomProvider>
+          </LogsProvider>
+        </ProfileProvider>
+      </div>
+    </main>
+  )
+}
