@@ -4,5 +4,8 @@ minimumReleaseAgeExclude:
   - '@next/*'
   - next
 
+# tesseract.js has a postinstall build script we don't need — the browser loads
+# its worker/core from CDN at runtime. Explicitly disallow the build so pnpm skips
+# it cleanly instead of failing CI with ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
-  tesseract.js: set this to true or false
+  tesseract.js: false
