@@ -18,9 +18,9 @@ export function VoiceScreen() {
 
   const supported = transcriber.isSupported()
   const [phase, setPhase] = useState<Phase>(supported ? 'listening' : 'unsupported')
-  // Finalized text accumulates; interim is the in-progress guess shown live.
-  const [finalText, setFinalText] = useState('')
-  const [interim, setInterim] = useState('')
+  // The transcriber owns accumulation and always hands us the full transcript,
+  // so we just store what it gives us — no appending, no duplication.
+  const [transcript, setTranscript] = useState('')
   const [error, setError] = useState<TranscribeError | null>(null)
   const handleRef = useRef<TranscribeHandle | null>(null)
 
@@ -29,22 +29,18 @@ export function VoiceScreen() {
     if (phase !== 'listening') return
     setError(null)
     const handle = transcriber.start({
-      onInterim: setInterim,
-      onFinal: (t) => {
-        setFinalText((prev) => (prev ? `${prev} ${t}` : t))
-        setInterim('')
-      },
+      onTranscript: (fullText) => setTranscript(fullText),
       onError: (kind) => {
         setError(kind)
         // A blocked mic or fatal error can't recover by waiting — drop straight to
         // the text fallback so the user is never stuck on a silent listening screen.
+        // ('no-speech' is transient and handled by the transcriber, so ignore it here.)
         if (kind === 'not-allowed' || kind === 'unavailable' || kind === 'unknown') {
           setPhase('review')
         }
       },
       onEnd: () => {
-        // Recognition ended (manual stop or auto-stop). Move to review if we heard
-        // anything; otherwise stay put so the user can try again.
+        // Recognition truly stopped (after any auto-restart). Move to review.
         setPhase((p) => (p === 'listening' ? 'review' : p))
       },
     })
@@ -56,8 +52,6 @@ export function VoiceScreen() {
     handleRef.current?.stop()
     setPhase('review')
   }
-
-  const transcript = [finalText, interim].filter(Boolean).join(' ').trim()
 
   const send = async (text: string) => {
     const t = text.trim()
@@ -92,7 +86,7 @@ export function VoiceScreen() {
               connection). You can type it here instead.
             </p>
           )}
-          <TranscriptEditor initial={transcript} onSend={send} onRetry={supported ? () => { setFinalText(''); setInterim(''); setPhase('listening') } : undefined} />
+          <TranscriptEditor initial={transcript} onSend={send} onRetry={supported ? () => { setTranscript(''); setPhase('listening') } : undefined} />
         </div>
       </Screen>
     )
@@ -111,7 +105,7 @@ export function VoiceScreen() {
         <div className="flex flex-1 flex-col items-center justify-center px-10 text-center">
           {transcript ? (
             <p className="max-h-40 overflow-y-auto text-balance font-serif text-[20px] leading-snug text-white">
-              {finalText} <span className="text-white/60">{interim}</span>
+              {transcript}
             </p>
           ) : (
             <h1 className="text-balance font-serif text-[26px] leading-snug font-medium text-white">

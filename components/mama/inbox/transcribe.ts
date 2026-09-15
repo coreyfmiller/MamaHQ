@@ -14,13 +14,15 @@ export interface Transcriber {
   /** Whether this provider can run in the current environment. */
   isSupported: () => boolean
   /**
-   * Begin transcribing. `onInterim` streams the in-progress guess; `onFinal`
-   * fires with confirmed text chunks; `onError` reports permission/no-speech/etc.
-   * `onEnd` fires when recognition stops (for any reason). Returns a handle to stop.
+   * Begin transcribing. The provider owns accumulation and always emits the FULL
+   * transcript so far — `onTranscript(fullText, isFinal)` — so callers never
+   * append (which is what caused duplication on mobile, where the API re-emits
+   * finalized results). `onError` reports permission/no-speech/etc. `onEnd` fires
+   * only when recognition has truly stopped (after any auto-restart). Returns a
+   * handle to stop.
    */
   start: (cbs: {
-    onInterim?: (text: string) => void
-    onFinal?: (text: string) => void
+    onTranscript?: (fullText: string, isFinal: boolean) => void
     onError?: (kind: TranscribeError) => void
     onEnd?: () => void
   }) => TranscribeHandle
@@ -72,7 +74,7 @@ function getCtor(): SpeechRecognitionCtor | null {
 export const webSpeechTranscriber: Transcriber = {
   isSupported: () => getCtor() !== null,
 
-  start({ onInterim, onFinal, onError, onEnd }) {
+  start({ onTranscript, onError, onEnd }) {
     const Ctor = getCtor()
     if (!Ctor) {
       onError?.('unavailable')
@@ -80,43 +82,87 @@ export const webSpeechTranscriber: Transcriber = {
       return { stop: () => {} }
     }
 
-    const rec = new Ctor()
-    rec.lang = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US'
-    rec.continuous = true
-    rec.interimResults = true
+    // The user's intent to keep listening. Only a real stop() (or a fatal error)
+    // clears it; a natural pause that ends recognition triggers an auto-restart.
+    let listening = true
+    // Committed, finalized text across restarts. We accumulate here and always
+    // emit the WHOLE transcript, so the caller never appends and can't duplicate.
+    let committed = ''
+    // Text carried over from sessions before the current one (across restarts).
+    let committedBeforeSession = ''
+    let rec: SpeechRecognitionLike | null = null
 
-    let stopped = false
+    const emit = (isFinal: boolean, interim = '') => {
+      const full = [committed, interim].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+      onTranscript?.(full, isFinal)
+    }
 
-    rec.onresult = (e) => {
-      let interim = ''
-      for (let i = e.resultIndex; i < e.results.length; i += 1) {
-        const result = e.results[i]
-        const text = result[0]?.transcript ?? ''
-        if (result.isFinal) onFinal?.(text.trim())
-        else interim += text
+    const build = () => {
+      const r = new Ctor()
+      r.lang = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US'
+      r.continuous = true
+      r.interimResults = true
+
+      r.onresult = (e) => {
+        // Rebuild from the full results list each event (don't trust resultIndex
+        // across mobile re-emits). Finalized results extend `committed`; interim
+        // results are shown live but not yet committed.
+        let finalizedThisSession = ''
+        let interim = ''
+        for (let i = 0; i < e.results.length; i += 1) {
+          const result = e.results[i]
+          const text = result[0]?.transcript ?? ''
+          if (result.isFinal) finalizedThisSession += ` ${text}`
+          else interim += ` ${text}`
+        }
+        // `committed` holds text from PRIOR sessions (before a restart). Within
+        // this session, finalizedThisSession is the authoritative finalized text.
+        const sessionFinal = finalizedThisSession.trim()
+        const base = [committedBeforeSession, sessionFinal].filter(Boolean).join(' ')
+        committed = base.replace(/\s+/g, ' ').trim()
+        emit(false, interim.trim())
       }
-      if (interim) onInterim?.(interim.trim())
-    }
 
-    rec.onerror = (e) => {
-      const kind: TranscribeError =
-        e.error === 'not-allowed' || e.error === 'service-not-allowed'
-          ? 'not-allowed'
-          : e.error === 'no-speech'
-            ? 'no-speech'
-            : 'unknown'
-      onError?.(kind)
-    }
-
-    rec.onend = () => {
-      if (!stopped) {
-        // Some browsers auto-stop after a pause; surface it as an end so the UI
-        // can reflect "stopped" rather than hang in a listening state.
-        stopped = true
+      r.onerror = (e) => {
+        const kind: TranscribeError =
+          e.error === 'not-allowed' || e.error === 'service-not-allowed'
+            ? 'not-allowed'
+            : e.error === 'no-speech'
+              ? 'no-speech'
+              : 'unknown'
+        // 'no-speech' is transient (a quiet pause) — keep the session alive.
+        if (kind === 'no-speech') {
+          onError?.(kind)
+          return
+        }
+        listening = false
+        onError?.(kind)
       }
-      onEnd?.()
+
+      r.onend = () => {
+        if (listening) {
+          // Recognition auto-ended (mobile ignores `continuous` after a pause).
+          // Fold this session's finalized text into the running total and restart
+          // so the user can keep talking without it "quickly stopping".
+          committedBeforeSession = committed
+          try {
+            r.start()
+          } catch {
+            // If immediate restart fails, end for real.
+            listening = false
+            emit(true)
+            onEnd?.()
+          }
+        } else {
+          emit(true)
+          onEnd?.()
+        }
+      }
+
+      return r
     }
 
+    rec = build()
     try {
       rec.start()
     } catch {
@@ -126,9 +172,9 @@ export const webSpeechTranscriber: Transcriber = {
 
     return {
       stop: () => {
-        stopped = true
+        listening = false
         try {
-          rec.stop()
+          rec?.stop()
         } catch {
           // ignore
         }
