@@ -4,11 +4,27 @@ Live at https://mamahq.vercel.app/app (auto-deploys on push to `main`). Backend
 foundation (Supabase auth) is in; app DATA is still localStorage until the cloud
 migration lands. This file tracks deferred work + reasoning.
 
+## 🔑 NEEDS YOU — external accounts to unblock features
+These are the ONLY things blocked on the user; everything else is buildable.
+
+### Twilio + Resend (to turn on Dad/partner message delivery — Tier 1)
+Partner store, screen, and Notifier seam are DONE. Only real send remains. To unblock:
+- **Resend (email, free, ~5 min):** resend.com → sign up → API Keys → Create (copy `re_…`,
+  shown once). Sender: quick = `onboarding@resend.dev` (only emails your own signup address);
+  real = add + DNS-verify a domain under Domains.
+- **Twilio (SMS, ~$15 free trial):** twilio.com/try-twilio → sign up → verify your phone →
+  Console shows **Account SID** (`AC…`) + **Auth Token**; Phone Numbers → Buy a number (SMS-
+  capable, `+1…`). Trial can only text numbers you add under Verified Caller IDs (upgrade to
+  text anyone).
+- Then put in `.env.local` (I'll add to Vercel): `RESEND_API_KEY`, `RESEND_FROM`,
+  `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`.
+- Then I build `/api/notify` (Twilio+Resend), swap `lib/notify.ts` notifier to the real
+  provider, add the "hand off to Dad" action. Email-only first is fine if Twilio trial is fiddly.
+
 ## ⚠️ NEEDS TESTING / VERIFICATION (deferred, come back to these)
 Built but NOT yet verified end-to-end by a human. Revisit before relying on them.
-- [ ] **Magic-link sign-in (live)** — enter email → link → `/auth/callback` → family
-      auto-created → land in app; sign-out from Settings. Deployed but untested by user.
-      Supabase redirect URLs + Vercel env vars confirmed present.
+- [x] **Magic-link sign-in (live)** — VERIFIED. Real sign-in works; fixed the empty
+      family_members bug it surfaced.
 - [ ] **Voice capture on a real phone** — duplication + quick-stop fixes shipped; verify on
       iOS Safari and Android Chrome specifically.
 - [ ] **Photo OCR on a real phone** — camera capture + Tesseract read; verify on-device.
