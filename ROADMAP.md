@@ -72,6 +72,35 @@ Built but NOT yet verified end-to-end by a human. Revisit before relying on them
 - Reminders are display/intent only — actual scheduled notifications need a backend/push (tied to
   the Backend/accounts item). The toggle persists user intent for when that lands.
 
+## 🛡️ OWNERSHIP & PERMISSIONS MODEL (decided direction; enforce with Tier-2 partner)
+Guiding value: **Mama owns everything. A partner is a revocable helper — "men may come or
+go." His presence only ADDS help; his absence never SUBTRACTS anything of hers.** Ownership is
+non-transferable; a partner can never become owner.
+
+Permission matrix (enforce in RLS, gated on family_members.role, when full-user partner ships):
+- Owner (Mama): everything — add/edit/delete all data, reset/start-over, delete account, add a
+  partner, set their access, and REMOVE a partner instantly (no confirmation from him, no notice).
+- Partner (member): can SEE shared baby data (if Mama enables) and ADD logs / complete handed-off
+  tasks. CANNOT: delete or edit Mama's data, edit the baby profile, reset/start-over/delete
+  anything family-wide, remove Mama or another partner, export/take data. CAN remove himself
+  (just leaves) — which deletes NOTHING (his added logs/memories belong to the family, they stay).
+- Removing a partner (by Mama, or he leaves): access ends immediately; all data he added remains.
+- Enforcement must be at the DATABASE (RLS role checks), not just hidden UI — a real guarantee.
+- Family always has exactly one owner; role can't be reassigned to a member.
+
+Two OPEN QUESTIONS (Corey to decide when energy allows; my recommendations noted):
+1. Is the "Me" tab (Mama's moods, her own doctor questions, check-ins) fully PRIVATE from a
+   partner, even a full user? → RECOMMEND YES (private). It's her space; she shouldn't have to
+   scrub reflections when someone leaves.
+2. Partner writes: append-only, or edit/delete his own additions? → RECOMMEND (a) append-only
+   (add but never edit/delete anything) — simplest, safest, no quiet alterations.
+
+Buildable NOW (safe, front-end, no new roles): reassuring ownership COPY on the Partner screen and
+the reset/"Start over" screen — e.g. "You own everything here. A partner can help, but can never
+delete your data or reset your account — and you can remove them anytime, which never deletes
+anything you've saved." (Not yet built — pending the two answers above, though copy could ship
+regardless.)
+
 ## Backend track (in progress)
 - [x] **Auth foundation** — Supabase magic-link sign-in, family auto-created on first sign-in,
       auth gate, sign-out. VERIFIED LIVE (real sign-in works; caught + fixed an empty
