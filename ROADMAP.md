@@ -25,11 +25,21 @@ Partner store, screen, and Notifier seam are DONE. Only real send remains. To un
 Built but NOT yet verified end-to-end by a human. Revisit before relying on them.
 - [x] **Magic-link sign-in (live)** — VERIFIED. Real sign-in works; fixed the empty
       family_members bug it surfaced.
-- [ ] **Voice capture on a real phone** — duplication + quick-stop fixes shipped; verify on
-      iOS Safari and Android Chrome specifically.
-- [ ] **Photo OCR on a real phone** — camera capture + Tesseract read; verify on-device.
-- [ ] **Inbox extraction quality** — the local rule-based extractor's parsing of real dumps
-      (feed/diaper/sleep/appointment/task/question routing) hasn't been exercised much.
+- [ ] **Voice capture on a real phone** — on iOS Safari AND Android Chrome: does the mic prompt
+      appear; does speech transcribe live; does it keep listening through a pause; does Stop →
+      editable transcript → "Sort it out" land items in Inbox review? Note which browser if it
+      breaks (Web Speech support varies; server STT is the fallback plan).
+- [ ] **Photo OCR on a real phone** — take a photo of a real note/appointment card: does the
+      camera open, does the progress bar show, does readable text come back and land in Inbox
+      review? Note device/OS if OCR is poor (server/vision OCR is the fallback).
+- [ ] **Inbox extraction quality** — type several real brain dumps and check the proposed items
+      are right (feed/diaper/sleep/appointment/task/question routing + amounts/times). The real
+      upgrade is the Gemini extractor (below); log bad parses here as examples to test against.
+- [ ] **Full-app cloud verification pass** — once, end to end while signed in: onboarding →
+      babies row; appointment + question → both tables; mom mood/to-do → mom_moods/mom_items;
+      memory → memories; partner → partner_contacts; then a SECOND device with same email sees it
+      all (cross-device sync); then Start-over wipes the cloud rows. (Feed-log path already
+      verified.)
 - [x] **Appointment-question orphaning bug** — FIXED. Two parts: (1) the extractor now splits on
       commas (protecting "<day>, <time>") so "doctor Thursday, ask about rash" becomes an
       appointment + a question; (2) commit.ts commits appointments first, then attaches
