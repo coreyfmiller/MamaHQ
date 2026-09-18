@@ -13,7 +13,10 @@ interface AuthCtx {
   familyId: string | null
   /** True while we're ensuring the family row exists after sign-in. */
   bootstrapping: boolean
-  sendMagicLink: (email: string) => Promise<{ ok: boolean; error?: string }>
+  /** Send a 6-digit sign-in code to the email (works on web + native, no redirect). */
+  sendCode: (email: string) => Promise<{ ok: boolean; error?: string }>
+  /** Verify the 6-digit code and establish the session in-app. */
+  verifyCode: (email: string, token: string) => Promise<{ ok: boolean; error?: string }>
   signOut: () => Promise<void>
 }
 
@@ -22,7 +25,8 @@ const Ctx = createContext<AuthCtx>({
   user: null,
   familyId: null,
   bootstrapping: false,
-  sendMagicLink: async () => ({ ok: false }),
+  sendCode: async () => ({ ok: false }),
+  verifyCode: async () => ({ ok: false }),
   signOut: async () => {},
 })
 
@@ -123,20 +127,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const sendMagicLink = async (email: string) => {
+  // Email OTP: send a 6-digit code. No emailRedirectTo → Supabase sends a code
+  // (not a magic link), which the user types back into the app. This works the
+  // same on web and in a native (Capacitor) shell — no browser redirect, no
+  // PKCE/callback fragility.
+  const sendCode = async (email: string) => {
     const supabase = supabaseBrowser()
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: {
-        // The link lands on our callback route, which exchanges the code for a
-        // session (cookies) and then forwards into the app.
-        emailRedirectTo:
-          typeof window !== 'undefined'
-            ? `${window.location.origin}/auth/callback?next=/app`
-            : undefined,
-      },
+      options: { shouldCreateUser: true },
     })
     return error ? { ok: false, error: error.message } : { ok: true }
+  }
+
+  // Verify the 6-digit code and establish the session in-app.
+  const verifyCode = async (email: string, token: string) => {
+    const supabase = supabaseBrowser()
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: token.trim(),
+      type: 'email',
+    })
+    return error ? { ok: false, error: error.message } : { ok: true }
+    // onAuthStateChange (above) picks up the new session and bootstraps the family.
   }
 
   const signOut = async () => {
@@ -147,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo(
-    () => ({ status, user, familyId, bootstrapping, sendMagicLink, signOut }),
+    () => ({ status, user, familyId, bootstrapping, sendCode, verifyCode, signOut }),
     [status, user, familyId, bootstrapping],
   )
 
