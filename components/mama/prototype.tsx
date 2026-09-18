@@ -143,10 +143,10 @@ export function Prototype() {
         <AuthProvider>
           <ProfileProvider>
             <LogsProvider>
-              <MomProvider>
-                <MemoriesProvider>
-                  <AppointmentsProvider>
-                    <PartnerProvider>
+              <PartnerProvider>
+                <MomProvider>
+                  <MemoriesProvider>
+                    <AppointmentsProvider>
                       <InboxProvider>
                         <PrototypeProvider initialPhase="onboarding" initialTab="today">
                           <AuthGate>
@@ -154,10 +154,10 @@ export function Prototype() {
                           </AuthGate>
                         </PrototypeProvider>
                       </InboxProvider>
-                    </PartnerProvider>
-                  </AppointmentsProvider>
-                </MemoriesProvider>
-              </MomProvider>
+                    </AppointmentsProvider>
+                  </MemoriesProvider>
+                </MomProvider>
+              </PartnerProvider>
             </LogsProvider>
           </ProfileProvider>
         </AuthProvider>

@@ -3,14 +3,21 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import * as db from '@/lib/supabase/data'
+import { usePartner } from './partner'
+import { notifier, handoffMessage } from '@/lib/notify'
 
 export type Mood = 'tired' | 'okay' | 'good' | 'great'
+
+/** Who a task is handed off to. undefined = mom's own task. */
+export type Assignee = 'partner'
 
 export interface MomItem {
   id: string
   text: string
   done: boolean
   createdAt: string
+  /** Set when the task was handed off to a helper (e.g. the partner). */
+  assignee?: Assignee
 }
 
 /** Mom's own space: a per-day mood check-in plus her tasks and doctor questions. */
@@ -30,6 +37,8 @@ interface MomCtx {
   /** Set (or clear) today's mood. Passing the current mood again clears it. */
   setTodayMood: (mood: Mood | null) => void
   addTask: (text: string) => void
+  /** Add a task handed off to a helper; fires the notifier (SMS/email) best-effort. */
+  addTaskAssigned: (text: string, assignee: Assignee) => void
   addQuestion: (text: string) => void
   toggleTask: (id: string) => void
   toggleQuestion: (id: string) => void
@@ -43,6 +52,7 @@ const Ctx = createContext<MomCtx>({
   hydrated: false,
   setTodayMood: () => {},
   addTask: () => {},
+  addTaskAssigned: () => {},
   addQuestion: () => {},
   toggleTask: () => {},
   toggleQuestion: () => {},
@@ -85,6 +95,7 @@ function writeLocal(state: MomState) {
 
 export function MomProvider({ children }: { children: ReactNode }) {
   const { familyId, status } = useAuth()
+  const { partner } = usePartner()
   const [state, setState] = useState<MomState>(empty)
   const [hydrated, setHydrated] = useState(false)
 
@@ -99,7 +110,7 @@ export function MomProvider({ children }: { children: ReactNode }) {
           if (!alive) return
           setState({
             moodByDay: moods as Record<string, Mood>,
-            tasks: items.filter((i) => i.kind === 'task').map((i) => ({ id: i.id, text: i.text, done: i.done, createdAt: i.created_at })),
+            tasks: items.filter((i) => i.kind === 'task').map((i) => ({ id: i.id, text: i.text, done: i.done, createdAt: i.created_at, assignee: i.assignee ?? undefined })),
             questions: items.filter((i) => i.kind === 'question').map((i) => ({ id: i.id, text: i.text, done: i.done, createdAt: i.created_at })),
           })
           setHydrated(true)
@@ -142,22 +153,48 @@ export function MomProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const addItem = (kind: 'task' | 'question', text: string) => {
+  const addItem = (kind: 'task' | 'question', text: string, assignee?: Assignee) => {
     const t = text.trim()
     if (!t) return
-    const item: MomItem = { id: newId(), text: t, done: false, createdAt: new Date().toISOString() }
+    const item: MomItem = { id: newId(), text: t, done: false, createdAt: new Date().toISOString(), assignee }
     setState((s) => ({
       ...s,
       [kind === 'task' ? 'tasks' : 'questions']: [item, ...s[kind === 'task' ? 'tasks' : 'questions']],
     }))
     if (familyId) {
-      db.insertMomItem({ id: item.id, family_id: familyId, kind, text: t, done: false, created_at: item.createdAt })
-        .catch((e) => console.warn('mom sync', e))
+      db.insertMomItem({
+        id: item.id,
+        family_id: familyId,
+        kind,
+        text: t,
+        done: false,
+        created_at: item.createdAt,
+        assignee: assignee ?? null,
+      }).catch((e) => console.warn('mom sync', e))
     }
   }
 
   const addTask: MomCtx['addTask'] = (text) => addItem('task', text)
   const addQuestion: MomCtx['addQuestion'] = (text) => addItem('question', text)
+
+  // Hand a task off to a helper: record it (assigned) and best-effort notify them.
+  // Delivery is a no-op until Twilio/Resend are wired; the notifier reports that
+  // gently and the UI already surfaces "delivery isn't on yet".
+  const addTaskAssigned: MomCtx['addTaskAssigned'] = (text, assignee) => {
+    const t = text.trim()
+    if (!t) return
+    addItem('task', t, assignee)
+
+    if (assignee === 'partner' && partner) {
+      const body = handoffMessage('Your partner', t)
+      if (partner.notifySms && partner.phone) {
+        notifier.sendSms(partner.phone, body).catch(() => {})
+      }
+      if (partner.notifyEmail && partner.email) {
+        notifier.sendEmail(partner.email, 'A hand-off from MamaHQ', body).catch(() => {})
+      }
+    }
+  }
 
   const toggleItem = (kind: 'tasks' | 'questions', id: string) => {
     let nextDone = false
@@ -194,6 +231,7 @@ export function MomProvider({ children }: { children: ReactNode }) {
       hydrated,
       setTodayMood,
       addTask,
+      addTaskAssigned,
       addQuestion,
       toggleTask,
       toggleQuestion,
@@ -201,7 +239,7 @@ export function MomProvider({ children }: { children: ReactNode }) {
       removeQuestion,
       clearMom,
     }),
-    [state, hydrated, familyId],
+    [state, hydrated, familyId, partner],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

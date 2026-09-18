@@ -1,10 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronRight, ChevronLeft, Moon, Play } from 'lucide-react'
+import { ChevronRight, ChevronLeft, Moon, Play, Send } from 'lucide-react'
 import type { Category } from '@/lib/mama-data'
 import { useNav } from '../context'
 import { useLogs, activeSleep, elapsed, toLocalInput, fromLocalInput, type LogKind } from '../logs'
+import { useMom } from '../mom'
+import { usePartner } from '../partner'
+import { notifier } from '@/lib/notify'
 import { CategoryChip } from '../event-meta'
 
 const options: { kind: LogKind; category: Category; title: string; sub: string }[] = [
@@ -22,11 +25,13 @@ const diaperTypes: { value: 'wet' | 'dirty' | 'mixed'; label: string }[] = [
   { value: 'mixed', label: 'Mixed' },
 ]
 
-type Detail = 'feed' | 'diaper' | 'sleep' | null
+type Detail = 'feed' | 'diaper' | 'sleep' | 'handoff' | null
 
 export function QuickLogContent() {
   const { closeOverlay, showToast } = useNav()
   const { logs, addLog, startSleep } = useLogs()
+  const { addTaskAssigned } = useMom()
+  const { partner } = usePartner()
   const [detail, setDetail] = useState<Detail>(null)
 
   const running = activeSleep(logs)
@@ -44,6 +49,14 @@ export function QuickLogContent() {
     }
     addLog({ kind: o.kind })
     done(o.title)
+  }
+
+  const handOff = (text: string) => {
+    addTaskAssigned(text, 'partner')
+    closeOverlay()
+    // Honest confirmation: the task is saved + tracked; delivery depends on setup.
+    const willSend = notifier.isConfigured() && ((partner?.notifySms && partner?.phone) || (partner?.notifyEmail && partner?.email))
+    showToast(willSend ? `Sent to ${partner?.name ?? 'partner'}` : `Handed off to ${partner?.name ?? 'partner'}`)
   }
 
   const logFeed = (amount?: string) => {
@@ -79,7 +92,9 @@ export function QuickLogContent() {
           >
             <ChevronLeft className="size-5" />
           </button>
-          <h2 className="font-serif text-[20px] font-semibold capitalize">{detail}</h2>
+          <h2 className="font-serif text-[20px] font-semibold capitalize">
+            {detail === 'handoff' ? `Hand off to ${partner?.name ?? 'partner'}` : detail}
+          </h2>
         </div>
 
         {detail === 'feed' && (
@@ -126,6 +141,10 @@ export function QuickLogContent() {
         {detail === 'sleep' && (
           <SleepDetail running={!!running} onStartNow={startNow} onLogPast={logPastSleep} />
         )}
+
+        {detail === 'handoff' && (
+          <HandoffDetail partnerName={partner?.name ?? 'your partner'} onHandOff={handOff} />
+        )}
       </div>
     )
   }
@@ -153,12 +172,83 @@ export function QuickLogContent() {
             <ChevronRight className="size-4 text-muted-foreground" />
           </button>
         ))}
+
+        {/* Hand a duty to the partner — only when one is set up. */}
+        {partner && (
+          <button
+            onClick={() => setDetail('handoff')}
+            className="flex w-full items-center gap-3.5 rounded-2xl border border-sage/40 bg-sage-soft/50 p-3.5 text-left transition-transform active:scale-[0.99]"
+          >
+            <span className="flex size-11 items-center justify-center rounded-2xl bg-sage-soft text-sage">
+              <Send className="size-5" strokeWidth={1.75} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[16px] font-semibold leading-tight">Hand off to {partner.name}</p>
+              <p className="text-[13px] text-muted-foreground">Ask them to take care of something</p>
+            </div>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </button>
+        )}
       </div>
       <button
         onClick={closeOverlay}
         className="mt-4 w-full rounded-full bg-muted py-3.5 text-[15px] font-semibold text-foreground transition-transform active:scale-[0.99]"
       >
         Cancel
+      </button>
+    </div>
+  )
+}
+
+/* ---------------- Hand-off detail (type a duty for the partner) ---------------- */
+
+const HANDOFF_SUGGESTIONS = ['Grab more formula', 'Take the next diaper change', 'Do bath time tonight', 'Pick up wipes']
+
+function HandoffDetail({ partnerName, onHandOff }: { partnerName: string; onHandOff: (text: string) => void }) {
+  const [text, setText] = useState('')
+  const canSend = text.trim().length > 0
+
+  return (
+    <div className="space-y-4">
+      <p className="px-1 text-[13px] text-muted-foreground">
+        What would you like {partnerName} to take care of?
+      </p>
+
+      <textarea
+        // eslint-disable-next-line jsx-a11y/no-autofocus
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="e.g. Can you grab more formula on the way home?"
+        className="w-full resize-none rounded-2xl border border-border bg-card px-4 py-3.5 text-[16px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+      />
+
+      <div className="flex flex-wrap gap-2">
+        {HANDOFF_SUGGESTIONS.map((s) => (
+          <button
+            key={s}
+            onClick={() => setText(s)}
+            className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-[13px] font-medium text-foreground/80 transition-transform active:scale-95"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {!notifier.isConfigured() && (
+        <p className="rounded-2xl bg-muted/60 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
+          It&apos;ll be saved and tracked in your Inbox. Text/email delivery to {partnerName} turns on once
+          notifications are live.
+        </p>
+      )}
+
+      <button
+        onClick={() => canSend && onHandOff(text)}
+        disabled={!canSend}
+        className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-4 text-[15px] font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
+      >
+        <Send className="size-4" strokeWidth={2} /> Hand off to {partnerName}
       </button>
     </div>
   )

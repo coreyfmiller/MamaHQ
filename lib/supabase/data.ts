@@ -117,6 +117,8 @@ export interface DbMomItem {
   text: string
   done: boolean
   created_at: string
+  /** Who the task is handed off to. null/undefined = mom's own task. */
+  assignee?: 'partner' | null
 }
 
 export async function fetchMomMoods(familyId: string): Promise<Record<string, string>> {

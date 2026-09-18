@@ -10,8 +10,11 @@ import { useInbox, type Capture } from '../inbox/store'
 import { useCommit } from '../inbox/commit'
 import { shortTime } from '../appointments'
 import type { ProposedItem } from '../inbox/types'
+import { useMom } from '../mom'
+import { usePartner } from '../partner'
+import { notifier } from '@/lib/notify'
 
-type InboxTab = 'review' | 'added'
+type InboxTab = 'review' | 'added' | 'handoffs'
 
 // Map a proposal to a category chip so items read consistently with the rest of the app.
 function chipCategory(item: ProposedItem): Category {
@@ -32,11 +35,18 @@ export function InboxScreen() {
   const { openOverlay } = useNav()
   const { captures, addCapture, toggleItem, editItem, dismissCapture } = useInbox()
   const { commitCapture } = useCommit()
+  const { state: mom, toggleTask, removeTask } = useMom()
+  const { partner } = usePartner()
   const [tab, setTab] = useState<InboxTab>('review')
   const [draft, setDraft] = useState('')
 
   const toReview = captures.filter((c) => c.status === 'proposed')
   const added = captures.filter((c) => c.status === 'committed')
+  // Duties handed off to the partner — newest first, open ones before done.
+  const handoffs = mom.tasks
+    .filter((t) => t.assignee === 'partner')
+    .sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1))
+  const openHandoffs = handoffs.filter((t) => !t.done).length
 
   const submit = async () => {
     const text = draft.trim()
@@ -97,6 +107,7 @@ export function InboxScreen() {
           options={[
             { value: 'review', label: 'To review', badge: toReview.length || undefined },
             { value: 'added', label: 'Added' },
+            { value: 'handoffs', label: 'Handed off', badge: openHandoffs || undefined },
           ]}
         />
 
@@ -134,6 +145,47 @@ export function InboxScreen() {
               ))}
             </div>
           ))}
+
+        {tab === 'handoffs' &&
+          (handoffs.length === 0 ? (
+            <EmptyHandoffs hasPartner={!!partner} onAddPartner={() => openOverlay('partner')} />
+          ) : (
+            <div className="space-y-2.5">
+              {!notifier.isConfigured() && (
+                <p className="rounded-2xl bg-muted/60 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
+                  Hand-offs are saved and tracked here. Text/email delivery to {partner?.name ?? 'your partner'}{' '}
+                  turns on once notifications go live.
+                </p>
+              )}
+              {handoffs.map((t) => (
+                <div
+                  key={t.id}
+                  className={`flex items-center gap-3 rounded-2xl border p-3.5 transition-colors ${
+                    t.done ? 'border-border/40 bg-muted/40' : 'border-border/70 bg-card'
+                  }`}
+                >
+                  <button onClick={() => toggleTask(t.id)} aria-label="Mark done">
+                    <CheckBox checked={t.done} />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-[15px] font-semibold leading-tight ${t.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                      {t.text}
+                    </p>
+                    <p className="text-[12px] text-muted-foreground">
+                      For {partner?.name ?? 'partner'} · {new Date(t.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => removeTask(t.id)}
+                    aria-label="Remove hand-off"
+                    className="text-[13px] font-medium text-muted-foreground transition-colors active:text-destructive"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
       </Scroll>
 
       <BottomNav active="inbox" />
@@ -151,6 +203,30 @@ function EmptyReview() {
       <p className="mt-2 max-w-[16rem] text-[15px] leading-relaxed text-muted-foreground">
         Dump anything above whenever your brain gets full — MamaHQ will sort it into things you can approve.
       </p>
+    </div>
+  )
+}
+
+function EmptyHandoffs({ hasPartner, onAddPartner }: { hasPartner: boolean; onAddPartner: () => void }) {
+  return (
+    <div className="mt-10 flex flex-col items-center text-center">
+      <span className="flex size-16 items-center justify-center rounded-full bg-sage-soft text-sage">
+        <Send className="size-7" strokeWidth={1.5} />
+      </span>
+      <h2 className="mt-5 font-serif text-[22px] font-medium">Nothing handed off.</h2>
+      <p className="mt-2 max-w-[17rem] text-[15px] leading-relaxed text-muted-foreground">
+        {hasPartner
+          ? 'Use the + button and “Hand off” to ask your partner to take care of something. It shows up here.'
+          : 'Add a partner first, then you can hand duties to them from the + button.'}
+      </p>
+      {!hasPartner && (
+        <button
+          onClick={onAddPartner}
+          className="mt-5 rounded-full bg-primary px-5 py-3 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-95"
+        >
+          Add a partner
+        </button>
+      )}
     </div>
   )
 }
