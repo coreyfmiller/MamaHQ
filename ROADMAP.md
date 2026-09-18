@@ -45,15 +45,18 @@ Built but NOT yet verified end-to-end by a human. Revisit before relying on them
 
 ## Backend track (in progress)
 - [x] **Auth foundation** — Supabase magic-link sign-in, family auto-created on first sign-in,
-      auth gate, sign-out. Clients in `lib/supabase/{client,server}.ts`. Schema/RLS in
-      `supabase/migrations/0001_foundation.sql` (families, family_members, babies,
-      partner_contacts). (⚠️ untested live — see top.)
-- [ ] **Cloud data migration (NEXT)** — move stores (profile/baby, logs, appointments, mom,
-      memories, captures) from localStorage to Supabase, scoped to the family. Offer to import
-      existing local data on first sign-in. This is what makes accounts meaningful + is the
-      prerequisite for both Dad tiers.
-- [ ] **Dad as contact (Tier 1)** — partner_contacts UI (name/phone/email/notify toggles),
-      assignee on tasks, scheduled Twilio SMS + email (Resend) for reminders/hand-offs.
+      auth gate, sign-out. VERIFIED LIVE (real sign-in works; caught + fixed an empty
+      family_members bug that was blocking all writes via RLS).
+- [x] **Cloud data migration** — all stores (profile/baby, logs, appointments+questions, mom,
+      memories, captures, partner) read/write Supabase when signed in, localStorage fallback when
+      signed out; optimistic writes; reset wipes cloud family data. VERIFIED: a logged feed
+      lands in the `logs` table. Data layer in `lib/supabase/data.ts`. (First-sign-in local→cloud
+      import was intentionally skipped — start fresh in cloud.)
+- [~] **Dad as contact (Tier 1)** — DONE except delivery: partner store (cloud-backed
+      `partner_contacts`), a real Partner screen (add/edit name/phone/email + SMS/email notify
+      toggles, remove), and a Notifier seam (`lib/notify.ts`, no-op provider) ready for real send.
+      REMAINING (needs accounts): a `/api/notify` route calling **Twilio** (SMS) + **Resend**
+      (email), swap `notifier` to the real provider, and task `assignee` + hand-off action.
       Needs: Twilio account + number; Resend key.
 - [ ] **Dad as full user (Tier 2)** — invite flow, link his account to the same family/baby.
 - [ ] **Real reminders** — scheduled sends (cron/queue) once messaging exists.

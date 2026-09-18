@@ -9,6 +9,7 @@ import { useMom } from '../mom'
 import { useMemories } from '../memories'
 import { useAppointments } from '../appointments'
 import { useInbox } from '../inbox/store'
+import { usePartner } from '../partner'
 import { useAuth } from '../auth'
 import { clearFamilyData } from '@/lib/supabase/data'
 import { TopBar } from '../ui'
@@ -29,6 +30,7 @@ export function ResetScreen() {
   const { clearMemories } = useMemories()
   const { clearAppointments } = useAppointments()
   const { clearInbox } = useInbox()
+  const { clearPartner } = usePartner()
   const { familyId } = useAuth()
 
   const babyName = (profile?.babyName ?? '').trim()
@@ -47,6 +49,7 @@ export function ResetScreen() {
     clearMemories()
     clearAppointments()
     clearInbox()
+    clearPartner()
     clearProfile()
     showToast('Everything was erased')
     setPhase('onboarding')

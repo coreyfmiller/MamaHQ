@@ -248,6 +248,44 @@ export async function upsertBaby(row: Partial<DbBaby> & { family_id: string }): 
   if (error) throw error
 }
 
+/* ---------------- Partner contact (Dad as SMS/email contact) ---------------- */
+
+export interface DbPartnerContact {
+  id: string
+  family_id: string
+  name: string
+  phone: string | null
+  email: string | null
+  notify_sms: boolean
+  notify_email: boolean
+  created_at: string
+}
+
+// One partner contact per family for now (the first row). Fetch it.
+export async function fetchPartnerContact(familyId: string): Promise<DbPartnerContact | null> {
+  const { data, error } = await supabaseBrowser()
+    .from('partner_contacts')
+    .select('*')
+    .eq('family_id', familyId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as DbPartnerContact) ?? null
+}
+
+export async function upsertPartnerContact(
+  row: Partial<DbPartnerContact> & { id: string; family_id: string; name: string },
+): Promise<void> {
+  const { error } = await supabaseBrowser().from('partner_contacts').upsert(row)
+  if (error) throw error
+}
+
+export async function deletePartnerContact(id: string): Promise<void> {
+  const { error } = await supabaseBrowser().from('partner_contacts').delete().eq('id', id)
+  if (error) throw error
+}
+
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
 // Deletes all of a family's data rows. Ordered so FK children go before parents.
@@ -263,6 +301,7 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     'mom_moods',
     'memories',
     'captures',
+    'partner_contacts',
     'babies',
   ]
   for (const t of tables) {

@@ -9,6 +9,7 @@ import { LogsProvider } from './logs'
 import { MomProvider } from './mom'
 import { MemoriesProvider } from './memories'
 import { AppointmentsProvider } from './appointments'
+import { PartnerProvider } from './partner'
 import { InboxProvider } from './inbox/store'
 import { BottomSheet, FullOverlay, Toast } from './sheet'
 import { OnboardingScreen } from './screens/onboarding'
@@ -145,13 +146,15 @@ export function Prototype() {
               <MomProvider>
                 <MemoriesProvider>
                   <AppointmentsProvider>
-                    <InboxProvider>
-                      <PrototypeProvider initialPhase="onboarding" initialTab="today">
-                        <AuthGate>
-                          <Stage />
-                        </AuthGate>
-                      </PrototypeProvider>
-                    </InboxProvider>
+                    <PartnerProvider>
+                      <InboxProvider>
+                        <PrototypeProvider initialPhase="onboarding" initialTab="today">
+                          <AuthGate>
+                            <Stage />
+                          </AuthGate>
+                        </PrototypeProvider>
+                      </InboxProvider>
+                    </PartnerProvider>
                   </AppointmentsProvider>
                 </MemoriesProvider>
               </MomProvider>
