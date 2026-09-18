@@ -9,6 +9,8 @@ import { useMom } from '../mom'
 import { useMemories } from '../memories'
 import { useAppointments } from '../appointments'
 import { useInbox } from '../inbox/store'
+import { useAuth } from '../auth'
+import { clearFamilyData } from '@/lib/supabase/data'
 import { TopBar } from '../ui'
 
 /**
@@ -27,6 +29,7 @@ export function ResetScreen() {
   const { clearMemories } = useMemories()
   const { clearAppointments } = useAppointments()
   const { clearInbox } = useInbox()
+  const { familyId } = useAuth()
 
   const babyName = (profile?.babyName ?? '').trim()
   const [acknowledged, setAcknowledged] = useState(false)
@@ -37,6 +40,8 @@ export function ResetScreen() {
 
   const doReset = () => {
     if (!matches) return
+    // Wipe the cloud family's data too (fire-and-forget; local clears are instant).
+    if (familyId) clearFamilyData(familyId).catch((e) => console.warn('cloud reset', e))
     clearLogs()
     clearMom()
     clearMemories()

@@ -247,3 +247,26 @@ export async function upsertBaby(row: Partial<DbBaby> & { family_id: string }): 
   const { error } = await supabaseBrowser().from('babies').upsert(row)
   if (error) throw error
 }
+
+/* ---------------- Family-wide wipe (for "Start over") ---------------- */
+
+// Deletes all of a family's data rows. Ordered so FK children go before parents.
+// The family/membership rows themselves are kept (the account stays; onboarding restarts).
+export async function clearFamilyData(familyId: string): Promise<void> {
+  const sb = supabaseBrowser()
+  // appointment_questions cascade from appointments, but delete explicitly to be safe.
+  const tables = [
+    'appointment_questions',
+    'appointments',
+    'logs',
+    'mom_items',
+    'mom_moods',
+    'memories',
+    'captures',
+    'babies',
+  ]
+  for (const t of tables) {
+    const { error } = await sb.from(t).delete().eq('family_id', familyId)
+    if (error) throw error
+  }
+}

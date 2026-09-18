@@ -1,6 +1,8 @@
 'use client'
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useAuth } from './auth'
+import * as db from '@/lib/supabase/data'
 
 // Kinds line up with the existing CategoryChip categories so they render for free.
 export type LogKind = 'feed' | 'sleep' | 'diaper' | 'pumping' | 'medication'
@@ -55,33 +57,82 @@ export function useLogs() {
   return useContext(Ctx)
 }
 
+// UUID client-side so the same id is valid locally AND in Postgres.
 function newId(): string {
-  return `log_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`
+}
+
+// Map a DB row → client LogEntry (drop nulls to keep the client shape tidy).
+function fromDb(r: db.DbLog): LogEntry {
+  return {
+    id: r.id,
+    kind: r.kind,
+    createdAt: r.created_at,
+    endedAt: r.ended_at,
+    amount: r.amount ?? undefined,
+    side: r.side ?? undefined,
+    diaperType: r.diaper_type ?? undefined,
+    note: r.note ?? undefined,
+  }
+}
+// Map a client LogEntry → DB row for insert.
+function toDb(l: LogEntry, familyId: string): db.DbLog {
+  return {
+    id: l.id,
+    family_id: familyId,
+    kind: l.kind,
+    created_at: l.createdAt,
+    ended_at: l.endedAt ?? null,
+    amount: l.amount ?? null,
+    side: l.side ?? null,
+    diaper_type: l.diaperType ?? null,
+    note: l.note ?? null,
+  }
 }
 
 export function LogsProvider({ children }: { children: ReactNode }) {
+  const { familyId, status } = useAuth()
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [hydrated, setHydrated] = useState(false)
 
+  // Load from the right source when auth resolves: cloud (family) or local.
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) setLogs(JSON.parse(raw) as LogEntry[])
-    } catch {
-      // ignore corrupt/blocked storage
-    }
-    setHydrated(true)
-  }, [])
+    let alive = true
+    setHydrated(false)
 
-  // Persist whenever logs change (after hydration, so we don't clobber on first paint).
-  useEffect(() => {
-    if (!hydrated) return
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(logs))
-    } catch {
-      // non-fatal
+    if (familyId) {
+      db.fetchLogs(familyId)
+        .then((rows) => {
+          if (!alive) return
+          setLogs(rows.map(fromDb))
+          setHydrated(true)
+        })
+        .catch(() => {
+          if (!alive) return
+          setLogs(readLocal())
+          setHydrated(true)
+        })
+      return () => {
+        alive = false
+      }
     }
-  }, [logs, hydrated])
+
+    if (status !== 'loading') {
+      setLogs(readLocal())
+      setHydrated(true)
+    }
+    return () => {
+      alive = false
+    }
+  }, [familyId, status])
+
+  // When signed out, mirror state to localStorage so nothing is lost offline.
+  useEffect(() => {
+    if (!hydrated || familyId) return
+    writeLocal(logs)
+  }, [logs, hydrated, familyId])
 
   const addLog: LogsCtx['addLog'] = (entry) => {
     const full: LogEntry = {
@@ -89,17 +140,32 @@ export function LogsProvider({ children }: { children: ReactNode }) {
       createdAt: entry.createdAt ?? new Date().toISOString(),
       ...entry,
     }
-    setLogs((prev) => [full, ...prev])
+    setLogs((prev) => [full, ...prev]) // optimistic
+    if (familyId) db.insertLog(toDb(full, familyId)).catch((e) => console.warn('log sync', e))
     return full
   }
 
-  const patchLog: LogsCtx['patchLog'] = (id, patch) =>
+  const patchLog: LogsCtx['patchLog'] = (id, patch) => {
     setLogs((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
+    if (familyId) {
+      // Translate client field names → DB columns for the patch.
+      const dbPatch: Partial<db.DbLog> = {}
+      if ('endedAt' in patch) dbPatch.ended_at = patch.endedAt ?? null
+      if ('amount' in patch) dbPatch.amount = patch.amount ?? null
+      if ('side' in patch) dbPatch.side = patch.side ?? null
+      if ('diaperType' in patch) dbPatch.diaper_type = patch.diaperType ?? null
+      if ('note' in patch) dbPatch.note = patch.note ?? null
+      if ('createdAt' in patch && patch.createdAt) dbPatch.created_at = patch.createdAt
+      db.updateLog(id, dbPatch).catch((e) => console.warn('log sync', e))
+    }
+  }
 
-  const deleteLog = (id: string) => setLogs((prev) => prev.filter((l) => l.id !== id))
+  const deleteLog = (id: string) => {
+    setLogs((prev) => prev.filter((l) => l.id !== id))
+    if (familyId) db.deleteLog(id).catch((e) => console.warn('log sync', e))
+  }
 
   const startSleep: LogsCtx['startSleep'] = () => {
-    // Guard: never run two sleeps at once.
     if (logs.some((l) => l.kind === 'sleep' && !l.endedAt)) return null
     const full: LogEntry = {
       id: newId(),
@@ -108,29 +174,46 @@ export function LogsProvider({ children }: { children: ReactNode }) {
       endedAt: null,
     }
     setLogs((prev) => [full, ...prev])
+    if (familyId) db.insertLog(toDb(full, familyId)).catch((e) => console.warn('log sync', e))
     return full
   }
 
   const endSleep = (id: string, endedAt?: string) => {
     const end = endedAt ?? new Date().toISOString()
     setLogs((prev) => prev.map((l) => (l.id === id ? { ...l, endedAt: end } : l)))
+    if (familyId) db.updateLog(id, { ended_at: end }).catch((e) => console.warn('log sync', e))
   }
 
   const clearLogs = () => {
     setLogs([])
-    try {
-      window.localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // ignore
-    }
+    writeLocal([])
+    // Cloud rows are cleared by the reset flow (family-wide delete) separately.
   }
 
   const value = useMemo(
     () => ({ logs, hydrated, addLog, patchLog, deleteLog, clearLogs, startSleep, endSleep }),
-    [logs, hydrated],
+    [logs, hydrated, familyId],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+}
+
+/* ---------------- localStorage helpers (signed-out fallback) ---------------- */
+
+function readLocal(): LogEntry[] {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as LogEntry[]) : []
+  } catch {
+    return []
+  }
+}
+function writeLocal(logs: LogEntry[]) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(logs))
+  } catch {
+    // non-fatal
+  }
 }
 
 /* ---------------- Selectors & formatting ---------------- */

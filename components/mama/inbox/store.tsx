@@ -3,6 +3,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { CaptureSourceKind, ProposedItem } from './types'
 import { localExtractor } from './local-extractor'
+import { useAuth } from '../auth'
+import * as db from '@/lib/supabase/data'
 
 export type CaptureStatus = 'proposed' | 'committed' | 'dismissed'
 
@@ -52,31 +54,85 @@ export function useInbox() {
 }
 
 function newId(): string {
-  return `cap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`
+}
+
+function readLocal(): Capture[] {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Capture[]) : []
+  } catch {
+    return []
+  }
+}
+function writeLocal(captures: Capture[]) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(captures))
+  } catch {
+    // non-fatal
+  }
 }
 
 export function InboxProvider({ children }: { children: ReactNode }) {
+  const { familyId, status } = useAuth()
   const [captures, setCaptures] = useState<Capture[]>([])
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) setCaptures(JSON.parse(raw) as Capture[])
-    } catch {
-      // ignore corrupt/blocked storage
+    let alive = true
+    setHydrated(false)
+
+    if (familyId) {
+      db.fetchCaptures(familyId)
+        .then((rows) => {
+          if (!alive) return
+          setCaptures(
+            rows.map((r) => ({
+              id: r.id,
+              source: r.source,
+              rawText: r.raw_text,
+              createdAt: r.created_at,
+              status: r.status,
+              items: (r.items as ProposedItem[]) ?? [],
+            })),
+          )
+          setHydrated(true)
+        })
+        .catch(() => {
+          if (!alive) return
+          setCaptures(readLocal())
+          setHydrated(true)
+        })
+      return () => {
+        alive = false
+      }
     }
-    setHydrated(true)
-  }, [])
+
+    if (status !== 'loading') {
+      setCaptures(readLocal())
+      setHydrated(true)
+    }
+    return () => {
+      alive = false
+    }
+  }, [familyId, status])
 
   useEffect(() => {
-    if (!hydrated) return
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(captures))
-    } catch {
-      // non-fatal
-    }
-  }, [captures, hydrated])
+    if (!hydrated || familyId) return
+    writeLocal(captures)
+  }, [captures, hydrated, familyId])
+
+  // Persist a single capture's current state to the cloud (upsert-style via update
+  // after insert). Used by the mutation helpers below.
+  const syncCapture = (c: Capture) => {
+    if (!familyId) return
+    db.updateCapture(c.id, {
+      status: c.status,
+      items: c.items,
+    }).catch((e) => console.warn('capture sync', e))
+  }
 
   const addCapture: InboxCtx['addCapture'] = async (rawText, source) => {
     const items = await extractor.extract(rawText)
@@ -89,40 +145,63 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       items,
     }
     setCaptures((prev) => [capture, ...prev])
+    if (familyId) {
+      db.insertCapture({
+        id: capture.id,
+        family_id: familyId,
+        source: capture.source,
+        raw_text: capture.rawText,
+        status: capture.status,
+        items: capture.items,
+        created_at: capture.createdAt,
+      }).catch((e) => console.warn('capture sync', e))
+    }
     return capture
   }
 
   const toggleItem: InboxCtx['toggleItem'] = (captureId, itemId) =>
-    setCaptures((prev) =>
-      prev.map((c) =>
+    setCaptures((prev) => {
+      const next = prev.map((c) =>
         c.id === captureId
           ? { ...c, items: c.items.map((i) => (i.id === itemId ? { ...i, include: !i.include } : i)) }
           : c,
-      ),
-    )
+      )
+      const changed = next.find((c) => c.id === captureId)
+      if (changed) syncCapture(changed)
+      return next
+    })
 
   const editItem: InboxCtx['editItem'] = (captureId, itemId, patch) =>
-    setCaptures((prev) =>
-      prev.map((c) =>
+    setCaptures((prev) => {
+      const next = prev.map((c) =>
         c.id === captureId
           ? { ...c, items: c.items.map((i) => (i.id === itemId ? { ...i, ...patch } : i)) }
           : c,
-      ),
-    )
+      )
+      const changed = next.find((c) => c.id === captureId)
+      if (changed) syncCapture(changed)
+      return next
+    })
 
   const markCommitted: InboxCtx['markCommitted'] = (captureId) =>
-    setCaptures((prev) => prev.map((c) => (c.id === captureId ? { ...c, status: 'committed' } : c)))
+    setCaptures((prev) => {
+      const next = prev.map((c) => (c.id === captureId ? { ...c, status: 'committed' as CaptureStatus } : c))
+      const changed = next.find((c) => c.id === captureId)
+      if (changed) syncCapture(changed)
+      return next
+    })
 
   const dismissCapture: InboxCtx['dismissCapture'] = (captureId) =>
-    setCaptures((prev) => prev.map((c) => (c.id === captureId ? { ...c, status: 'dismissed' } : c)))
+    setCaptures((prev) => {
+      const next = prev.map((c) => (c.id === captureId ? { ...c, status: 'dismissed' as CaptureStatus } : c))
+      const changed = next.find((c) => c.id === captureId)
+      if (changed) syncCapture(changed)
+      return next
+    })
 
   const clearInbox = () => {
     setCaptures([])
-    try {
-      window.localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // ignore
-    }
+    writeLocal([])
   }
 
   const value = useMemo(
@@ -136,7 +215,7 @@ export function InboxProvider({ children }: { children: ReactNode }) {
       dismissCapture,
       clearInbox,
     }),
-    [captures, hydrated],
+    [captures, hydrated, familyId],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

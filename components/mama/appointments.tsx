@@ -1,6 +1,8 @@
 'use client'
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useAuth } from './auth'
+import * as db from '@/lib/supabase/data'
 
 export interface ApptQuestion {
   id: string
@@ -57,32 +59,80 @@ export function useAppointments() {
   return useContext(Ctx)
 }
 
-function newId(prefix = 'appt'): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+function newId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`
+}
+
+function readLocal(): Appointment[] {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Appointment[]) : []
+  } catch {
+    return []
+  }
+}
+function writeLocal(appointments: Appointment[]) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(appointments))
+  } catch {
+    // non-fatal
+  }
 }
 
 export function AppointmentsProvider({ children }: { children: ReactNode }) {
+  const { familyId, status } = useAuth()
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [hydrated, setHydrated] = useState(false)
 
+  // Load appointments + their questions (two tables) and stitch together.
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) setAppointments(JSON.parse(raw) as Appointment[])
-    } catch {
-      // ignore corrupt/blocked storage
+    let alive = true
+    setHydrated(false)
+
+    if (familyId) {
+      Promise.all([db.fetchAppointments(familyId), db.fetchApptQuestions(familyId)])
+        .then(([appts, questions]) => {
+          if (!alive) return
+          setAppointments(
+            appts.map((a) => ({
+              id: a.id,
+              title: a.title,
+              whenISO: a.when_at,
+              location: a.location ?? undefined,
+              remindersOn: a.reminders_on,
+              createdAt: a.created_at,
+              questions: questions
+                .filter((q) => q.appointment_id === a.id)
+                .map((q) => ({ id: q.id, text: q.text, asked: q.asked })),
+            })),
+          )
+          setHydrated(true)
+        })
+        .catch(() => {
+          if (!alive) return
+          setAppointments(readLocal())
+          setHydrated(true)
+        })
+      return () => {
+        alive = false
+      }
     }
-    setHydrated(true)
-  }, [])
+
+    if (status !== 'loading') {
+      setAppointments(readLocal())
+      setHydrated(true)
+    }
+    return () => {
+      alive = false
+    }
+  }, [familyId, status])
 
   useEffect(() => {
-    if (!hydrated) return
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(appointments))
-    } catch {
-      // non-fatal
-    }
-  }, [appointments, hydrated])
+    if (!hydrated || familyId) return
+    writeLocal(appointments)
+  }, [appointments, hydrated, familyId])
 
   const addAppointment: ApptCtx['addAppointment'] = (draft) => {
     const appt: Appointment = {
@@ -95,10 +145,21 @@ export function AppointmentsProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     }
     setAppointments((prev) => [...prev, appt])
+    if (familyId) {
+      db.insertAppointment({
+        id: appt.id,
+        family_id: familyId,
+        title: appt.title,
+        when_at: appt.whenISO,
+        location: appt.location ?? null,
+        reminders_on: appt.remindersOn,
+        created_at: appt.createdAt,
+      }).catch((e) => console.warn('appt sync', e))
+    }
     return appt
   }
 
-  const updateAppointment: ApptCtx['updateAppointment'] = (id, patch) =>
+  const updateAppointment: ApptCtx['updateAppointment'] = (id, patch) => {
     setAppointments((prev) =>
       prev.map((a) =>
         a.id === id
@@ -112,45 +173,72 @@ export function AppointmentsProvider({ children }: { children: ReactNode }) {
           : a,
       ),
     )
+    if (familyId) {
+      const dbPatch: Partial<db.DbAppointment> = {}
+      if (patch.title !== undefined) dbPatch.title = patch.title.trim() || 'Appointment'
+      if (patch.whenISO !== undefined) dbPatch.when_at = patch.whenISO
+      if (patch.location !== undefined) dbPatch.location = patch.location.trim() || null
+      if (patch.remindersOn !== undefined) dbPatch.reminders_on = patch.remindersOn
+      db.updateAppointment(id, dbPatch).catch((e) => console.warn('appt sync', e))
+    }
+  }
 
-  const removeAppointment = (id: string) =>
+  const removeAppointment = (id: string) => {
     setAppointments((prev) => prev.filter((a) => a.id !== id))
+    // Questions cascade-delete in the DB via the FK.
+    if (familyId) db.deleteAppointment(id).catch((e) => console.warn('appt sync', e))
+  }
 
   const addQuestion: ApptCtx['addQuestion'] = (apptId, text) => {
     const t = text.trim()
     if (!t) return
+    const q = { id: newId(), text: t, asked: false }
     setAppointments((prev) =>
-      prev.map((a) =>
-        a.id === apptId
-          ? { ...a, questions: [...a.questions, { id: newId('q'), text: t, asked: false }] }
-          : a,
-      ),
+      prev.map((a) => (a.id === apptId ? { ...a, questions: [...a.questions, q] } : a)),
     )
+    if (familyId) {
+      db.insertApptQuestion({
+        id: q.id,
+        appointment_id: apptId,
+        family_id: familyId,
+        text: t,
+        asked: false,
+        created_at: new Date().toISOString(),
+      }).catch((e) => console.warn('appt sync', e))
+    }
   }
 
-  const toggleQuestion: ApptCtx['toggleQuestion'] = (apptId, qId) =>
+  const toggleQuestion: ApptCtx['toggleQuestion'] = (apptId, qId) => {
+    let nextAsked = false
     setAppointments((prev) =>
       prev.map((a) =>
         a.id === apptId
-          ? { ...a, questions: a.questions.map((q) => (q.id === qId ? { ...q, asked: !q.asked } : q)) }
+          ? {
+              ...a,
+              questions: a.questions.map((q) => {
+                if (q.id !== qId) return q
+                nextAsked = !q.asked
+                return { ...q, asked: nextAsked }
+              }),
+            }
           : a,
       ),
     )
+    if (familyId) db.updateApptQuestion(qId, { asked: nextAsked }).catch((e) => console.warn('appt sync', e))
+  }
 
-  const removeQuestion: ApptCtx['removeQuestion'] = (apptId, qId) =>
+  const removeQuestion: ApptCtx['removeQuestion'] = (apptId, qId) => {
     setAppointments((prev) =>
       prev.map((a) =>
         a.id === apptId ? { ...a, questions: a.questions.filter((q) => q.id !== qId) } : a,
       ),
     )
+    if (familyId) db.deleteApptQuestion(qId).catch((e) => console.warn('appt sync', e))
+  }
 
   const clearAppointments = () => {
     setAppointments([])
-    try {
-      window.localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // ignore
-    }
+    writeLocal([])
   }
 
   const value = useMemo(
@@ -165,7 +253,7 @@ export function AppointmentsProvider({ children }: { children: ReactNode }) {
       removeQuestion,
       clearAppointments,
     }),
-    [appointments, hydrated],
+    [appointments, hydrated, familyId],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
