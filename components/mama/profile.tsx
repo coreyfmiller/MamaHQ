@@ -1,6 +1,8 @@
 'use client'
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useAuth } from './auth'
+import { fetchBaby, upsertBaby } from '@/lib/supabase/data'
 
 export type Feeding = 'breast' | 'bottle' | 'both'
 
@@ -35,45 +37,100 @@ export function useProfile() {
   return useContext(Ctx)
 }
 
+function readLocal(): Profile | null {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Profile) : null
+  } catch {
+    return null
+  }
+}
+function writeLocal(p: Profile | null) {
+  try {
+    if (p) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(p))
+    else window.localStorage.removeItem(STORAGE_KEY)
+  } catch (err) {
+    console.warn('MamaHQ: could not persist profile to localStorage', err)
+  }
+}
+
 export function ProfileProvider({ children }: { children: ReactNode }) {
+  const { familyId, status } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [hydrated, setHydrated] = useState(false)
 
-  // Read once on mount. localStorage isn't available during SSR, hence the effect.
+  // Load the profile from the right source: cloud when we have a family, local
+  // otherwise. Re-runs when auth resolves so signing in swaps to the cloud copy.
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) setProfile(JSON.parse(raw) as Profile)
-    } catch {
-      // Corrupt/blocked storage — start fresh rather than crash.
+    let alive = true
+    setHydrated(false)
+
+    // Signed in with a family → read the baby row from Supabase.
+    if (familyId) {
+      fetchBaby(familyId)
+        .then((baby) => {
+          if (!alive) return
+          if (baby) {
+            // momName isn't on the baby row; preserve it from the local copy if we
+            // have one (same device), else a friendly default.
+            const localMom = readLocal()?.momName
+            setProfile({
+              momName: localMom ?? 'Mama',
+              babyName: baby.name,
+              birthDate: baby.birth_date,
+              feeding: (baby.feeding ?? 'both') as Feeding,
+              photo: baby.photo ?? undefined,
+            })
+          } else {
+            // No cloud baby yet — surface local (used by first-sign-in import) or null.
+            setProfile(readLocal())
+          }
+          setHydrated(true)
+        })
+        .catch(() => {
+          if (!alive) return
+          setProfile(readLocal())
+          setHydrated(true)
+        })
+      return () => {
+        alive = false
+      }
     }
-    setHydrated(true)
-  }, [])
+
+    // Signed out (or auth still resolving as signed-out) → local only.
+    if (status !== 'loading') {
+      setProfile(readLocal())
+      setHydrated(true)
+    }
+    return () => {
+      alive = false
+    }
+  }, [familyId, status])
 
   const saveProfile = (p: Profile) => {
     setProfile(p)
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(p))
-    } catch (err) {
-      // Most likely a QuotaExceededError from an oversized photo. The profile
-      // still lives in memory for this session, but it won't survive reload.
-      // Surface it rather than failing silently (which looked like "it forgot me").
-      console.warn('MamaHQ: could not persist profile to localStorage', err)
+    // Always keep a local copy (offline + signed-out). When signed in, also write cloud.
+    writeLocal(p)
+    if (familyId) {
+      upsertBaby({
+        family_id: familyId,
+        name: p.babyName,
+        birth_date: p.birthDate,
+        feeding: p.feeding,
+        photo: p.photo ?? null,
+      }).catch((err) => console.warn('MamaHQ: could not save baby to cloud', err))
     }
   }
 
   const clearProfile = () => {
     setProfile(null)
-    try {
-      window.localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // ignore
-    }
+    writeLocal(null)
+    // Cloud baby rows are cleared by the reset flow (deletes family data) separately.
   }
 
   const value = useMemo(
     () => ({ profile, hydrated, saveProfile, clearProfile }),
-    [profile, hydrated],
+    [profile, hydrated, familyId],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

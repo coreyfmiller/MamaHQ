@@ -1,9 +1,21 @@
 # MamaHQ — Roadmap & Deferred Work
 
-The app currently runs entirely client-side (localStorage, no backend) at `/app`.
-Onboarding, Quick Log (feed/diaper/pumping/medication), Today, Baby, Settings, and
-the guarded reset are real. This file tracks the harder things we've deliberately
-deferred, plus notes so we don't lose the reasoning.
+Live at https://mamahq.vercel.app/app (auto-deploys on push to `main`). Backend
+foundation (Supabase auth) is in; app DATA is still localStorage until the cloud
+migration lands. This file tracks deferred work + reasoning.
+
+## ⚠️ NEEDS TESTING / VERIFICATION (deferred, come back to these)
+Built but NOT yet verified end-to-end by a human. Revisit before relying on them.
+- [ ] **Magic-link sign-in (live)** — enter email → link → `/auth/callback` → family
+      auto-created → land in app; sign-out from Settings. Deployed but untested by user.
+      Supabase redirect URLs + Vercel env vars confirmed present.
+- [ ] **Voice capture on a real phone** — duplication + quick-stop fixes shipped; verify on
+      iOS Safari and Android Chrome specifically.
+- [ ] **Photo OCR on a real phone** — camera capture + Tesseract read; verify on-device.
+- [ ] **Inbox extraction quality** — the local rule-based extractor's parsing of real dumps
+      (feed/diaper/sleep/appointment/task/question routing) hasn't been exercised much.
+- [ ] **Appointment-question orphaning bug** — extracted "ask about X" questions don't attach to
+      a same-capture appointment (go to Mom's general list). Known bug, fix pending.
 
 ## Done
 - [x] **Sleep tracking** — retroactive "log a past sleep" (from/to pickers) as the primary path,
@@ -30,6 +42,23 @@ deferred, plus notes so we don't lose the reasoning.
 ## Deferred detail
 - Reminders are display/intent only — actual scheduled notifications need a backend/push (tied to
   the Backend/accounts item). The toggle persists user intent for when that lands.
+
+## Backend track (in progress)
+- [x] **Auth foundation** — Supabase magic-link sign-in, family auto-created on first sign-in,
+      auth gate, sign-out. Clients in `lib/supabase/{client,server}.ts`. Schema/RLS in
+      `supabase/migrations/0001_foundation.sql` (families, family_members, babies,
+      partner_contacts). (⚠️ untested live — see top.)
+- [ ] **Cloud data migration (NEXT)** — move stores (profile/baby, logs, appointments, mom,
+      memories, captures) from localStorage to Supabase, scoped to the family. Offer to import
+      existing local data on first sign-in. This is what makes accounts meaningful + is the
+      prerequisite for both Dad tiers.
+- [ ] **Dad as contact (Tier 1)** — partner_contacts UI (name/phone/email/notify toggles),
+      assignee on tasks, scheduled Twilio SMS + email (Resend) for reminders/hand-offs.
+      Needs: Twilio account + number; Resend key.
+- [ ] **Dad as full user (Tier 2)** — invite flow, link his account to the same family/baby.
+- [ ] **Real reminders** — scheduled sends (cron/queue) once messaging exists.
+- [ ] **Gemini extractor** — swap local extractor for AI behind the same `Extractor` seam
+      (per gemini-flash-latest steering). AI chat-back intentionally OUT for now (medical-advice risk).
 
 ## Hard / deferred (need design or backend)
 
