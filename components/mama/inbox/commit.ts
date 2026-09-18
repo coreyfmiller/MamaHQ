@@ -13,50 +13,72 @@ import type { ProposedItem } from './types'
  */
 export function useCommit() {
   const { addLog } = useLogs()
-  const { addAppointment } = useAppointments()
+  const { addAppointment, addQuestion: addApptQuestion } = useAppointments()
   const { addTask, addQuestion: addMomQuestion } = useMom()
   const { markCommitted } = useInbox()
 
-  function commitItem(item: ProposedItem) {
-    switch (item.kind) {
-      case 'log':
-        if (item.log) {
-          addLog({
-            kind: item.log.logKind,
-            amount: item.log.amount,
-            diaperType: item.log.diaperType,
-            createdAt: item.log.whenISO, // undefined → defaults to now in the store
-          })
-        }
-        break
-      case 'appointment':
-        if (item.appointment) {
-          addAppointment({
-            title: item.appointment.title,
-            whenISO: item.appointment.whenISO,
-            location: item.appointment.location,
-            remindersOn: true,
-          })
-        }
-        break
-      case 'task':
-        if (item.text) addTask(item.text)
-        break
-      case 'question':
-        // A standalone question goes to Mom's "questions for my doctor" list.
-        if (item.text) addMomQuestion(item.text)
-        break
-      case 'note':
-        // Notes with no better home become a mom to-do so nothing is silently lost.
-        if (item.text) addTask(item.text)
-        break
-    }
-  }
-
-  /** Commit every included item on a capture, then mark it committed. Returns count. */
+  /**
+   * Commit every included item on a capture, then mark it committed. Returns count.
+   *
+   * Ordering matters: we commit the appointment(s) FIRST and remember the id of the
+   * one created in this capture. Then any question captured in the same breath
+   * ("doctor Thursday, ask about the rash") attaches to THAT appointment's
+   * "questions to ask" list — which is the whole point of the feature. Questions
+   * only fall back to Mom's general doctor-questions list when the capture has no
+   * appointment to hang them on.
+   */
   function commitCapture(capture: Capture): number {
     const included = capture.items.filter((i) => i.include)
-    included.forEach(commitItem)
+
+    // Pass 1: appointments (so questions in this capture can attach to one).
+    let apptId: string | null = null
+    for (const item of included) {
+      if (item.kind === 'appointment' && item.appointment) {
+        const created = addAppointment({
+          title: item.appointment.title,
+          whenISO: item.appointment.whenISO,
+          location: item.appointment.location,
+          remindersOn: true,
+        })
+        // If several appointments were captured, questions attach to the first.
+        if (!apptId) apptId = created.id
+      }
+    }
+
+    // Pass 2: everything else.
+    for (const item of included) {
+      switch (item.kind) {
+        case 'log':
+          if (item.log) {
+            addLog({
+              kind: item.log.logKind,
+              amount: item.log.amount,
+              diaperType: item.log.diaperType,
+              createdAt: item.log.whenISO, // undefined → defaults to now in the store
+            })
+          }
+          break
+        case 'task':
+          if (item.text) addTask(item.text)
+          break
+        case 'question':
+          if (item.text) {
+            // Attach to the appointment from this same capture if there is one;
+            // otherwise it's a standalone question for Mom's doctor list.
+            if (apptId) addApptQuestion(apptId, item.text)
+            else addMomQuestion(item.text)
+          }
+          break
+        case 'note':
+          // Notes with no better home become a mom to-do so nothing is silently lost.
+          if (item.text) addTask(item.text)
+          break
+        case 'appointment':
+          // Already handled in pass 1.
+          break
+      }
+    }
+
     markCommitted(capture.id)
     return included.length
   }

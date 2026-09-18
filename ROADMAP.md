@@ -30,8 +30,11 @@ Built but NOT yet verified end-to-end by a human. Revisit before relying on them
 - [ ] **Photo OCR on a real phone** — camera capture + Tesseract read; verify on-device.
 - [ ] **Inbox extraction quality** — the local rule-based extractor's parsing of real dumps
       (feed/diaper/sleep/appointment/task/question routing) hasn't been exercised much.
-- [ ] **Appointment-question orphaning bug** — extracted "ask about X" questions don't attach to
-      a same-capture appointment (go to Mom's general list). Known bug, fix pending.
+- [x] **Appointment-question orphaning bug** — FIXED. Two parts: (1) the extractor now splits on
+      commas (protecting "<day>, <time>") so "doctor Thursday, ask about rash" becomes an
+      appointment + a question; (2) commit.ts commits appointments first, then attaches
+      same-capture questions to that appointment's "questions to ask" list (falls back to Mom's
+      general list only when no appointment was captured). Verify live once tested.
 
 ## Done
 - [x] **Sleep tracking** — retroactive "log a past sleep" (from/to pickers) as the primary path,

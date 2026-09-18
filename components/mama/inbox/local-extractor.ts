@@ -11,10 +11,19 @@ function pid(): string {
   return `prop_${Date.now().toString(36)}_${seq}_${Math.random().toString(36).slice(2, 5)}`
 }
 
-/** Split a brain dump into clauses on sentence punctuation and common conjunctions. */
+/**
+ * Split a brain dump into clauses on sentence punctuation, commas, and common
+ * conjunctions — so "doctor Thursday, ask about the rash, buy formula" becomes
+ * three separate items. We first protect "<day>, <time>" commas (e.g.
+ * "Thursday, 11am") by turning that comma into a space, so a date+time stays one
+ * clause instead of splitting into a title-less appointment and a stray time.
+ */
 function splitClauses(text: string): string[] {
-  return text
-    .split(/[\n.;!?]+|,?\s+(?:and then|and|then|also|plus)\s+/i)
+  const dayTime =
+    /\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow)\s*,\s*(?=\d{1,2}(:\d{2})?\s*(am|pm)?\b)/gi
+  const protectedText = text.replace(dayTime, '$1 ')
+  return protectedText
+    .split(/[\n.;!?,]+|\s+(?:and then|and|then|also|plus)\s+/i)
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
 }
