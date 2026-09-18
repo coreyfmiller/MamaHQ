@@ -37,7 +37,7 @@ export function useAuth() {
 async function ensureFamily(userId: string): Promise<string | null> {
   const supabase = supabaseBrowser()
 
-  // Already a member of a family?
+  // 1) Already a member of a family? Use it.
   const { data: existing } = await supabase
     .from('family_members')
     .select('family_id')
@@ -46,20 +46,44 @@ async function ensureFamily(userId: string): Promise<string | null> {
     .maybeSingle()
   if (existing?.family_id) return existing.family_id as string
 
-  // First sign-in: create the family, then the owner membership.
-  const { data: fam, error: famErr } = await supabase
+  // 2) A family this user OWNS but has no membership row for (e.g. created by an
+  //    earlier version). Adopt it by creating the missing membership.
+  const { data: owned } = await supabase
     .from('families')
-    .insert({})
     .select('id')
-    .single()
-  if (famErr || !fam) return null
+    .eq('owner_id', userId)
+    .limit(1)
+    .maybeSingle()
 
+  let familyId = owned?.id as string | undefined
+
+  // 3) No family at all → create one.
+  if (!familyId) {
+    const { data: fam, error: famErr } = await supabase
+      .from('families')
+      .insert({ owner_id: userId })
+      .select('id')
+      .single()
+    if (famErr || !fam) {
+      console.warn('MamaHQ: could not create family', famErr)
+      return null
+    }
+    familyId = fam.id as string
+  }
+
+  // Ensure the owner membership exists (idempotent via upsert on the composite PK).
   const { error: memErr } = await supabase
     .from('family_members')
-    .insert({ family_id: fam.id, user_id: userId, role: 'owner' })
-  if (memErr) return null
+    .upsert(
+      { family_id: familyId, user_id: userId, role: 'owner' },
+      { onConflict: 'family_id,user_id' },
+    )
+  if (memErr) {
+    console.warn('MamaHQ: could not create family membership', memErr)
+    // Still return the family id — reads may work; but flag it loudly.
+  }
 
-  return fam.id as string
+  return familyId
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
