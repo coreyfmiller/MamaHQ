@@ -82,13 +82,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
               photo: baby.photo ?? undefined,
             })
           } else {
-            // No cloud baby yet — surface local (used by first-sign-in import) or null.
-            setProfile(readLocal())
+            // Signed in with NO cloud baby → this is a genuine first run. The cloud
+            // is the source of truth when signed in, so ignore any stale localStorage
+            // (and clear it) rather than skipping onboarding on old local data.
+            writeLocal(null)
+            setProfile(null)
           }
           setHydrated(true)
         })
         .catch(() => {
           if (!alive) return
+          // On a fetch error we can't confirm cloud state; fall back to local so the
+          // app still works, but don't fabricate a profile.
           setProfile(readLocal())
           setHydrated(true)
         })
