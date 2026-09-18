@@ -25,6 +25,7 @@ import {
 import { NameAvatar } from '../name-avatar'
 import { CategoryChip } from '../event-meta'
 import type { Category } from '@/lib/mama-data'
+import { pickAffirmation } from '@/lib/affirmations'
 import { BottomNav, Card, CardLabel, LiveDot, Screen, Scroll, StatusBar } from '../ui'
 
 // After this long, a running sleep is more likely a forgotten timer than a real
@@ -181,7 +182,7 @@ function SleepControl({ sleepId, startISO, now }: { sleepId: string; startISO: s
   )
 }
 
-function greeting(now: Date = new Date()): string {
+function greeting(now: Date): string {
   const h = now.getHours()
   if (h < 12) return 'Good morning'
   if (h < 18) return 'Good afternoon'
@@ -191,6 +192,9 @@ function greeting(now: Date = new Date()): string {
 function Header() {
   const { profile } = useProfile()
   const { openOverlay } = useNav()
+  // Drive the greeting off the shared ticker so it stays current if the app is
+  // left open across a time-of-day boundary (e.g. late morning → afternoon).
+  const now = useNow(60_000)
   const momName = profile?.momName ?? 'Mama'
   const babyName = profile?.babyName ?? 'Baby'
   const day = profile ? dayNumber(profile.birthDate) : null
@@ -199,7 +203,7 @@ function Header() {
     <header className="flex items-start justify-between px-6 pt-1">
       <div>
         <h1 className="font-serif text-[26px] leading-tight font-semibold tracking-tight">
-          {greeting()}, {momName}
+          {greeting(now)}, {momName}
         </h1>
         <p className="mt-1 max-w-[15rem] text-[14px] leading-snug text-muted-foreground">
           {day ? `${babyName} · Day ${day}. ` : ''}Here&apos;s what matters today.
@@ -213,6 +217,23 @@ function Header() {
         <NameAvatar name={babyName} photo={profile?.photo} className="size-10 text-[15px]" />
       </button>
     </header>
+  )
+}
+
+// A quiet daily affirmation, keyed to the baby's day number + time of day. The
+// emotional heart of Today — understated on purpose, not a banner or a modal.
+function AffirmationCard() {
+  const { profile } = useProfile()
+  const now = useNow(60_000)
+  if (!profile) return null
+  const day = dayNumber(profile.birthDate, now)
+  const text = pickAffirmation(day, now)
+  return (
+    <div className="mt-2 rounded-3xl bg-sage-soft/50 px-5 py-4">
+      <p className="whitespace-pre-line font-serif text-[16px] leading-relaxed text-foreground/90">
+        {text}
+      </p>
+    </div>
   )
 }
 
@@ -258,6 +279,9 @@ export function TodayScreen({ empty = false }: { empty?: boolean }) {
       <StatusBar />
       <Scroll className="space-y-4 px-6 pb-4">
         <Header />
+
+        {/* A gentle word for the moment */}
+        <AffirmationCard />
 
         {/* Right now */}
         <RightNow />
