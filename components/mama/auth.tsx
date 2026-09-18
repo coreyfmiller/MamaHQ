@@ -38,56 +38,18 @@ export function useAuth() {
  * Ensure the signed-in user has a family. On first sign-in there's no family, so
  * we create one and add the user as its owner. Returns the family id.
  */
-async function ensureFamily(userId: string): Promise<string | null> {
+async function ensureFamily(_userId: string): Promise<string | null> {
   const supabase = supabaseBrowser()
-
-  // 1) Already a member of a family? Use it.
-  const { data: existing } = await supabase
-    .from('family_members')
-    .select('family_id')
-    .eq('user_id', userId)
-    .limit(1)
-    .maybeSingle()
-  if (existing?.family_id) return existing.family_id as string
-
-  // 2) A family this user OWNS but has no membership row for (e.g. created by an
-  //    earlier version). Adopt it by creating the missing membership.
-  const { data: owned } = await supabase
-    .from('families')
-    .select('id')
-    .eq('owner_id', userId)
-    .limit(1)
-    .maybeSingle()
-
-  let familyId = owned?.id as string | undefined
-
-  // 3) No family at all → create one.
-  if (!familyId) {
-    const { data: fam, error: famErr } = await supabase
-      .from('families')
-      .insert({ owner_id: userId })
-      .select('id')
-      .single()
-    if (famErr || !fam) {
-      console.warn('MamaHQ: could not create family', famErr)
-      return null
-    }
-    familyId = fam.id as string
+  // A SECURITY DEFINER DB function creates the family + owner membership atomically
+  // and returns the family id. This sidesteps the fragile families_insert RLS
+  // policy (raw client inserts were being rejected), and is idempotent — repeat
+  // calls just return the existing family.
+  const { data, error } = await supabase.rpc('ensure_family')
+  if (error) {
+    console.warn('MamaHQ: ensure_family failed', error)
+    return null
   }
-
-  // Ensure the owner membership exists (idempotent via upsert on the composite PK).
-  const { error: memErr } = await supabase
-    .from('family_members')
-    .upsert(
-      { family_id: familyId, user_id: userId, role: 'owner' },
-      { onConflict: 'family_id,user_id' },
-    )
-  if (memErr) {
-    console.warn('MamaHQ: could not create family membership', memErr)
-    // Still return the family id — reads may work; but flag it loudly.
-  }
-
-  return familyId
+  return (data as string) ?? null
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
