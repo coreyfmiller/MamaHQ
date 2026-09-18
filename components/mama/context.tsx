@@ -18,6 +18,7 @@ export type Overlay =
   | 'reminder'
   | 'settings'
   | 'reset'
+  | 'read'
   | null
 
 interface PrototypeCtx {

@@ -29,6 +29,7 @@ import { UpcomingScreen } from './screens/upcoming'
 import { MemoriesScreen } from './screens/memories'
 import { PartnerScreen } from './screens/partner'
 import { Beyond90Screen } from './screens/beyond90'
+import { ReadScreen } from './screens/read'
 import { ReminderScreen } from './screens/reminder'
 
 function ActiveTab() {
@@ -118,6 +119,9 @@ function Stage() {
       </FullOverlay>
       <FullOverlay open={overlay === 'beyond90'}>
         <Beyond90Screen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'read'}>
+        <ReadScreen />
       </FullOverlay>
       <FullOverlay open={overlay === 'settings'}>
         <SettingsScreen />

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronRight, Moon, Plus, Square } from 'lucide-react'
+import { BookOpen, ChevronRight, Moon, Plus, Square } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, dayNumber } from '../profile'
 import {
@@ -26,6 +26,7 @@ import { NameAvatar } from '../name-avatar'
 import { CategoryChip } from '../event-meta'
 import type { Category } from '@/lib/mama-data'
 import { pickAffirmation } from '@/lib/affirmations'
+import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
 import { BottomNav, Card, CardLabel, LiveDot, Screen, Scroll, StatusBar } from '../ui'
 
 // After this long, a running sleep is more likely a forgotten timer than a real
@@ -237,6 +238,35 @@ function AffirmationCard() {
   )
 }
 
+// A small invitation to today's read — title + category + read-time only, opening
+// the full piece in an overlay. Deliberately just a button, not the essay inline.
+function TodaysReadButton() {
+  const { openOverlay } = useNav()
+  const { profile } = useProfile()
+  const now = useNow(60_000)
+  if (!profile) return null
+  const day = dayNumber(profile.birthDate, now)
+  const read = pickDailyRead(day)
+  const mins = readMinutes(read)
+  return (
+    <button
+      onClick={() => openOverlay('read')}
+      className="flex w-full items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-3.5 text-left shadow-sm transition-transform active:scale-[0.99]"
+    >
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-sage-soft text-sage">
+        <BookOpen className="size-5" strokeWidth={1.75} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[15px] font-semibold leading-tight">{read.title}</p>
+        <p className="text-[13px] text-muted-foreground">
+          {read.category} &middot; {mins} min read
+        </p>
+      </div>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+    </button>
+  )
+}
+
 function Footer() {
   return <BottomNav active="today" />
 }
@@ -282,6 +312,9 @@ export function TodayScreen({ empty = false }: { empty?: boolean }) {
 
         {/* A gentle word for the moment */}
         <AffirmationCard />
+
+        {/* Today's read — a small invitation, opens the full piece */}
+        <TodaysReadButton />
 
         {/* Right now */}
         <RightNow />
