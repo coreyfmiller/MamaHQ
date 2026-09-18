@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { PrototypeProvider, useNav } from './context'
+import { AuthProvider, useAuth } from './auth'
+import { SignInScreen } from './screens/sign-in'
 import { ProfileProvider, useProfile } from './profile'
 import { LogsProvider } from './logs'
 import { MomProvider } from './mom'
@@ -40,6 +42,22 @@ function ActiveTab() {
     default:
       return <TodayScreen />
   }
+}
+
+// Gates the whole app on auth: signed-out users see sign-in; signed-in users
+// (once their family is ensured) see the app. A brief loading state avoids flashes.
+function AuthGate({ children }: { children: ReactNode }) {
+  const { status, bootstrapping } = useAuth()
+
+  if (status === 'loading' || (status === 'signed-in' && bootstrapping)) {
+    return (
+      <div className="grid h-full place-items-center bg-background text-muted-foreground">
+        <span className="text-sm">Loading…</span>
+      </div>
+    )
+  }
+  if (status === 'signed-out') return <SignInScreen />
+  return <>{children}</>
 }
 
 function Stage() {
@@ -121,21 +139,25 @@ export function Prototype() {
   return (
     <main className="flex min-h-[100dvh] w-full items-center justify-center bg-[oklch(0.93_0.018_82)] sm:p-6">
       <div className="relative flex h-[100dvh] w-full max-w-[404px] flex-col overflow-hidden bg-background sm:h-[868px] sm:rounded-[3rem] sm:border-[13px] sm:border-foreground sm:shadow-[0_40px_80px_-30px_rgba(38,50,56,0.5)]">
-        <ProfileProvider>
-          <LogsProvider>
-            <MomProvider>
-              <MemoriesProvider>
-                <AppointmentsProvider>
-                  <InboxProvider>
-                    <PrototypeProvider initialPhase="onboarding" initialTab="today">
-                      <Stage />
-                    </PrototypeProvider>
-                  </InboxProvider>
-                </AppointmentsProvider>
-              </MemoriesProvider>
-            </MomProvider>
-          </LogsProvider>
-        </ProfileProvider>
+        <AuthProvider>
+          <ProfileProvider>
+            <LogsProvider>
+              <MomProvider>
+                <MemoriesProvider>
+                  <AppointmentsProvider>
+                    <InboxProvider>
+                      <PrototypeProvider initialPhase="onboarding" initialTab="today">
+                        <AuthGate>
+                          <Stage />
+                        </AuthGate>
+                      </PrototypeProvider>
+                    </InboxProvider>
+                  </AppointmentsProvider>
+                </MemoriesProvider>
+              </MomProvider>
+            </LogsProvider>
+          </ProfileProvider>
+        </AuthProvider>
       </div>
     </main>
   )

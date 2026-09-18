@@ -1,8 +1,9 @@
 'use client'
 
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, LogOut } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, ageLabel } from '../profile'
+import { useAuth } from '../auth'
 import { NameAvatar } from '../name-avatar'
 import { Screen, Scroll, StatusBar, TopBar, Card, CardLabel } from '../ui'
 
@@ -15,6 +16,7 @@ const feedingLabel: Record<string, string> = {
 export function SettingsScreen() {
   const { closeOverlay, openOverlay } = useNav()
   const { profile } = useProfile()
+  const { user, signOut } = useAuth()
 
   return (
     <Screen>
@@ -38,10 +40,17 @@ export function SettingsScreen() {
           <Card className="p-0">
             <div className="px-5 py-3.5">
               <p className="text-[15px]">
-                Signed in as{' '}
-                <span className="font-semibold">{profile?.momName ?? 'Mama'}</span>
+                Signed in as <span className="font-semibold">{profile?.momName ?? 'Mama'}</span>
               </p>
+              {user?.email && <p className="mt-0.5 text-[13px] text-muted-foreground">{user.email}</p>}
             </div>
+            <button
+              onClick={signOut}
+              className="flex w-full items-center gap-3 border-t border-border/60 px-5 py-3.5 text-left text-[15px] font-medium text-foreground transition-colors active:bg-muted"
+            >
+              <LogOut className="size-[18px] text-muted-foreground" strokeWidth={1.75} />
+              Sign out
+            </button>
           </Card>
         </div>
 
