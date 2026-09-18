@@ -39,7 +39,10 @@ export function OnboardingScreen() {
   const [step, setStep] = useState<Step>('welcome')
   const [momName, setMomName] = useState('')
   const [babyName, setBabyName] = useState('')
-  const [birthDate, setBirthDate] = useState('')
+  // Default to today so the date field and state agree from the start — a newborn
+  // is often born today/recently, and it means "Continue" is enabled without the
+  // parent having to re-pick a date the field already shows.
+  const [birthDate, setBirthDate] = useState(() => todayISO())
   const [feeding, setFeeding] = useState<Feeding | null>(null)
   const [photo, setPhoto] = useState<string | undefined>(undefined)
 
