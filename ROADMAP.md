@@ -4,6 +4,26 @@ Live at https://mamahq.vercel.app/app (auto-deploys on push to `main`). Backend
 foundation (Supabase auth) is in; app DATA is still localStorage until the cloud
 migration lands. This file tracks deferred work + reasoning.
 
+## ▶️ TOMORROW — START HERE (fixes the sign-in email rate limit for good)
+Blocked: Supabase's DEFAULT email sender is throttled to ~2–4/hr, so magic-link
+sign-in hits "email rate limit exceeded" during testing. Admin-generated login
+links were tried TWICE and abandoned — root cause: `@supabase/ssr` uses the PKCE
+flow, and admin `generateLink` verify/hash links don't match it, so the session
+never completes. Don't reopen that path.
+
+THE FIX (Path A — permanent, ~10 min total):
+1. Corey: create a free **Resend** account (resend.com) → API Keys → create → copy `re_…`.
+   For sending, quickest is the built-in `onboarding@resend.dev` (only emails your own
+   address — fine for testing) OR verify a domain for real sending.
+2. Corey: in **Supabase dashboard → Project Settings → Authentication → SMTP Settings** →
+   enable custom SMTP with Resend's SMTP creds (host `smtp.resend.com`, port 465, user
+   `resend`, password = the `re_…` API key, sender = your from-address). This is the piece
+   that removes the rate limit. (Alternatively raise Auth → Rate Limits, but SMTP is the real fix.)
+3. Then normal "enter email → magic link" works instantly, no limit. Same Resend account also
+   powers the Dad/partner email channel (below), so this unblocks two things at once.
+Note: DB is currently EMPTY (all tables + users wiped) — next real sign-in = clean first-run,
+so onboarding should set the correct birth date / Day count (the stale "Day 21" is gone).
+
 ## 🔑 NEEDS YOU — external accounts to unblock features
 These are the ONLY things blocked on the user; everything else is buildable.
 
