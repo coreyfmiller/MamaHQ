@@ -181,6 +181,56 @@ update public.family_members
   where status is null;
 
 -- ---------------------------------------------------------------------------
+-- ensure_owner_person(fid) — REDEFINED for Step 7 so the owner-bootstrap insert of
+-- a CONNECTED person (user_id = owner) is permitted past the new household_people
+-- link guards. Same behavior as 0002, wrapped in the transaction-local allow-link
+-- flag. (0009 applies after 0002, so this definition wins on clean provision; it's
+-- an idempotent create-or-replace on the live DB.)
+-- ---------------------------------------------------------------------------
+create or replace function public.ensure_owner_person(fid uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  oid uuid;
+  pid uuid;
+begin
+  select f.owner_id into oid from public.families f where f.id = fid;
+  if oid is null then
+    return null;
+  end if;
+
+  select p.id into pid
+  from public.household_people p
+  where p.family_id = fid and p.user_id = oid
+  limit 1;
+  if pid is not null then
+    return pid;
+  end if;
+
+  -- Authorized identity link: this is the legitimate owner-person bootstrap.
+  perform set_config('mamahq.allow_person_link', 'on', true);
+  insert into public.household_people (family_id, user_id, display_name, relationship)
+  values (fid, oid, 'Me', 'owner')
+  on conflict (family_id, user_id) where user_id is not null do nothing
+  returning id into pid;
+  perform set_config('mamahq.allow_person_link', 'off', true);
+
+  if pid is null then
+    select p.id into pid
+    from public.household_people p
+    where p.family_id = fid and p.user_id = oid
+    limit 1;
+  end if;
+
+  return pid;
+end $$;
+
+grant execute on function public.ensure_owner_person(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- create_household_invitation(p_person_id, p_token_hash, p_email, p_ttl_seconds)
 --   Owner-or-member of the family that OWNS p_person_id may create an invitation
 --   for that person. Stores ONLY the token hash. Returns the invitation id.
