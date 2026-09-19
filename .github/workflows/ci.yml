@@ -118,12 +118,17 @@ jobs:
         # Use --override-name so the CLI emits exactly the variable names our test
         # harness expects. These are the throwaway local stack's keys, printed by
         # the CLI; they are NOT production credentials.
+        # `supabase status -o env` emits KEY="value" (double-quoted). Writing that
+        # verbatim into $GITHUB_ENV would keep the quotes AS PART OF THE VALUE,
+        # producing e.g. NEXT_PUBLIC_SUPABASE_URL='"http://127.0.0.1:54321"' which
+        # fails supabase-js URL validation. Strip the surrounding quotes.
         run: |
           supabase status -o env \
             --override-name api.url=SUPABASE_URL \
             --override-name auth.anon_key=SUPABASE_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
-            | grep -E '^(SUPABASE_URL|SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY)=' >> "$GITHUB_ENV"
+            | grep -E '^(SUPABASE_URL|SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY)=' \
+            | sed -E 's/^([A-Z_]+)="(.*)"$/\1=\2/' >> "$GITHUB_ENV"
 
       - name: Seed the global catalog projection (service role, local)
         # Some catalog security assertions read canonical_items; seed so the
