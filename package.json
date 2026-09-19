@@ -11,7 +11,8 @@
     "catalog:seed": "node scripts/seed-catalog.ts",
     "test:grocery-search": "node scripts/test-grocery-search.ts",
     "bench:grocery-search": "node scripts/bench-grocery-search.ts",
-    "test:grocery-resolver": "node scripts/test-grocery-resolver.ts"
+    "test:grocery-resolver": "node scripts/test-grocery-resolver.ts",
+    "test:grocery-actions": "node scripts/test-grocery-actions.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

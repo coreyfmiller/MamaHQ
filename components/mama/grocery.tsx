@@ -4,6 +4,17 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import * as db from '@/lib/supabase/data'
+import type { ProposedGroceryItem } from '@/lib/grocery/resolver/types'
+import { resolveGroceryAction } from '@/lib/grocery/actions/resolve-action'
+import { planGroceryAction } from '@/lib/grocery/actions/execute-action'
+import type { ActiveGroceryItem, ValidatedGroceryAction } from '@/lib/grocery/actions/types'
+
+/** Outcome of applying a resolved proposal, so the UI can give feedback / confirm. */
+export type ApplyOutcome =
+  | { kind: 'added'; displayName: string }
+  | { kind: 'incremented'; displayName: string; resultingQuantity: number }
+  | { kind: 'separate'; displayName: string }
+  | { kind: 'confirm'; action: ValidatedGroceryAction }
 
 // Grocery — the operational foundation (Step 2). A shared, family-scoped list.
 // display_name is the source of truth; nothing here depends on a catalog, search,
@@ -26,6 +37,11 @@ export interface GroceryItem {
   status: GroceryStatus
   createdAt: string
   completedAt?: string | null
+  // Step 5B operational detail (for duplicate identity + faithful display).
+  resolvedAttributes?: { attribute_id: string; value: string | boolean }[]
+  packageSize?: { value: number; unit: string } | null
+  packageType?: string | null
+  unmatchedModifiers?: string[]
 }
 
 const STORAGE_KEY = 'mamahq.proto.grocery.v1'
@@ -37,6 +53,10 @@ interface GroceryCtx {
   completed: GroceryItem[]
   /** Add an item. Pass canonicalItemId when it came from a catalog selection. */
   addItem: (displayName: string, opts?: { quantity?: number; unit?: string; note?: string; canonicalItemId?: string | null }) => void
+  /** Step 5B: run Action Resolution over a resolved proposal + the active list, then
+   *  execute the validated action (add / increment / add-separate) or return a
+   *  confirmation for the UI. This is the seam manual + future AI entry converge on. */
+  addResolved: (proposal: ProposedGroceryItem) => ApplyOutcome
   editItem: (id: string, patch: Partial<Pick<GroceryItem, 'displayName' | 'quantity' | 'unit' | 'note' | 'category' | 'store' | 'assignedToPersonId'>>) => void
   /** Mark bought: sets status=completed, stamps completed_at, writes a purchase_event. */
   completeItem: (id: string) => void
@@ -53,6 +73,7 @@ const Ctx = createContext<GroceryCtx>({
   active: [],
   completed: [],
   addItem: () => {},
+  addResolved: () => ({ kind: 'added', displayName: '' }),
   editItem: () => {},
   completeItem: () => {},
   restoreItem: () => {},
@@ -85,6 +106,10 @@ function fromRow(r: db.DbGroceryItem): GroceryItem {
     status: r.status,
     createdAt: r.created_at,
     completedAt: r.completed_at,
+    resolvedAttributes: r.resolved_attributes ?? [],
+    packageSize: r.package_size ?? null,
+    packageType: r.package_type ?? null,
+    unmatchedModifiers: r.unmatched_modifiers ?? [],
   }
 }
 
@@ -181,6 +206,85 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Step 5B: resolve what to do with the LIST for a proposal, then execute it.
+  const addResolved: GroceryCtx['addResolved'] = (proposal) => {
+    const activeView: ActiveGroceryItem[] = items
+      .filter((it) => it.status === 'active')
+      .map((it) => ({
+        id: it.id,
+        status: 'active',
+        canonicalItemId: it.canonicalItemId ?? null,
+        displayName: it.displayName,
+        quantity: it.quantity,
+        attributes: it.resolvedAttributes ?? [],
+        packageSize: it.packageSize ?? null,
+        packageType: it.packageType ?? null,
+        unmatchedModifiers: it.unmatchedModifiers ?? [],
+      }))
+
+    const action = resolveGroceryAction(proposal, activeView, { source: 'manual' })
+    const plan = planGroceryAction(action, { source: 'manual' })
+
+    if (plan.op === 'confirm') return { kind: 'confirm', action }
+
+    if (plan.op === 'increment') {
+      // Optimistic bump, then atomic RPC (idempotent via clientActionId).
+      setItems((list) => list.map((it) => (it.id === plan.targetItemId ? { ...it, quantity: plan.resultingQuantity } : it)))
+      const target = items.find((it) => it.id === plan.targetItemId)
+      if (familyId) {
+        db.incrementGroceryItemRpc(plan.targetItemId, plan.incrementBy, plan.clientActionId).catch((e) => {
+          console.warn('grocery increment failed', e)
+          void rehydrateItem(plan.targetItemId)
+        })
+      }
+      return { kind: 'incremented', displayName: target?.displayName ?? proposal.displayName, resultingQuantity: plan.resultingQuantity }
+    }
+
+    if (plan.op === 'insert') {
+      const d = plan.detail
+      const item: GroceryItem = {
+        id: newId(),
+        displayName: d.displayName,
+        canonicalItemId: d.canonicalItemId,
+        quantity: d.quantity,
+        unit: d.quantityUnit ?? undefined,
+        addedByPersonId: me?.id ?? null,
+        assignedToPersonId: null,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+        resolvedAttributes: d.attributes.map((a) => ({ attribute_id: a.attribute_id, value: a.value })),
+        packageSize: d.packageSize,
+        packageType: d.packageType,
+        unmatchedModifiers: d.unmatchedModifiers,
+      }
+      setItems((list) => [item, ...list])
+      if (familyId) {
+        db.insertGroceryItem({
+          id: item.id,
+          family_id: familyId,
+          display_name: item.displayName,
+          canonical_item_id: item.canonicalItemId ?? null,
+          quantity: item.quantity,
+          unit: item.unit ?? null,
+          added_by_person_id: item.addedByPersonId ?? null,
+          source_type: d.canonicalItemId ? 'autocomplete' : 'manual',
+          status: 'active',
+          resolved_attributes: item.resolvedAttributes,
+          package_size: item.packageSize,
+          package_type: item.packageType,
+          unmatched_modifiers: item.unmatchedModifiers,
+          client_action_id: d.clientActionId,
+        }).catch((e) => console.warn('grocery sync', e))
+      }
+      return action.type === 'ADD_SEPARATE'
+        ? { kind: 'separate', displayName: d.displayName }
+        : { kind: 'added', displayName: d.displayName }
+    }
+
+    return { kind: 'added', displayName: proposal.displayName }
+  }
+
   const editItem: GroceryCtx['editItem'] = (id, patch) => {
     // EDIT-CLEARS-CANONICAL rule: manually changing the display name breaks the
     // catalog identity (e.g. "Milk" → "Chocolate milk"), so we clear the canonical
@@ -264,7 +368,7 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   const completed = useMemo(() => items.filter((i) => i.status === 'completed'), [items])
 
   const value = useMemo(
-    () => ({ items, hydrated, active, completed, addItem, editItem, completeItem, restoreItem, removeItem, clearGrocery }),
+    () => ({ items, hydrated, active, completed, addItem, addResolved, editItem, completeItem, restoreItem, removeItem, clearGrocery }),
     [items, hydrated, active, completed, familyId, me],
   )
 

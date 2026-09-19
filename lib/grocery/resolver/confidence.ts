@@ -14,7 +14,11 @@ export const AMBIGUOUS_TERMS = new Set(['turnip', 'gummies'])
 /** How close the runner-up is counts as "ambiguous". Scores are large banded ints;
  *  within the SAME match class the gap is small, so a near-tie means two plausible
  *  concepts. */
-const AMBIGUITY_GAP = 300
+// A near-tie within the SAME class. Kept tight: real ambiguity in this catalog is
+// almost always a shared alias (handled explicitly above), not two independent
+// concepts scoring within a few points. A wide gap here produced false ambiguity
+// (e.g. "milks" → Milk vs Almond Milk, both token_prefix, ~20 pts apart).
+const AMBIGUITY_GAP = 40
 
 export interface ConfidenceOutcome {
   confidence: Confidence
@@ -38,9 +42,14 @@ export function assessConfidence(results: SearchResult[], normalizedConceptText:
   } else if (AMBIGUOUS_TERMS.has(normalizedConceptText)) {
     ambiguous = true
     ambiguousAlias = normalizedConceptText
-  } else if (runner && runner.matchType === top.matchType && top.score - runner.score <= AMBIGUITY_GAP) {
-    ambiguous = true
   }
+  // NOTE: we deliberately do NOT flag ambiguity purely from a near score gap. In
+  // this catalog a near-tie is almost always a stronger concept just edging a weaker
+  // sibling (e.g. "milks" → Milk over Almond Milk via priority), which is a correct
+  // pick, not an ambiguity. Real ambiguity = a shared alias, handled above. `runner`
+  // and AMBIGUITY_GAP are retained for a future context-aware tie-breaker.
+  void runner
+  void AMBIGUITY_GAP
 
   // Confidence from the winning match class.
   let confidence: Confidence

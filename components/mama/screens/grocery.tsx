@@ -3,10 +3,14 @@
 import { useMemo, useRef, useState } from 'react'
 import { Plus, Minus, ShoppingCart, RotateCcw, Trash2, Check } from 'lucide-react'
 import { useNav } from '../context'
-import { useGrocery, type GroceryItem } from '../grocery'
+import { useGrocery, type GroceryItem, type ApplyOutcome } from '../grocery'
 import { CheckBox, Screen, Scroll, StatusBar, TopBar } from '../ui'
 import { searchGrocery } from '@/lib/grocery/search/search'
 import { SHOPPING_CATEGORY_LABELS } from '@/lib/grocery/search/labels'
+import { resolveGroceryPhrase } from '@/lib/grocery/resolver/resolve'
+import { getCanonical } from '@/lib/grocery/catalog'
+import type { ProposedGroceryItem } from '@/lib/grocery/resolver/types'
+import type { ValidatedGroceryAction } from '@/lib/grocery/actions/types'
 
 /**
  * Grocery — the operational shared list. Add items (now with deterministic catalog
@@ -15,8 +19,15 @@ import { SHOPPING_CATEGORY_LABELS } from '@/lib/grocery/search/labels'
  * typing + Enter always adds — as a canonical item if selected, else custom.
  */
 export function GroceryScreen() {
-  const { closeOverlay } = useNav()
-  const { active, completed, addItem, editItem, completeItem, restoreItem, removeItem } = useGrocery()
+  const { closeOverlay, showToast } = useNav()
+  const { active, completed, addResolved, editItem, completeItem, restoreItem, removeItem } = useGrocery()
+
+  // Feedback for a resolved add outcome (toast for the common cases).
+  const feedback = (o: ApplyOutcome) => {
+    if (o.kind === 'added') showToast(`Added ${o.displayName}`)
+    else if (o.kind === 'incremented') showToast(`${o.displayName} → ${o.resultingQuantity}`)
+    else if (o.kind === 'separate') showToast(`Added ${o.displayName} separately`)
+  }
 
   return (
     <Screen>
@@ -32,7 +43,7 @@ export function GroceryScreen() {
           </p>
         </header>
 
-        <AddRow onAdd={addItem} />
+        <AddRow addResolved={addResolved} onFeedback={feedback} />
 
         {/* Active list */}
         {active.length === 0 ? (
@@ -93,18 +104,23 @@ export function GroceryScreen() {
   )
 }
 
-// The add input with deterministic catalog autocomplete. Keyboard: ↑/↓ move,
-// Enter selects the highlighted result (or adds the typed text as a custom item if
-// none highlighted), Escape closes the list. Touch/mouse: tap a result. Typing +
-// Enter with no highlight always adds fast — autocomplete never blocks entry.
+// The add input. Two paths converge on the same domain seam (resolve → action →
+// execute): (A) pick an autocomplete result → a canonical proposal; (B) type a
+// natural phrase ("2 milk", "red peppers", "size 4 diapers") + Enter → the Grocery
+// Resolver. Keyboard ↑/↓/Enter/Escape; touch taps a result. Autocomplete never
+// blocks entry. When the resolver needs confirmation (ambiguous / invalid unit) we
+// show a compact inline choice instead of mutating.
 function AddRow({
-  onAdd,
+  addResolved,
+  onFeedback,
 }: {
-  onAdd: (displayName: string, opts?: { canonicalItemId?: string | null }) => void
+  addResolved: (proposal: ProposedGroceryItem) => ApplyOutcome
+  onFeedback: (o: ApplyOutcome) => void
 }) {
   const [draft, setDraft] = useState('')
   const [open, setOpen] = useState(false)
-  const [highlight, setHighlight] = useState(-1) // -1 = no selection (Enter adds custom)
+  const [highlight, setHighlight] = useState(-1)
+  const [confirm, setConfirm] = useState<ValidatedGroceryAction | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const results = useMemo(() => (draft.trim() ? searchGrocery(draft, 8) : []), [draft])
@@ -115,17 +131,42 @@ function AddRow({
     setHighlight(-1)
   }
 
-  const addCustom = () => {
-    const text = draft.trim()
-    if (!text) return
-    onAdd(text)
-    reset()
+  const handleOutcome = (o: ApplyOutcome) => {
+    if (o.kind === 'confirm') {
+      setConfirm(o.action)
+      setOpen(false)
+    } else {
+      onFeedback(o)
+      reset()
+      inputRef.current?.focus()
+    }
   }
 
-  const addCanonical = (r: { displayName: string; canonicalId: string }) => {
-    onAdd(r.displayName, { canonicalItemId: r.canonicalId })
-    reset()
-    inputRef.current?.focus()
+  // Build a canonical proposal from a picked autocomplete result and apply it.
+  const applyCanonical = (r: { canonicalId: string; canonicalName: string; displayName: string; shoppingCategory: string }) => {
+    const proposal: ProposedGroceryItem = {
+      rawPhrase: r.displayName,
+      displayName: r.displayName,
+      canonicalItemId: r.canonicalId,
+      canonicalName: r.canonicalName,
+      shoppingCategory: r.shoppingCategory,
+      quantity: { value: 1 },
+      extractedAttributes: [],
+      unmatchedModifiers: [],
+      candidates: [],
+      confidence: 'high',
+      ambiguous: false,
+      needsReview: false,
+      unmatched: false,
+    }
+    void getCanonical(r.canonicalId)
+    handleOutcome(addResolved(proposal))
+  }
+
+  const applyTyped = () => {
+    const text = draft.trim()
+    if (!text) return
+    handleOutcome(addResolved(resolveGroceryPhrase(text)))
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -138,15 +179,54 @@ function AddRow({
       setHighlight((h) => Math.max(h - 1, -1))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (open && highlight >= 0 && results[highlight]) addCanonical(results[highlight])
-      else addCustom()
+      if (open && highlight >= 0 && results[highlight]) applyCanonical(results[highlight])
+      else applyTyped()
     } else if (e.key === 'Escape') {
       setOpen(false)
       setHighlight(-1)
     }
   }
 
-  const showList = open && draft.trim().length > 0 && results.length > 0
+  const showList = open && !confirm && draft.trim().length > 0 && results.length > 0
+
+  if (confirm) {
+    const typed = confirm.proposal.rawPhrase.trim()
+    return (
+      <div className="rounded-2xl border border-border bg-card p-3">
+        <p className="px-1 text-[14px] font-medium text-foreground">Did you mean…</p>
+        <div className="mt-2 space-y-1.5">
+          {(confirm.confirmationChoices ?? []).map((c, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                if (c.kind === 'pick_candidate' && c.canonicalItemId) {
+                  const cand = confirm.proposal.candidates.find((x) => x.canonicalId === c.canonicalItemId)
+                  if (cand) applyCanonical(cand)
+                } else {
+                  const p: ProposedGroceryItem = {
+                    ...confirm.proposal,
+                    canonicalItemId: null,
+                    unmatched: true,
+                    ambiguous: false,
+                    invalidStructure: false,
+                    displayName: typed,
+                  }
+                  handleOutcome(addResolved(p))
+                }
+                setConfirm(null)
+              }}
+              className="flex w-full items-center justify-between rounded-xl border border-border/70 px-3 py-2.5 text-left text-[15px] transition-colors active:bg-muted"
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => { setConfirm(null); reset() }} className="mt-2 w-full py-2 text-[13px] font-medium text-muted-foreground">
+          Cancel
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="relative">
@@ -160,17 +240,17 @@ function AddRow({
             setHighlight(-1)
           }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 120)} // allow tap to register
+          onBlur={() => setTimeout(() => setOpen(false), 120)}
           onKeyDown={onKeyDown}
           role="combobox"
           aria-expanded={showList}
           aria-controls="grocery-ac-list"
           aria-autocomplete="list"
-          placeholder="Add an item… e.g. Milk, diapers, bananas"
+          placeholder="Add an item… e.g. 2 milk, red peppers, size 4 diapers"
           className="min-w-0 flex-1 bg-transparent px-2 text-[16px] text-foreground outline-none placeholder:text-muted-foreground/60"
         />
         <button
-          onClick={addCustom}
+          onClick={applyTyped}
           disabled={!draft.trim()}
           aria-label="Add item"
           className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95 disabled:opacity-40"
@@ -188,10 +268,9 @@ function AddRow({
           {results.map((r, i) => (
             <li key={r.canonicalId} role="option" aria-selected={i === highlight}>
               <button
-                // onMouseDown (not onClick) so it fires before input blur closes the list
                 onMouseDown={(e) => {
                   e.preventDefault()
-                  addCanonical(r)
+                  applyCanonical(r)
                 }}
                 onMouseEnter={() => setHighlight(i)}
                 className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors ${

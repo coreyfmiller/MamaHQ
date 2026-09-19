@@ -11,6 +11,7 @@
 import type { ProposedGroceryItem, ResolveOptions } from './types.ts'
 import type { SearchResult } from '../search/types.ts'
 import { normalizePhrase } from './normalize.ts'
+import { singularize } from '../search/normalize.ts'
 import { parseQuantity } from './quantity.ts'
 import { scanAttributes, attributesForConcept, strippableIndices } from './attributes.ts'
 import { assessConfidence } from './confidence.ts'
@@ -43,7 +44,7 @@ export function resolveGroceryPhrase(phrase: string, options: ResolveOptions = {
   if (tokens.length === 0) {
     return {
       rawPhrase: phrase, displayName: phrase.trim(), canonicalItemId: null,
-      quantity: { value: 1 }, extractedAttributes: [], candidates: [],
+      quantity: { value: 1 }, extractedAttributes: [], unmatchedModifiers: [], candidates: [],
       confidence: 'low', ambiguous: false, needsReview: false, unmatched: true,
       explain: options.debug ? { normalizedPhrase: normalized, attributeText: [], conceptCandidateText: '', reason: 'empty phrase' } : undefined,
     }
@@ -66,9 +67,26 @@ export function resolveGroceryPhrase(phrase: string, options: ResolveOptions = {
   //    when the modifier is just an attribute (e.g. "red peppers" → "peppers").
   const resFull = fullText ? searchGrocery(fullText, maxCandidates) : []
   const resStripped = strippedText && strippedText !== fullText ? searchGrocery(strippedText, maxCandidates) : []
-  const results = betterOf(resFull, resStripped)
+  let results = betterOf(resFull, resStripped)
+  let conceptText = results === resStripped ? strippedText : fullText
 
-  const conceptText = results === resStripped ? strippedText : fullText
+  // 3b) Leading-modifier fallback: if the residue didn't resolve, an UNKNOWN leading
+  //     word may be a brand/modifier ("natrel milk", "kirkland eggs"). Try dropping
+  //     leading tokens one at a time and searching the tail; a strong match means
+  //     the dropped words are unmatched modifiers, not part of the concept.
+  // Conservative: drop EXACTLY ONE leading unknown token and require the remaining
+  // tail to be an EXACT match. This resolves "natrel milk" (drop "natrel", tail
+  // "milk" is exact) while leaving invented product names like "Purple Dragon
+  // Cereal" as custom (dropping one word leaves "dragon cereal", not an exact match).
+  const strippedTokens = rest.filter((_, i) => !consumed.has(i))
+  if (results.length === 0 && strippedTokens.length === 2) {
+    const tail = strippedTokens[1]
+    const r = searchGrocery(tail, maxCandidates)
+    if (r.length && (r[0].matchType === 'exact_canonical' || r[0].matchType === 'exact_display' || r[0].matchType === 'exact_alias')) {
+      results = r
+      conceptText = tail
+    }
+  }
   const conf = assessConfidence(results, conceptText)
 
   // 4) Unmatched → first-class custom item.
@@ -76,7 +94,7 @@ export function resolveGroceryPhrase(phrase: string, options: ResolveOptions = {
     const display = fullText ? titleCase(fullText) : phrase.trim()
     return {
       rawPhrase: phrase, displayName: display, canonicalItemId: null,
-      quantity, extractedAttributes: [], candidates: [],
+      quantity, extractedAttributes: [], unmatchedModifiers: [], candidates: [],
       confidence: 'low', ambiguous: false, needsReview: false, unmatched: true,
       explain: options.debug ? { normalizedPhrase: normalized, quantityText: quantity.raw, conceptCandidateText: fullText, attributeText: [], reason: 'no catalog match → custom item' } : undefined,
     }
@@ -86,9 +104,40 @@ export function resolveGroceryPhrase(phrase: string, options: ResolveOptions = {
   const top = results[0]
   const concept = getCanonical(top.canonicalId)
   const declaredAttrIds = concept ? concept.attributes.map((a) => a.attribute_id) : []
-  const { attributes } = attributesForConcept(scan, declaredAttrIds)
+  const { attributes, consumedIndices } = attributesForConcept(scan, declaredAttrIds)
 
-  const needsReview = conf.ambiguous || conf.confidence === 'low'
+  // Unmatched modifiers: residue tokens that were neither (a) consumed by a kept
+  // attribute, nor (b) part of the concept (its name/display OR the concept-candidate
+  // text we searched). e.g. "natrel" in "Natrel 2% milk". Compared on SINGULAR forms
+  // so "milks" isn't treated as leftover for the "Milk" concept. Preserved so we
+  // never silently discard the user's words.
+  const conceptWords = new Set(
+    [top.canonicalName, top.displayName, conceptText]
+      .join(' ')
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => singularize(w)),
+  )
+  const unmatchedModifiers = rest.filter(
+    (t, i) => !consumedIndices.has(i) && !conceptWords.has(singularize(t)) && !/^\d/.test(t),
+  )
+
+  // Invalid structure: a stated measure unit whose dimension the concept doesn't
+  // allow (e.g. volume "litres" on toilet paper). Package units are permissive.
+  let invalidStructure = false
+  if (concept && quantity.unit && (quantity.unitKind === 'weight' || quantity.unitKind === 'volume')) {
+    const dims = new Set(
+      concept.allowed_units.map((u) => {
+        if (['g', 'kg', 'oz', 'lb'].includes(u)) return 'weight'
+        if (['mL', 'L', 'fl_oz', 'cup'].includes(u)) return 'volume'
+        return 'other'
+      }),
+    )
+    if (!dims.has(quantity.unitKind)) invalidStructure = true
+  }
+
+  const needsReview = conf.ambiguous || conf.confidence === 'low' || invalidStructure
 
   return {
     rawPhrase: phrase,
@@ -98,9 +147,11 @@ export function resolveGroceryPhrase(phrase: string, options: ResolveOptions = {
     shoppingCategory: top.shoppingCategory,
     quantity,
     extractedAttributes: attributes,
+    unmatchedModifiers,
     candidates: results.slice(0, maxCandidates),
     confidence: conf.confidence,
     ambiguous: conf.ambiguous,
+    invalidStructure,
     needsReview,
     unmatched: false,
     explain: options.debug

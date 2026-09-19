@@ -365,6 +365,12 @@ export interface DbGroceryItem {
   created_at: string
   updated_at: string
   completed_at: string | null
+  // Step 5B operational detail (see 0007_grocery_action_detail.sql).
+  resolved_attributes: { attribute_id: string; value: string | boolean }[]
+  package_size: { value: number; unit: string } | null
+  package_type: string | null
+  unmatched_modifiers: string[]
+  client_action_id: string | null
 }
 
 export async function fetchGroceryItems(familyId: string): Promise<DbGroceryItem[]> {
@@ -390,6 +396,23 @@ export async function updateGroceryItem(id: string, patch: Partial<DbGroceryItem
 export async function deleteGroceryItem(id: string): Promise<void> {
   const { error } = await supabaseBrowser().from('grocery_items').delete().eq('id', id)
   if (error) throw error
+}
+
+// Atomic + idempotent quantity increment (Step 5B). One server-side statement; a
+// retried call with the same clientActionId does not double-apply. Returns the new
+// quantity.
+export async function incrementGroceryItemRpc(
+  itemId: string,
+  delta: number,
+  clientActionId: string,
+): Promise<number> {
+  const { data, error } = await supabaseBrowser().rpc('increment_grocery_item', {
+    p_item_id: itemId,
+    p_delta: delta,
+    p_client_action_id: clientActionId,
+  })
+  if (error) throw error
+  return Number(data)
 }
 
 // Retained purchase history — a denormalized snapshot written when an item is

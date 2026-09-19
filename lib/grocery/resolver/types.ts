@@ -33,8 +33,8 @@ export interface ParsedQuantity {
 export interface ExtractedAttribute {
   attribute_id: string
   value: string | boolean
-  /** The phrase token(s) it came from. */
-  matchedText: string
+  /** The phrase token(s) it came from (debug/provenance; optional). */
+  matchedText?: string
 }
 
 /** The structured proposal. A proposal is NEVER auto-committed. */
@@ -52,6 +52,9 @@ export interface ProposedGroceryItem {
 
   quantity: ParsedQuantity
   extractedAttributes: ExtractedAttribute[]
+  /** Residue tokens the resolver could not account for as quantity/unit/attribute/
+   *  concept — e.g. "natrel" in "Natrel 2% milk". Preserved, never discarded. */
+  unmatchedModifiers: string[]
 
   /** Ranked search candidates for the concept-candidate text (top few). Useful for
    *  a future disambiguation UI. Empty for a custom item. */
@@ -60,6 +63,10 @@ export interface ProposedGroceryItem {
   confidence: Confidence
   /** True when more than one candidate is plausibly the intended concept. */
   ambiguous: boolean
+  /** True when the stated unit conflicts with the concept (e.g. "4 litres toilet
+   *  paper" — a volume measure on a non-liquid). Signals the Action layer to ask
+   *  rather than persist nonsensical structured metadata. */
+  invalidStructure?: boolean
   /** True when a human should confirm (ambiguous, or low confidence, or a
    *  known-ambiguous alias). */
   needsReview: boolean
