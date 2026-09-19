@@ -1,0 +1,88 @@
+# ============================================================================
+# MamaHQ — Supabase CLI configuration
+# ============================================================================
+# This file makes the repository a standard Supabase CLI project so a clean
+# database can be provisioned locally (or in CI) from the authoritative
+# migrations in supabase/migrations/ via `supabase db reset`.
+#
+# IMPORTANT — how this relates to production:
+#   * `project_id` below is the Supabase PROJECT REF. It is NOT a secret (it
+#     appears in the project's public URL) and is only used by `supabase link`
+#     to target the remote project for READ-ONLY inspection (`db diff`,
+#     `migration list`). Linking additionally requires an access token supplied
+#     at runtime via SUPABASE_ACCESS_TOKEN in the environment — that token is a
+#     secret and is NEVER stored here.
+#   * The local stack started by `supabase start` is a DISPOSABLE Docker
+#     Postgres. It has nothing to do with production. `supabase db reset`
+#     DESTROYS and rebuilds ONLY the local database. Never run destructive CLI
+#     commands against the linked remote.
+#   * Production migrations continue to be applied by hand via the Management
+#     API (see supabase/migrations/README.md and docs/DATABASE_WORKFLOW.md).
+#     The CLI is adopted here for reproducible LOCAL/CI provisioning + drift
+#     inspection, not to re-apply SQL to production.
+#
+# No secrets belong in this file. Keys used by the LOCAL stack are the well-known
+# Supabase demo keys (safe by design — they only unlock a throwaway local DB).
+# ============================================================================
+
+project_id = "sccrnjhnfmtusvyzmngs"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# Match the current production Postgres major version so a clean provision
+# reproduces production behavior (functions, RLS, constraints) faithfully.
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[realtime]
+# MamaHQ does not use Supabase Realtime today (documented as deferred). The
+# local service may still start; the app subscribes to nothing.
+enabled = true
+
+[studio]
+enabled = true
+port = 54323
+
+# Local email testing sink. No mail leaves the machine.
+[local_smtp]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+# The local site URL for auth redirects during local development/testing.
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["http://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+# Allow the security test suite to create confirmed users without an email
+# round-trip. This affects only the LOCAL/CI stack.
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Local only: skip the email confirmation step so tests can sign in immediately.
+enable_confirmations = false
+
+# ----------------------------------------------------------------------------
+# Analytics/other optional services are left at CLI defaults. Nothing here
+# enables telemetry against production.
+# ----------------------------------------------------------------------------
+[analytics]
+enabled = false

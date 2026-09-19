@@ -25,3 +25,10 @@ tsconfig.tsbuildinfo
 # UI prototype reference (not part of the app build)
 _ui_prototype/
 mama-hq-ui-prototype.zip
+
+# Supabase CLI local artifacts (config.toml IS tracked; these are not)
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+# Local test env for the DB/security suites (never commit real or local secrets)
+.env.test.local
