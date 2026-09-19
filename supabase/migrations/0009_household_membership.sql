@@ -87,9 +87,15 @@ begin
   if new.user_id is not distinct from old.user_id then
     return new;
   end if;
-  -- Otherwise the link/unlink is only permitted inside an authorized definer RPC,
-  -- which sets mamahq.allow_person_link = 'on' for its transaction.
+  -- Allow inside an authorized definer RPC (acceptance/bootstrap set this flag).
   if coalesce(current_setting('mamahq.allow_person_link', true), 'off') = 'on' then
+    return new;
+  end if;
+  -- Allow the trusted server context (service role / migrations / seed): these run
+  -- with NO authenticated end-user (auth.uid() is null) and already bypass RLS.
+  -- The guard exists to stop a BROWSER CLIENT (role authenticated, non-null
+  -- auth.uid()) from hijacking an identity — that is the only case we block.
+  if auth.uid() is null then
     return new;
   end if;
   raise exception 'household_people.user_id may only be changed via invitation acceptance';
@@ -108,8 +114,13 @@ returns trigger language plpgsql
 set search_path = public
 as $$
 begin
+  -- Only a BROWSER CLIENT (authenticated end-user) is blocked from inserting a
+  -- pre-linked person. The definer bootstrap/acceptance RPCs set the allow flag;
+  -- the trusted server context (service role / migrations / seed) has no
+  -- auth.uid() and already bypasses RLS.
   if new.user_id is not null
-     and coalesce(current_setting('mamahq.allow_person_link', true), 'off') <> 'on' then
+     and coalesce(current_setting('mamahq.allow_person_link', true), 'off') <> 'on'
+     and auth.uid() is not null then
     raise exception 'household_people may not be inserted pre-linked to a user; link via invitation acceptance';
   end if;
   return new;
