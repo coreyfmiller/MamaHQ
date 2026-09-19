@@ -20,6 +20,7 @@ export type Overlay =
   | 'reset'
   | 'read'
   | 'grocery'
+  | 'people'
   | null
 
 interface PrototypeCtx {

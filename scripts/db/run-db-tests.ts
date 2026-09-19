@@ -58,9 +58,10 @@ function main(): void {
   const completion = run('scripts/test-db-completion.ts')
   const security = run('scripts/test-security.ts')
   const household = run('scripts/test-household.ts')
+  const membership = run('scripts/test-membership.ts')
 
-  if (completion !== 0 || security !== 0 || household !== 0) {
-    console.error(`\n✗ Database tests failed (completion=${completion}, security=${security}, household=${household}).`)
+  if (completion !== 0 || security !== 0 || household !== 0 || membership !== 0) {
+    console.error(`\n✗ Database tests failed (completion=${completion}, security=${security}, household=${household}, membership=${membership}).`)
     process.exit(1)
   }
   console.log('\n✓ All database-dependent suites passed.')

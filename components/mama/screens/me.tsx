@@ -216,6 +216,7 @@ export function MeScreen() {
 
         <Card className="divide-y divide-border/50 py-1">
           {[
+            { icon: Users, label: 'Household', sub: 'People & invites', action: () => openOverlay('people') },
             { icon: Users, label: 'Partner view', sub: 'Share the load', action: () => openOverlay('partner') },
             { icon: Bell, label: 'Reminders', sub: 'See a preview', action: () => openOverlay('reminder') },
             { icon: Sparkles, label: 'How MamaHQ grows', sub: 'From newborn to teen', action: () => openOverlay('beyond90') },

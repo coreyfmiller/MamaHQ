@@ -116,3 +116,49 @@ non-blocking** hardening (an explicit membership check or grant tightening on
 `ensure_owner_person`) is recorded in `docs/TECHNICAL_DEBT.md` for future
 consideration; it is intentionally not applied here to avoid an unnecessary
 behavior-touching migration during a hardening step.
+
+
+---
+
+## Step 7 addendum — Household Membership & Partner Access
+
+Migration `0009_household_membership.sql` adds membership/invitation RPCs and two
+guard-trigger functions. All were audited against the same five criteria.
+
+### New SECURITY DEFINER functions
+
+| Function | search_path | Authorization | Notes |
+|---|---|---|---|
+| `create_household_invitation(person_id, token_hash, email, ttl)` | `public` ✓ | `auth.uid()` not null; derives family from the **person row**, then `is_family_member(fid)` | never trusts a caller-supplied family; refuses if the person is already connected; stores only the token hash (validates length ≥ 32) |
+| `accept_household_invitation(token_hash)` | `public` ✓ | `auth.uid()` not null; family/person derived from the **validated invitation** | idempotent for the same user; rejects reuse/expired/revoked; one-active-household check; links the existing person under a scoped `set_config` flag |
+| `revoke_household_invitation(invitation_id)` | `public` ✓ | `auth.uid()` not null; `is_family_member(inv.family_id)` | only pending → revoked; accepted membership untouched |
+
+### Guard-trigger functions (not SECURITY DEFINER — run as invoker, correctly)
+
+| Function | search_path | Purpose |
+|---|---|---|
+| `guard_household_person_link()` (BEFORE UPDATE OF user_id) | `public` ✓ | rejects any client-initiated `user_id` change unless `mamahq.allow_person_link='on'` (set only inside `accept_household_invitation`) |
+| `guard_household_person_insert_link()` (BEFORE INSERT) | `public` ✓ | rejects inserting a person already pre-linked to a user_id outside the acceptance flow |
+
+### Criterion findings (Step 7)
+- **Authorization checks — PASS.** Invitation creation authorizes against the
+  person's *own* family; acceptance derives family+person from the validated
+  invitation (never caller input); revoke authorizes against the invitation's family.
+  Membership can no longer be created from the client at all (`members_insert` →
+  `with check (false)`); the only writers are these definer functions.
+- **search_path safety — PASS.** All five pin `set search_path = public`.
+- **Input validation — PASS.** `token_hash` length-checked; `p_ttl_seconds` clamped
+  to a ≥60s floor; token compared by exact hash equality (no injection surface — the
+  hash is a parameter, never interpolated).
+- **Family-identity handling — PASS.** No function trusts a caller-supplied
+  `family_id`. The `set_config('mamahq.allow_person_link', ...)` flag is
+  transaction-local (`is_local = true`), so it cannot leak to other statements/
+  sessions, and the person-link write is bounded to the invitation's own family +
+  an unlinked (or same-user) person row.
+- **EXECUTE privileges — PASS.** `grant execute … to authenticated` on the three
+  RPCs; no `to public`. The guard triggers are invoked by the engine, not granted.
+
+**Conclusion:** no vulnerability found; the two pre-existing escalation paths
+(`family_members` self-insert, `household_people.user_id` hijack) are now closed.
+Behaviorally verified by `scripts/test-security.ts` (fabrication/hijack/enumeration)
+and `scripts/test-membership.ts` (lifecycle), executed in CI.

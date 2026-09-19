@@ -12,17 +12,34 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
 ## Product / feature debt
 
 ### Authenticated second household adult (invite / join flow)
-- **Status:** absent.
-- **Why it matters:** the single biggest unlock. Ownership routing, Care Handoff
-  receipt/acknowledgment, shared calendar, and any cross-person assistant awareness
-  all depend on a *second real authenticated member* of the same family. Today
-  `ensure_family()` only ever enrolls the signer as `owner`; a second sign-up gets
-  its own separate family. The data model already supports it (`family_members`
-  with role `member`, `household_people.user_id` nullable), so this is additive.
-- **Dependency:** none technical; it is a product-sequencing decision.
-- **Suggested milestone:** the next major step after Grocery Memory (or before, if
-  partner features are prioritized). Needs an invite token/link, a join path that
-  inserts a `family_members(member)` row against an existing family, and UI.
+- **Status:** RESOLVED in Step 7 (migration `0009_household_membership.sql`).
+- Secure hashed-token invitations, a transactional `accept_household_invitation`
+  RPC that joins the existing household and links the existing person, an
+  invitation-aware auth bootstrap (no accidental personal household), and the People
+  UI now exist. `family_members` self-insert and `household_people.user_id` hijack
+  are closed. See `docs/HOUSEHOLD_MEMBERSHIP.md`.
+
+### Household member removal / separation workflow
+- **Status:** deferred (infrastructure ready).
+- **Why it matters:** an adult may later need to be removed from a household.
+  `family_members.status` includes `removed` to support revoking *authorization*
+  while preserving the HouseholdPerson identity (historical ownership references
+  depend on it). No workflow/UI is built.
+- **Suggested milestone:** a later admin step; must never delete the person row.
+
+### partner_contacts → household_people consolidation
+- **Status:** deferred (retained-but-deprecated as of Step 7).
+- **Why it matters:** `partner_contacts` is a parallel representation of the same
+  human as an account-less `household_people` row. The target is one coherent
+  household-person model. A future migration should fold partner_contacts into
+  household_people (carrying phone/email/notify prefs) and retire the table.
+- **Dependency:** none blocking.
+
+### mom_items.assignee string → assignee_person_id
+- **Status:** advisory (unchanged by Step 7).
+- **Why it matters:** `mom_items.assignee` is the legacy `'partner'` string.
+  Ownership should reference `household_people.id`. A future additive migration adds
+  `assignee_person_id uuid → household_people`, backfills, then deprecates the string.
 
 ### Care Handoff — external delivery + acknowledgment
 - **Status:** partial (assignment exists; delivery/ack absent).
