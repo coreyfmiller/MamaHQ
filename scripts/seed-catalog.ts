@@ -85,6 +85,23 @@ async function main() {
     process.exit(1)
   }
 
+  // 4) Prune: remove rows whose canonical_id is no longer in the files, so the
+  //    projection is an exact mirror of the source of truth. Safe because the
+  //    catalog is global read-only data with no user references.
+  const wanted = new Set(rows.map((r) => r.canonical_id))
+  const { data: existing } = await admin.from('canonical_items').select('canonical_id')
+  const orphaned = (existing ?? [])
+    .map((r) => (r as { canonical_id: string }).canonical_id)
+    .filter((id) => !wanted.has(id))
+  if (orphaned.length) {
+    const { error: delErr } = await admin.from('canonical_items').delete().in('canonical_id', orphaned)
+    if (delErr) {
+      console.error('✗ Prune failed:', delErr.message)
+      process.exit(1)
+    }
+    console.log(`  pruned ${orphaned.length} retired concept id(s).`)
+  }
+
   const { count } = await admin.from('canonical_items').select('*', { count: 'exact', head: true })
   console.log(`✓ Seeded ${rows.length} concept(s). Table now holds ${count ?? '?'} row(s).`)
   process.exit(0)

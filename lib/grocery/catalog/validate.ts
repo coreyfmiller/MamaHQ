@@ -23,11 +23,15 @@ export interface Finding {
 // Heuristic brand/SKU contamination detector (§14). We can't know every brand, but
 // we can catch the obvious shapes: known-brand tokens, trademark suffixes, embedded
 // pack/size specs (SKU-like), and count/volume/weight numbers in the concept name.
+// Brand tokens matched as WHOLE WORDS (word-boundary) to avoid false positives on
+// ordinary words that happen to contain a brand substring (e.g. "French Fries" must
+// NOT match the brand "French's"). Possessive/multi-word brands are listed in their
+// distinctive form.
 const KNOWN_BRAND_TOKENS = [
-  'heinz', 'kraft', 'pampers', 'huggies', 'natrel', 'nestle', 'nestlé', 'kellogg', 'kelloggs',
-  'general mills', 'coca cola', 'coca-cola', 'pepsi', 'tide', 'dawn', 'oreo', 'cheerios',
-  'lays', "lay's", 'gatorade', 'tropicana', 'similac', 'enfamil', 'purina', 'iams', 'gerber',
-  'quaker', 'campbell', "campbell's", 'hellmann', "hellmann's", 'french', "french's",
+  'heinz', 'kraft', 'pampers', 'huggies', 'natrel', 'nestle', 'nestlé', 'kelloggs',
+  'general mills', 'coca cola', 'coca-cola', 'pepsi', 'oreo', 'cheerios',
+  "lay's", 'gatorade', 'tropicana', 'similac', 'enfamil', 'purina', 'iams', 'gerber',
+  "campbell's", "hellmann's", "french's",
 ]
 const BRAND_SUFFIX_RE = /(®|™)/u
 // SKU-ish: a number immediately followed by a unit/size/count token in the NAME.
@@ -39,7 +43,9 @@ function checkBrandContamination(it: CanonicalItem, out: Finding[]) {
     out.push({ level: 'error', code: 'brand_trademark_symbol', canonical_id: it.canonical_id, message: `canonical_name contains a trademark symbol: "${it.canonical_name}"` })
   }
   for (const b of KNOWN_BRAND_TOKENS) {
-    if (name.includes(b)) {
+    // Whole-word/phrase match so "French Fries" doesn't trip on "french's".
+    const re = new RegExp(`(^|\\s)${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`, 'i')
+    if (re.test(name)) {
       out.push({ level: 'error', code: 'brand_token', canonical_id: it.canonical_id, message: `canonical_name looks like a brand ("${b}"): "${it.canonical_name}"` })
       break
     }

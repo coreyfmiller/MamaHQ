@@ -114,3 +114,61 @@ unaffected.
 ## Next step (not started)
 Wave-1 catalog expansion (~2,500 concepts) and/or the Grocery Resolver + household
 items that consume this layer — future steps.
+
+---
+
+## Step 3B — Tier-A expansion (417 concepts)
+
+Expanded the catalog from 47 → **417 validated concepts** (0 hard errors). The
+brief's target was ~500 as a coverage guide, not a quota — every concept here is a
+real North American shopping-list item; quality was prioritized over hitting 500.
+
+### Structure change
+`items.ts` is now a thin re-export of a deterministic aggregator, with concepts
+split into per-category files under `lib/grocery/catalog/items/` for reviewability:
+`produce.ts`, `meat-seafood.ts`, `dairy-eggs.ts`, `bakery-deli.ts`, `frozen.ts`,
+`pantry.ts`, `breakfast-snacks.ts`, `condiments-baking-spices.ts`, `beverages.ts`,
+`nonfood.ts` (baby/household/personal-care/health/pet/consumables), plus
+`_helper.ts` (the shared `item()` factory) and `items/index.ts` (aggregator). All
+existing importers (`index.ts`, `validate.ts`, `seed-catalog.ts`) are unchanged —
+they still import `{ ITEMS }` from `./items`. Architecture was NOT redesigned.
+
+### Registry growth (content/config, not architecture)
+`taxonomy.ts` gained the categories/subcategories the expansion needs (deli,
+frozen sub-types, pantry sub-types, snacks/candy, condiments/baking/spices/oils,
+beverages, personal_care, health, pet). `attributes.ts` gained a few concept-
+specific attributes (potato/onion/grape variety-ish, yogurt/tea/rice/pasta/tortilla
+style, ground-meat lean %). No new units were required.
+
+### Actual totals
+- **Total: 417 concepts.**
+- By department: food 352, household 17, personal_care 16, baby 14,
+  health_wellness 8, pet 5, home_kitchen_consumables 5.
+- Food by category: produce 92, pantry 37, meat_seafood 32, dairy_eggs 27,
+  frozen 25, snacks 21, bakery 18, herbs_spices_seasonings 17, condiments_sauces 14,
+  beverages 14, baking 13, deli 10, breakfast 9, coffee_tea 8, candy 6,
+  oils_cooking_fats 5, nut_butters_jams_spreads 4.
+- By shopping category (drives future list grouping): produce 92, pantry 90,
+  meat_seafood 32, snacks 27, dairy_eggs 27, frozen 25, beverages 22, household 22,
+  bakery 18, personal_care 16, baby 14, deli 10, breakfast 9, health 8, pet 5.
+
+### Quality guardrails held
+- Semantic separation intact: `cilantro` (produce, aliases "fresh coriander") and
+  `coriander_seed` (spices) remain distinct — no alias collision between them.
+- No brands/SKUs. During validation the brand heuristic false-positived on
+  "French Fries" (matched brand "French's"); fixed the detector to whole-word
+  matching so ordinary words aren't flagged while real possessive brands still are.
+- Variations are attributes, not combinatorial concepts (e.g. Chicken Breast +
+  bone/skin; Milk + fat %; Diapers + size). Generic parents (Chicken, Cheese, Rice,
+  Pasta, Bread, Soda, Tea, Coffee) have specific children.
+- Benign warnings only: mostly `no_aliases` on staples; a few `near_duplicate_name`
+  (pear/peas, yam/ham, mint/mints) that are genuinely distinct concepts; one
+  `alias_collision` on "gummies" (fruit snacks vs gummy candy) — a real colloquial
+  ambiguity, left as advisory.
+
+### Seed sync
+`scripts/seed-catalog.ts` now also PRUNES rows whose canonical_id is no longer in
+the files, so the Supabase `canonical_items` projection is an exact mirror. Re-seed
+result: 6 retired ids pruned (a handful of Step-3 ids were regularized during the
+split, e.g. `food.bakery.bread` → `food.bakery.bread.bread`), table holds exactly
+417 rows. Safe because the catalog is global read-only data with no user references.

@@ -44,8 +44,18 @@ export const CONCEPT_ATTRIBUTES: readonly AttributeDef[] = [
   { id: 'bell_pepper.colour', label: 'Colour', value_type: 'enum', values: ['green', 'red', 'yellow', 'orange'] },
   { id: 'chicken.cut_bone', label: 'Bone', value_type: 'enum', values: ['bone_in', 'boneless'] },
   { id: 'chicken.skin', label: 'Skin', value_type: 'enum', values: ['skin_on', 'skinless'] },
-  { id: 'bread.style', label: 'Style', value_type: 'enum', values: ['white', 'whole_wheat', 'multigrain', 'sourdough'] },
+  { id: 'bread.style', label: 'Style', value_type: 'enum', values: ['white', 'whole_wheat', 'multigrain', 'sourdough', 'rye'] },
   { id: 'eggs.size', label: 'Egg size', value_type: 'enum', values: ['medium', 'large', 'extra_large'] },
+  { id: 'potato.variety', label: 'Variety', value_type: 'text' },
+  { id: 'onion.colour', label: 'Colour', value_type: 'enum', values: ['yellow', 'red', 'white', 'sweet'] },
+  { id: 'grape.colour', label: 'Colour', value_type: 'enum', values: ['green', 'red', 'black'] },
+  { id: 'yogurt.style', label: 'Style', value_type: 'enum', values: ['regular', 'greek', 'skyr', 'drinkable'] },
+  { id: 'tea.type', label: 'Type', value_type: 'enum', values: ['black', 'green', 'herbal', 'chai', 'decaf'] },
+  { id: 'juice.flavour', label: 'Flavour', value_type: 'text' },
+  { id: 'rice.type', label: 'Type', value_type: 'enum', values: ['white', 'brown', 'basmati', 'jasmine', 'arborio'] },
+  { id: 'pasta.shape', label: 'Shape', value_type: 'text' },
+  { id: 'tortilla.type', label: 'Type', value_type: 'enum', values: ['flour', 'corn', 'whole_wheat'] },
+  { id: 'ground_meat.lean', label: 'Lean %', value_type: 'text' },
 ] as const
 
 export const UNIVERSAL_ATTRIBUTE_IDS = UNIVERSAL_ATTRIBUTES.map((a) => a.id)
