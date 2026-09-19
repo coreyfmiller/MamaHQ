@@ -7,12 +7,21 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "catalog:validate": "node lib/grocery/catalog/validate.ts",
     "catalog:seed": "node scripts/seed-catalog.ts",
     "test:grocery-search": "node scripts/test-grocery-search.ts",
     "bench:grocery-search": "node scripts/bench-grocery-search.ts",
     "test:grocery-resolver": "node scripts/test-grocery-resolver.ts",
-    "test:grocery-actions": "node scripts/test-grocery-actions.ts"
+    "test:grocery-actions": "node scripts/test-grocery-actions.ts",
+    "test:db": "node scripts/test-db-completion.ts",
+    "test:security": "node scripts/test-security.ts",
+    "test:db-all": "node scripts/test-db-completion.ts && node scripts/test-security.ts",
+    "db:reset": "supabase db reset",
+    "db:verify": "node scripts/db/run-db-tests.ts",
+    "verify": "npm run catalog:validate && npm run test:grocery-search && npm run test:grocery-resolver && npm run test:grocery-actions && npm run typecheck && npm run lint",
+    "verify:all": "npm run verify && npm run db:verify"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -37,6 +46,8 @@
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.3",
     "postcss": "^8.5",
     "tailwindcss": "^4.3.3",
     "typescript": "5.7.3"

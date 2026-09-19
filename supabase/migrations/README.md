@@ -67,3 +67,53 @@ Historical, superseded, and never-cleanly-appliable. Kept for provenance and to
 explain design intent (some archived files contain useful reasoning in comments,
 e.g. the partner-mode/roles design in `0003_family_members.sql`). They must not be
 executed against any environment.
+
+## Supabase CLI adoption (Step 5C)
+
+As of Step 5C the repository is a standard Supabase CLI project (`supabase/config.toml`
+is tracked). This does **not** change how production is managed — it makes clean
+provisioning reproducible **locally and in CI**, and enables read-only drift
+inspection against the linked project.
+
+- **Local/CI:** `supabase db reset` destroys and rebuilds the **local, disposable**
+  Docker database, applying every file in this folder in ascending filename order
+  (`0001` → `0007`). This is how the clean-provision test and the DB/security test
+  suites get a database. It never touches production.
+- **Production:** migrations continue to be applied by hand via the Management API,
+  exactly as before. The CLI is not used to push SQL to production in this step.
+
+The numeric prefixes (`0001_`…) are still an ordering convention. The CLI applies
+files lexicographically, so the existing names sort correctly with no rename needed.
+
+### Migration history reconciliation (production) — how, and the guardrail
+
+Production has **no** `supabase_migrations.schema_migrations` table today (the seven
+migrations were hand-applied via the Management API, not the CLI). To bring
+production into the normal tracked workflow **without re-running any SQL**, use the
+CLI's history-repair mechanism, which only writes history rows — it does not execute
+migration bodies:
+
+```bash
+# Requires SUPABASE_ACCESS_TOKEN in the environment (a secret; never stored in repo).
+supabase link --project-ref sccrnjhnfmtusvyzmngs
+supabase migration list --linked          # shows local files vs remote history
+# Only AFTER verifying each migration's schema effect is genuinely present in prod:
+supabase migration repair 0001 0002 0003 0004 0005 0006 0007 --status applied --linked
+```
+
+**Guardrail (from Step 5C §6):** *do not assume "not tracked" means "not applied".*
+A migration must be marked `applied` **only when its intended schema effect is truly
+present** in production. Because every authoritative migration is idempotent and
+non-destructive, the safe verification path is:
+
+1. `supabase migration list --linked` to see what the CLI thinks is applied.
+2. Read-only inspect production for each migration's key objects (tables, columns,
+   policies, functions) — see the drift analysis in `docs/DATABASE_WORKFLOW.md`.
+3. `migration repair … --status applied` for the versions confirmed present.
+
+This reconciliation is a **human-run, one-time** operation that needs a Management
+access token and touches production history — it is intentionally **not** automated
+in CI (CI must never hold production god-credentials). It is documented as a required
+human action in `docs/HUMAN_ACTIONS.md`. Step 5C does **not** perform it, because the
+CLI-format verification and the repair both require the linked production project and
+a token that is a human-held secret.

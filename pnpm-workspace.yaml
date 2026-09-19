@@ -9,3 +9,7 @@ minimumReleaseAgeExclude:
 # it cleanly instead of failing CI with ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
   tesseract.js: false
+  # unrs-resolver (native-binary optimization for eslint-plugin-import's resolver)
+  # ships an optional build script; the JS fallback works fine, so skip the build
+  # to keep installs deterministic and avoid ERR_PNPM_IGNORED_BUILDS in CI.
+  unrs-resolver: false
