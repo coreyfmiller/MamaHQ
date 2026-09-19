@@ -117,3 +117,25 @@ in CI (CI must never hold production god-credentials). It is documented as a req
 human action in `docs/HUMAN_ACTIONS.md`. Step 5C does **not** perform it, because the
 CLI-format verification and the repair both require the linked production project and
 a token that is a human-held secret.
+
+## Step 6 — 0008_household_memory.sql
+
+`0008_household_memory.sql` (additive, after `0007`) introduces **Household Grocery
+Memory**:
+
+- Expands the `purchase_events` snapshot with the structured grocery identity
+  (`canonical_item_id`, `resolved_attributes`, `package_size`, `package_type`,
+  `unmatched_modifiers`) so household learning has a faithful, immutable record.
+- Adds `household_items` (per-family variants of a concept — CURRENT knowledge) and
+  `household_item_observations` (the auditable, idempotent EVIDENCE ledger).
+- Rewrites `complete_grocery_item` / `restore_grocery_item` so completion atomically
+  writes the snapshot, upserts the matching variant, records one observation, and
+  recomputes derived evidence/default — and restore reverses all of it. Completion
+  idempotency and restore semantics are preserved exactly.
+- Adds `set_household_usual` / `clear_household_usual` (explicit preference),
+  `recompute_household_default`, `upsert_household_variant`, `household_evidence_state`.
+- RLS on both new tables via `is_family_member`.
+
+The full authoritative apply order for a clean environment is now
+`0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008`. See
+`docs/HOUSEHOLD_GROCERY_MEMORY.md` for the design.

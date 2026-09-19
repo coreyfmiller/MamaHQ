@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Plus, Minus, ShoppingCart, RotateCcw, Trash2, Check } from 'lucide-react'
+import { Plus, Minus, ShoppingCart, RotateCcw, Trash2, Check, Star } from 'lucide-react'
 import { useNav } from '../context'
 import { useGrocery, type GroceryItem, type ApplyOutcome } from '../grocery'
 import { CheckBox, Screen, Scroll, StatusBar, TopBar } from '../ui'
@@ -20,13 +20,17 @@ import type { ValidatedGroceryAction } from '@/lib/grocery/actions/types'
  */
 export function GroceryScreen() {
   const { closeOverlay, showToast } = useNav()
-  const { active, completed, addResolved, editItem, completeItem, restoreItem, removeItem } = useGrocery()
+  const { active, completed, addResolved, editItem, completeItem, restoreItem, removeItem, householdVariantForItem, setHouseholdUsual } = useGrocery()
 
-  // Feedback for a resolved add outcome (toast for the common cases).
+  // Feedback for a resolved add outcome (toast for the common cases). Step 6: when
+  // household memory filled blanks (e.g. "milk" → your usual 2% 4L), add a subtle
+  // "· your usual" hint so the fill is visible, not silent.
+  const usualHint = (o: ApplyOutcome) =>
+    (o.kind === 'added' || o.kind === 'separate') && o.enrichedFromHousehold ? ' · your usual' : ''
   const feedback = (o: ApplyOutcome) => {
-    if (o.kind === 'added') showToast(`Added ${o.displayName}`)
+    if (o.kind === 'added') showToast(`Added ${o.displayName}${usualHint(o)}`)
     else if (o.kind === 'incremented') showToast(`${o.displayName} → ${o.resultingQuantity}`)
-    else if (o.kind === 'separate') showToast(`Added ${o.displayName} separately`)
+    else if (o.kind === 'separate') showToast(`Added ${o.displayName} separately${usualHint(o)}`)
   }
 
   return (
@@ -69,7 +73,13 @@ export function GroceryScreen() {
             <p className="px-1 text-[13px] font-semibold tracking-wide text-muted-foreground">
               Bought
             </p>
-            {completed.map((it) => (
+            {completed.map((it) => {
+              // Step 6: the learned household variant for this bought item (if any),
+              // so we can offer a minimal "Make this my usual" and reflect its state.
+              const variant = householdVariantForItem(it)
+              const canMakeUsual = !!it.canonicalItemId && !!variant
+              const isUsual = !!variant?.isUserSet
+              return (
               <div
                 key={it.id}
                 className="flex items-center gap-3 rounded-2xl border border-border/40 bg-muted/40 p-3"
@@ -81,6 +91,17 @@ export function GroceryScreen() {
                   {it.displayName}
                   {it.quantity > 1 ? ` ×${it.quantity}` : ''}
                 </span>
+                {canMakeUsual && (
+                  <button
+                    onClick={() => variant && setHouseholdUsual(variant.id)}
+                    aria-label={isUsual ? 'Your usual' : 'Make this my usual'}
+                    aria-pressed={isUsual}
+                    title={isUsual ? 'Your usual' : 'Make this my usual'}
+                    className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-muted"
+                  >
+                    <Star className="size-4" strokeWidth={1.75} fill={isUsual ? 'currentColor' : 'none'} />
+                  </button>
+                )}
                 <button
                   onClick={() => restoreItem(it.id)}
                   aria-label="Back to list"
@@ -96,7 +117,8 @@ export function GroceryScreen() {
                   <Trash2 className="size-4" strokeWidth={1.75} />
                 </button>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </Scroll>

@@ -20,13 +20,13 @@ knowledge until it actually ships.
 | **Meals** | NOT IMPLEMENTED | No tables, domain, or UI. |
 | **Kitchen** | NOT IMPLEMENTED | No such surface. |
 | **Contextual Assistant** | NOT IMPLEMENTED | No assistant; depends on LLM + cross-person awareness that don't exist. |
-| **Household Grocery Memory (Step 6)** | NOT IMPLEMENTED | No `household_items`, household aliases, usual quantity/package/attributes, learning, or "Make This My Usual". Only raw `purchase_events` exist as a substrate, and they lack the structured snapshot Step 6 needs (see below). |
+| **Household Grocery Memory (Step 6)** | PARTIAL (infra implemented) | Step 6 added `household_items` (variants), an observation ledger, conservative learning + thresholds, explicit "Make this my usual", enrichment that fills blanks without overriding explicit input, and restore-reversal — all family-scoped with RLS. Not yet surfaced as a "Usually Buy" screen; brand/store enrichment deferred. See `docs/HOUSEHOLD_GROCERY_MEMORY.md`. |
 
 ## Related known gaps (see TECHNICAL_DEBT.md)
 
-- **PurchaseEvent snapshot** does not yet capture `canonical_item_id`,
-  `resolved_attributes`, `package_size`, `package_type`, or `unmatched_modifiers` —
-  a prerequisite for robust Household Grocery Memory.
+- **PurchaseEvent snapshot** now captures `canonical_item_id`, `resolved_attributes`,
+  `package_size`, `package_type`, and `unmatched_modifiers` (resolved in Step 6,
+  migration 0008) — the prerequisite for Household Grocery Memory is satisfied.
 - **Usually Buy / Recently Bought, Shopping Mode, store ordering, barcode** — none
   exist.
 

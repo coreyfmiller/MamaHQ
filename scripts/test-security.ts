@@ -13,7 +13,7 @@
 //                                       SUPABASE_SERVICE_ROLE_KEY)
 
 import {
-  admin, anonClient, createUser, makeRunner, assert, assertEqual, cleanupUsers,
+  admin, anonClient, createUser, makeRunner, assert, assertEqual, errorContains, cleanupUsers,
   type Client, type TestUser,
 } from './db/harness.ts'
 
@@ -269,6 +269,61 @@ async function main() {
     const { data, error } = await userA.client.rpc('is_family_member', { fid: famA })
     assert(!error, `is_family_member error: ${error?.message}`)
     assertEqual(data, true, 'A is a member of Family A')
+  })
+
+  // =========================================================================
+  // STEP 6 — Household Grocery Memory isolation (family-scoped private data).
+  // A creates a household variant by completing a grocery item; B must not see or
+  // touch A's household_items / observations, nor set A's usual.
+  // =========================================================================
+  // Seed a Family A household variant via a real completion (writes household_items
+  // + observation atomically).
+  const aMilkItem = await addItem(userA.client, famA, 'Family A 2% milk')
+  await userA.client.rpc('complete_grocery_item', { p_item_id: aMilkItem })
+  const { data: aVariants } = await A.from('household_items').select('id').eq('family_id', famA)
+  const aVariantId = (aVariants?.[0] as { id: string } | undefined)?.id
+
+  await test('household read isolation: User B sees 0 Family A household_items', async () => {
+    const { data, error } = await userB.client.from('household_items').select('id').eq('family_id', famA)
+    assert(!error, `select error: ${error?.message}`)
+    assertEqual((data ?? []).length, 0, 'B must not read A household_items')
+  })
+
+  await test('household read isolation: User B sees 0 Family A observations', async () => {
+    const { data, error } = await userB.client.from('household_item_observations').select('id').eq('family_id', famA)
+    assert(!error, `select error: ${error?.message}`)
+    assertEqual((data ?? []).length, 0, 'B must not read A household_item_observations')
+  })
+
+  await test('household write isolation: User B INSERT into Family A household_items is blocked', async () => {
+    const { error } = await userB.client
+      .from('household_items')
+      .insert({ family_id: famA, variant_key: 'evil', display_name: 'B-injected' })
+      .select('id')
+      .single()
+    assert(error, 'expected RLS to block cross-family household_items insert')
+  })
+
+  await test('household write isolation: User B UPDATE of Family A household_items affects 0 rows', async () => {
+    if (!aVariantId) return
+    const { data, error } = await userB.client
+      .from('household_items')
+      .update({ display_name: 'HACKED', is_default: true })
+      .eq('id', aVariantId)
+      .select('id')
+    assert(!error, `unexpected error: ${error?.message}`)
+    assertEqual((data ?? []).length, 0, 'B update must affect 0 A household rows')
+  })
+
+  await test('household RPC auth: User B cannot set_household_usual on Family A variant', async () => {
+    if (!aVariantId) return
+    const { error } = await userB.client.rpc('set_household_usual', { p_household_item_id: aVariantId })
+    assert(error, 'expected cross-family set_household_usual to be rejected')
+    assert(errorContains(error, 'not authorized') || errorContains(error, 'not found'),
+      `expected authorization/not-found error, got: ${error?.message}`)
+    // Confirm A's variant did not become user_set.
+    const { data } = await A.from('household_items').select('is_user_set').eq('id', aVariantId).single()
+    assertEqual((data as { is_user_set: boolean }).is_user_set, false, 'A variant unchanged after B attempt')
   })
 
   await cleanupUsers(A)

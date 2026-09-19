@@ -8,12 +8,23 @@ import type { ProposedGroceryItem } from '@/lib/grocery/resolver/types'
 import { resolveGroceryAction } from '@/lib/grocery/actions/resolve-action'
 import { planGroceryAction } from '@/lib/grocery/actions/execute-action'
 import type { ActiveGroceryItem, ValidatedGroceryAction } from '@/lib/grocery/actions/types'
+import {
+  enrichProposalWithHouseholdMemory,
+  buildHouseholdMemory,
+  emptyHouseholdMemory,
+  variantKeyFromIdentity,
+  type HouseholdMemory,
+  type HouseholdVariant,
+  type FieldProvenance,
+} from '@/lib/grocery/household'
 
-/** Outcome of applying a resolved proposal, so the UI can give feedback / confirm. */
+/** Outcome of applying a resolved proposal, so the UI can give feedback / confirm.
+ *  `enrichedFromHousehold` + `provenance` let the UI show a subtle "your usual" hint
+ *  when household memory filled blanks (Step 6). */
 export type ApplyOutcome =
-  | { kind: 'added'; displayName: string }
+  | { kind: 'added'; displayName: string; enrichedFromHousehold?: boolean; provenance?: FieldProvenance }
   | { kind: 'incremented'; displayName: string; resultingQuantity: number }
-  | { kind: 'separate'; displayName: string }
+  | { kind: 'separate'; displayName: string; enrichedFromHousehold?: boolean; provenance?: FieldProvenance }
   | { kind: 'confirm'; action: ValidatedGroceryAction }
 
 // Grocery — the operational foundation (Step 2). A shared, family-scoped list.
@@ -65,6 +76,15 @@ interface GroceryCtx {
   /** Hard remove (rare; completion is the normal path). */
   removeItem: (id: string) => void
   clearGrocery: () => void
+  // Step 6: household memory (materialized current knowledge, cached in memory).
+  householdVariants: HouseholdVariant[]
+  /** The default/usual household variant for a canonical concept, or null. */
+  householdDefaultFor: (canonicalItemId: string | null | undefined) => HouseholdVariant | null
+  /** The household variant matching a grocery item's structured identity, if the
+   *  household has learned it (i.e. the item has been completed before). */
+  householdVariantForItem: (item: GroceryItem) => HouseholdVariant | null
+  /** Explicit "Make this my usual" for a household variant id. */
+  setHouseholdUsual: (householdItemId: string) => void
 }
 
 const Ctx = createContext<GroceryCtx>({
@@ -79,6 +99,10 @@ const Ctx = createContext<GroceryCtx>({
   restoreItem: () => {},
   removeItem: () => {},
   clearGrocery: () => {},
+  householdVariants: [],
+  householdDefaultFor: () => null,
+  householdVariantForItem: () => null,
+  setHouseholdUsual: () => {},
 })
 
 export function useGrocery() {
@@ -113,6 +137,28 @@ function fromRow(r: db.DbGroceryItem): GroceryItem {
   }
 }
 
+// Map a household_items row → the pure HouseholdVariant contract.
+function fromHouseholdRow(r: db.DbHouseholdItem): HouseholdVariant {
+  return {
+    id: r.id,
+    canonicalItemId: r.canonical_item_id,
+    variantKey: r.variant_key,
+    displayName: r.display_name,
+    brand: r.brand,
+    variant: r.variant,
+    packageSize: r.package_size,
+    packageUnit: r.package_unit,
+    packageType: r.package_type,
+    resolvedAttributes: r.resolved_attributes ?? [],
+    store: r.store,
+    evidenceState: r.evidence_state,
+    observationCount: r.observation_count,
+    isUserSet: r.is_user_set,
+    isDefault: r.is_default,
+    lastObservedAt: r.last_observed_at,
+  }
+}
+
 function readLocal(): GroceryItem[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -134,6 +180,11 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   const { me } = useHousehold()
   const [items, setItems] = useState<GroceryItem[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // Step 6: materialized household memory (variants) + its indexed form for
+  // enrichment. Loaded once per family and refreshed after learning changes; NEVER
+  // fetched per keystroke, so autocomplete/resolver stay fast + local.
+  const [householdVariants, setHouseholdVariants] = useState<HouseholdVariant[]>([])
+  const [householdMemory, setHouseholdMemory] = useState<HouseholdMemory>(() => emptyHouseholdMemory())
 
   useEffect(() => {
     let alive = true
@@ -171,6 +222,29 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
     writeLocal(items)
   }, [items, hydrated, familyId])
 
+  // Load household memory once when the family is known. Cached in state + indexed;
+  // refreshed explicitly after completion/restore/make-usual change learning.
+  const loadHouseholdMemory = async (fid: string) => {
+    try {
+      const rows = await db.fetchHouseholdItems(fid)
+      const variants = rows.map(fromHouseholdRow)
+      setHouseholdVariants(variants)
+      setHouseholdMemory(buildHouseholdMemory(variants))
+    } catch (e) {
+      console.warn('household memory load', e)
+    }
+  }
+
+  useEffect(() => {
+    if (!familyId) {
+      setHouseholdVariants([])
+      setHouseholdMemory(emptyHouseholdMemory())
+      return
+    }
+    void loadHouseholdMemory(familyId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyId])
+
   const addItem: GroceryCtx['addItem'] = (displayName, opts) => {
     const name = displayName.trim()
     if (!name) return
@@ -206,8 +280,14 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Step 5B: resolve what to do with the LIST for a proposal, then execute it.
+  // Step 5B + Step 6: enrich the proposal with household memory (fills blanks, never
+  // overrides explicit input), THEN resolve what to do with the LIST, then execute.
   const addResolved: GroceryCtx['addResolved'] = (proposal) => {
+    // Household enrichment sits between the global Resolver output and the Action
+    // Resolver. It is a distinct, pure layer — global Search/Resolver stay untouched.
+    const enrichedResult = enrichProposalWithHouseholdMemory(proposal, householdMemory)
+    const enrichedProposal = enrichedResult.proposal
+
     const activeView: ActiveGroceryItem[] = items
       .filter((it) => it.status === 'active')
       .map((it) => ({
@@ -222,7 +302,7 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
         unmatchedModifiers: it.unmatchedModifiers ?? [],
       }))
 
-    const action = resolveGroceryAction(proposal, activeView, { source: 'manual' })
+    const action = resolveGroceryAction(enrichedProposal, activeView, { source: 'manual' })
     const plan = planGroceryAction(action, { source: 'manual' })
 
     if (plan.op === 'confirm') return { kind: 'confirm', action }
@@ -237,7 +317,7 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
           void rehydrateItem(plan.targetItemId)
         })
       }
-      return { kind: 'incremented', displayName: target?.displayName ?? proposal.displayName, resultingQuantity: plan.resultingQuantity }
+      return { kind: 'incremented', displayName: target?.displayName ?? enrichedProposal.displayName, resultingQuantity: plan.resultingQuantity }
     }
 
     if (plan.op === 'insert') {
@@ -278,11 +358,11 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
         }).catch((e) => console.warn('grocery sync', e))
       }
       return action.type === 'ADD_SEPARATE'
-        ? { kind: 'separate', displayName: d.displayName }
-        : { kind: 'added', displayName: d.displayName }
+        ? { kind: 'separate', displayName: d.displayName, enrichedFromHousehold: enrichedResult.enriched, provenance: enrichedResult.provenance }
+        : { kind: 'added', displayName: d.displayName, enrichedFromHousehold: enrichedResult.enriched, provenance: enrichedResult.provenance }
     }
 
-    return { kind: 'added', displayName: proposal.displayName }
+    return { kind: 'added', displayName: enrichedProposal.displayName, enrichedFromHousehold: enrichedResult.enriched, provenance: enrichedResult.provenance }
   }
 
   const editItem: GroceryCtx['editItem'] = (id, patch) => {
@@ -334,11 +414,17 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
     const completedAt = new Date().toISOString()
     setItems((list) => list.map((it) => (it.id === id ? { ...it, status: 'completed', completedAt } : it)))
     if (familyId) {
-      db.completeGroceryItemRpc(id).catch((e) => {
-        console.warn('grocery complete failed', e)
-        // The atomic op did not commit — undo the optimistic change from truth.
-        void rehydrateItem(id)
-      })
+      db.completeGroceryItemRpc(id)
+        .then(() => {
+          // Completion updated household learning atomically server-side; refresh
+          // the cached memory so the next add reflects it.
+          if (familyId) void loadHouseholdMemory(familyId)
+        })
+        .catch((e) => {
+          console.warn('grocery complete failed', e)
+          // The atomic op did not commit — undo the optimistic change from truth.
+          void rehydrateItem(id)
+        })
     }
   }
 
@@ -347,11 +433,61 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
     if (!item || item.status !== 'completed') return
     setItems((list) => list.map((it) => (it.id === id ? { ...it, status: 'active', completedAt: null } : it)))
     if (familyId) {
-      db.restoreGroceryItemRpc(id).catch((e) => {
-        console.warn('grocery restore failed', e)
-        void rehydrateItem(id)
-      })
+      db.restoreGroceryItemRpc(id)
+        .then(() => {
+          // Restore reversed the observation server-side; refresh cached memory.
+          if (familyId) void loadHouseholdMemory(familyId)
+        })
+        .catch((e) => {
+          console.warn('grocery restore failed', e)
+          void rehydrateItem(id)
+        })
     }
+  }
+
+  // Step 6: the default/usual household variant for a canonical concept (or null).
+  const householdDefaultFor: GroceryCtx['householdDefaultFor'] = (canonicalItemId) => {
+    if (!canonicalItemId) return null
+    const variants = householdMemory.byCanonical.get(canonicalItemId) ?? []
+    return variants.find((v) => v.isDefault) ?? null
+  }
+
+  // Step 6: the learned household variant matching THIS item's structured identity,
+  // using the same signature the completion RPC computes server-side.
+  const householdVariantForItem: GroceryCtx['householdVariantForItem'] = (item) => {
+    const key = variantKeyFromIdentity({
+      canonicalItemId: item.canonicalItemId ?? null,
+      attributes: item.resolvedAttributes ?? [],
+      packageSize: item.packageSize ?? null,
+      packageType: item.packageType ?? null,
+      unmatchedModifiers: item.unmatchedModifiers ?? [],
+      displayName: item.displayName,
+    })
+    if (item.canonicalItemId) {
+      const variants = householdMemory.byCanonical.get(item.canonicalItemId) ?? []
+      return variants.find((v) => v.variantKey === key) ?? null
+    }
+    return householdMemory.customByKey.get(key) ?? null
+  }
+
+  // Step 6: explicit "Make this my usual". Optimistic flip, then the atomic RPC,
+  // then refresh memory from truth.
+  const setHouseholdUsual: GroceryCtx['setHouseholdUsual'] = (householdItemId) => {
+    const target = householdVariants.find((v) => v.id === householdItemId)
+    if (!target || !familyId) return
+    const optimistic = householdVariants.map((v) =>
+      v.canonicalItemId && v.canonicalItemId === target.canonicalItemId
+        ? { ...v, isUserSet: v.id === householdItemId, isDefault: v.id === householdItemId }
+        : v,
+    )
+    setHouseholdVariants(optimistic)
+    setHouseholdMemory(buildHouseholdMemory(optimistic))
+    db.setHouseholdUsualRpc(householdItemId)
+      .then(() => loadHouseholdMemory(familyId))
+      .catch((e) => {
+        console.warn('set household usual failed', e)
+        void loadHouseholdMemory(familyId)
+      })
   }
 
   const removeItem: GroceryCtx['removeItem'] = (id) => {
@@ -368,8 +504,12 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   const completed = useMemo(() => items.filter((i) => i.status === 'completed'), [items])
 
   const value = useMemo(
-    () => ({ items, hydrated, active, completed, addItem, addResolved, editItem, completeItem, restoreItem, removeItem, clearGrocery }),
-    [items, hydrated, active, completed, familyId, me],
+    () => ({
+      items, hydrated, active, completed, addItem, addResolved, editItem, completeItem, restoreItem, removeItem, clearGrocery,
+      householdVariants, householdDefaultFor, householdVariantForItem, setHouseholdUsual,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, hydrated, active, completed, familyId, me, householdVariants, householdMemory],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
