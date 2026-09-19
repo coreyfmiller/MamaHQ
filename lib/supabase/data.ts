@@ -485,6 +485,99 @@ export async function restoreGroceryItemRpc(itemId: string): Promise<void> {
   if (error) throw error
 }
 
+/* ---------------- Household membership + invitations (Step 7) ---------------- */
+
+// Authorization membership: which authenticated user may access which household.
+// This is the SECURITY boundary (NOT household_people). role owner|member.
+export interface DbFamilyMember {
+  family_id: string
+  user_id: string
+  role: 'owner' | 'member'
+  display_name: string | null
+  status: 'active' | 'removed'
+  invited_at: string | null
+  joined_at: string
+  created_at: string
+}
+
+export async function fetchFamilyMembers(familyId: string): Promise<DbFamilyMember[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('family_members')
+    .select('*')
+    .eq('family_id', familyId)
+  if (error) throw error
+  return (data ?? []) as DbFamilyMember[]
+}
+
+// A secure invitation to join a household. The plaintext token lives only in the
+// invite link; the DB stores only its SHA-256 hash. Never a membership by itself.
+export interface DbHouseholdInvitation {
+  id: string
+  family_id: string
+  household_person_id: string | null
+  invited_by_user_id: string
+  email: string | null
+  token_hash: string
+  status: 'pending' | 'accepted' | 'expired' | 'revoked'
+  created_at: string
+  expires_at: string
+  accepted_at: string | null
+  accepted_by_user_id: string | null
+}
+
+// A family member may view their household's invitations (RLS-scoped). No broad
+// enumerate. token_hash is not a usable credential (hash only).
+export async function fetchHouseholdInvitations(familyId: string): Promise<DbHouseholdInvitation[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('household_invitations')
+    .select('*')
+    .eq('family_id', familyId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DbHouseholdInvitation[]
+}
+
+// Create an invitation for an existing household person. The server stores only the
+// token hash; the caller keeps the plaintext token for the link. Owner/member of the
+// person's own family only (authorization enforced server-side). Returns invite id.
+export async function createHouseholdInvitationRpc(
+  personId: string,
+  tokenHash: string,
+  email: string | null,
+  ttlSeconds?: number,
+): Promise<string> {
+  const { data, error } = await supabaseBrowser().rpc('create_household_invitation', {
+    p_person_id: personId,
+    p_token_hash: tokenHash,
+    p_email: email,
+    p_ttl_seconds: ttlSeconds ?? 604800,
+  })
+  if (error) throw error
+  return data as string
+}
+
+// Redeem an invitation (caller proves possession of the token via its hash).
+// Transactional + idempotent server-side. Returns { family_id, household_person_id }.
+export async function acceptHouseholdInvitationRpc(
+  tokenHash: string,
+): Promise<{ family_id: string; household_person_id: string | null }> {
+  const { data, error } = await supabaseBrowser().rpc('accept_household_invitation', {
+    p_token_hash: tokenHash,
+  })
+  if (error) throw error
+  return data as { family_id: string; household_person_id: string | null }
+}
+
+// Revoke a pending invitation (owner/member of its family). Returns true if it was
+// pending and is now revoked; false if it wasn't pending (e.g. already accepted).
+export async function revokeHouseholdInvitationRpc(invitationId: string): Promise<boolean> {
+  const { data, error } = await supabaseBrowser().rpc('revoke_household_invitation', {
+    p_invitation_id: invitationId,
+  })
+  if (error) throw error
+  return Boolean(data)
+}
+
 /* ---------------- Household Grocery Memory (Step 6) ---------------- */
 
 // CURRENT household knowledge: one row per variant of a canonical/custom concept.
@@ -580,6 +673,8 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     'memories',
     'captures',
     'partner_contacts',
+    // Invitations (Step 7) reference household_people (SET NULL) — remove first.
+    'household_invitations',
     // Household memory (Step 6): observations reference household_items +
     // purchase_events; delete the ledger, then variants, before purchases/items.
     'household_item_observations',

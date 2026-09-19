@@ -139,3 +139,25 @@ Memory**:
 The full authoritative apply order for a clean environment is now
 `0001 → 0002 → 0003 → 0004 → 0005 → 0006 → 0007 → 0008`. See
 `docs/HOUSEHOLD_GROCERY_MEMORY.md` for the design.
+
+## Step 7 — 0009_household_membership.sql
+
+`0009_household_membership.sql` (additive, after `0008`) adds the authenticated
+multi-adult household foundation:
+
+- `family_members` gains `status` / `invited_at` / `joined_at` (role stays
+  `owner`|`member`).
+- **Hardens** the two privilege-escalation paths: `family_members` client INSERT is
+  blocked (`with check (false)` — membership is created only by SECURITY DEFINER
+  RPCs), and `household_people.user_id` mutation is blocked by guard triggers unless
+  inside the invitation-acceptance flow.
+- Adds `household_invitations` (hashed one-time tokens, expiry, explicit states) +
+  RLS (a family's members may view its invitations; no broad enumerate; no client
+  writes).
+- Adds SECURITY DEFINER RPCs `create_household_invitation`,
+  `accept_household_invitation` (transactional, idempotent), and
+  `revoke_household_invitation`.
+
+Authoritative apply order for a clean environment is now `0001 → … → 0009`. See
+`docs/HOUSEHOLD_MEMBERSHIP.md` and the Step 7 addendum in
+`docs/SECURITY_DEFINER_AUDIT.md`.

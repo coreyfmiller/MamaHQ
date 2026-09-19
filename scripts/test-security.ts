@@ -326,6 +326,112 @@ async function main() {
     assertEqual((data as { is_user_set: boolean }).is_user_set, false, 'A variant unchanged after B attempt')
   })
 
+  // =========================================================================
+  // STEP 7 — Membership & invitation hardening.
+  // The two privilege-escalation paths that MUST be closed: (a) a user inserting
+  // their own family_members row into someone else's family, and (b) a user setting
+  // household_people.user_id = auth.uid() to hijack an identity. Plus invitation
+  // visibility isolation.
+  // =========================================================================
+
+  await test('membership fabrication: User B cannot INSERT a family_members row into Family A', async () => {
+    const { error } = await userB.client
+      .from('family_members')
+      .insert({ family_id: famA, user_id: userB.id, role: 'member' })
+      .select('user_id')
+      .single()
+    assert(error, 'expected direct family_members insert to be blocked by RLS')
+    // And B still is not a member of Family A.
+    const { data } = await A.from('family_members').select('user_id').eq('family_id', famA).eq('user_id', userB.id)
+    assertEqual((data ?? []).length, 0, 'B did not become a member of Family A')
+  })
+
+  await test('membership fabrication: User B cannot INSERT their own family_members row even for their OWN uid+A family', async () => {
+    // Explicitly the old-vulnerability shape: (someone_elses_family, self).
+    const { error } = await userB.client
+      .from('family_members')
+      .insert({ family_id: famA, user_id: userB.id, role: 'owner', status: 'active' })
+      .select('user_id')
+      .single()
+    assert(error, 'expected self-insert-into-foreign-family to be blocked')
+  })
+
+  await test('person hijack: User B cannot set household_people.user_id = self on a Family A person', async () => {
+    // Seed a Family A account-less person via service role (bypasses the link guard
+    // for setup only; the guard blocks CLIENT link changes, which is what we test).
+    const { data: person } = await A
+      .from('household_people')
+      .insert({ family_id: famA, display_name: 'Hijack Target' })
+      .select('id')
+      .single()
+    const personId = (person as { id: string }).id
+    // B attempts to claim the person (RLS blocks the row from B entirely → 0 rows;
+    // even if visible, the link-guard trigger rejects a user_id change).
+    const { data: upd, error } = await userB.client
+      .from('household_people')
+      .update({ user_id: userB.id })
+      .eq('id', personId)
+      .select('id')
+    // Either RLS makes it affect 0 rows, or the guard raises — both acceptable.
+    if (!error) assertEqual((upd ?? []).length, 0, 'B update affected 0 rows (RLS)')
+    const { data: check } = await A.from('household_people').select('user_id').eq('id', personId).single()
+    assertEqual((check as { user_id: string | null }).user_id, null, 'person remains unlinked after B attempt')
+  })
+
+  await test('person hijack: even the OWNER cannot directly set user_id via the client (only via acceptance)', async () => {
+    const { data: person } = await A
+      .from('household_people')
+      .insert({ family_id: famA, display_name: 'Owner Link Attempt' })
+      .select('id')
+      .single()
+    const personId = (person as { id: string }).id
+    // userA is a legitimate Family A member, but direct user_id linking is still
+    // barred by the guard trigger (linking happens only through acceptance).
+    const { error } = await userA.client
+      .from('household_people')
+      .update({ user_id: userA.id })
+      .eq('id', personId)
+      .select('id')
+    assert(error, 'expected the link guard to reject a direct client user_id change')
+    assert(errorContains(error, 'user_id') || errorContains(error, 'invitation'),
+      `expected link-guard error, got: ${error?.message}`)
+  })
+
+  await test('invitation visibility: User B cannot enumerate Family A invitations', async () => {
+    // Owner A creates an invitation for a Family A person.
+    const { data: person } = await A
+      .from('household_people')
+      .insert({ family_id: famA, display_name: 'Invitee X' })
+      .select('id')
+      .single()
+    const personId = (person as { id: string }).id
+    const { error: invErr } = await userA.client.rpc('create_household_invitation', {
+      p_person_id: personId, p_token_hash: 'a'.repeat(64), p_email: null, p_ttl_seconds: 604800,
+    })
+    assert(!invErr, `owner invite creation failed: ${invErr?.message}`)
+
+    // B cannot see Family A's invitations.
+    const { data: bSees } = await userB.client.from('household_invitations').select('id').eq('family_id', famA)
+    assertEqual((bSees ?? []).length, 0, 'B cannot enumerate Family A invitations')
+    // A (a member) can see them.
+    const { data: aSees } = await userA.client.from('household_invitations').select('id').eq('family_id', famA)
+    assert((aSees ?? []).length >= 1, 'Family A member can view its own invitations')
+  })
+
+  await test('invitation creation authz: User B cannot create an invitation for a Family A person', async () => {
+    const { data: person } = await A
+      .from('household_people')
+      .insert({ family_id: famA, display_name: 'Invitee Y' })
+      .select('id')
+      .single()
+    const personId = (person as { id: string }).id
+    const { error } = await userB.client.rpc('create_household_invitation', {
+      p_person_id: personId, p_token_hash: 'b'.repeat(64), p_email: null, p_ttl_seconds: 604800,
+    })
+    assert(error, 'expected cross-family invite creation to be rejected')
+    assert(errorContains(error, 'not authorized'), `expected authorization error, got: ${error?.message}`)
+  })
+
   await cleanupUsers(A)
   finish()
 }

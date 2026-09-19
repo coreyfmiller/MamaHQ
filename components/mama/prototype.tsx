@@ -33,6 +33,7 @@ import { PartnerScreen } from './screens/partner'
 import { Beyond90Screen } from './screens/beyond90'
 import { ReadScreen } from './screens/read'
 import { GroceryScreen } from './screens/grocery'
+import { PeopleScreen } from './screens/people'
 import { ReminderScreen } from './screens/reminder'
 
 function ActiveTab() {
@@ -128,6 +129,9 @@ function Stage() {
       </FullOverlay>
       <FullOverlay open={overlay === 'grocery'}>
         <GroceryScreen />
+      </FullOverlay>
+      <FullOverlay open={overlay === 'people'}>
+        <PeopleScreen />
       </FullOverlay>
       <FullOverlay open={overlay === 'settings'}>
         <SettingsScreen />

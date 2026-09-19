@@ -10,7 +10,7 @@ knowledge until it actually ships.
 
 | Capability | Status | Reality today |
 |---|---|---|
-| **Second authenticated household adult** | NOT IMPLEMENTED | No invite/join flow. `ensure_family()` only enrolls the signer as `owner`; a second sign-up creates a *separate* family. The data model supports members, but nothing creates a second `family_members` row. |
+| **Second authenticated household adult** | IMPLEMENTED (Step 7) | Secure invitations (hashed one-time token, expiry), transactional acceptance that links the existing person and joins the same household, invitation-aware bootstrap, People UI with account status, and hardened membership/identity RLS. One active household per user; member-removal workflow deferred. See `docs/HOUSEHOLD_MEMBERSHIP.md`. |
 | **Realtime sync** | NOT IMPLEMENTED | No Supabase realtime subscriptions. Changes require a manual refetch; a second device won't live-update. |
 | **Offline support** | NOT IMPLEMENTED | No IndexedDB, no offline state, no mutation queue, no reconciliation. Online-only. |
 | **Care Handoff — external delivery** | NOT IMPLEMENTED | Assignment exists; no SMS/email/WhatsApp/iMessage/share is sent. `lib/notify.ts` is a no-op seam. |

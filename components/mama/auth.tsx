@@ -34,16 +34,69 @@ export function useAuth() {
   return useContext(Ctx)
 }
 
+// Where a pending invitation token-hash is stashed between "open invite link" and
+// "finish authenticating". sessionStorage (not localStorage) so it doesn't linger.
+const PENDING_INVITE_KEY = 'mamahq.pendingInviteHash'
+
+/** Stash the SHA-256 hash of an invite token to redeem right after sign-in. */
+export function stashPendingInvite(tokenHash: string) {
+  try {
+    window.sessionStorage.setItem(PENDING_INVITE_KEY, tokenHash)
+  } catch {
+    // non-fatal
+  }
+}
+function readPendingInvite(): string | null {
+  try {
+    return window.sessionStorage.getItem(PENDING_INVITE_KEY)
+  } catch {
+    return null
+  }
+}
+function clearPendingInvite() {
+  try {
+    window.sessionStorage.removeItem(PENDING_INVITE_KEY)
+  } catch {
+    // non-fatal
+  }
+}
+
 /**
- * Ensure the signed-in user has a family. On first sign-in there's no family, so
- * we create one and add the user as its owner. Returns the family id.
+ * Resolve the signed-in user's household. INVITATION-AWARE (Step 7 §18):
+ *
+ *   * If a pending invitation is stashed (the user arrived via an invite link),
+ *     REDEEM IT FIRST via accept_household_invitation. That transactionally joins
+ *     the EXISTING household and links the existing person — and, crucially, we do
+ *     NOT call ensure_family, so an invited user never gets an accidental personal
+ *     household created before/instead of joining the invited one.
+ *   * Otherwise (a normal independent user), ensure_family creates/returns their
+ *     own household + owner membership, exactly as before.
+ *
+ * Both paths are SECURITY DEFINER + idempotent. Returns the resolved family id.
  */
-async function ensureFamily(_userId: string): Promise<string | null> {
+async function resolveHousehold(): Promise<string | null> {
   const supabase = supabaseBrowser()
-  // A SECURITY DEFINER DB function creates the family + owner membership atomically
-  // and returns the family id. This sidesteps the fragile families_insert RLS
-  // policy (raw client inserts were being rejected), and is idempotent — repeat
-  // calls just return the existing family.
+
+  const pendingHash = readPendingInvite()
+  if (pendingHash) {
+    try {
+      const { data, error } = await supabase.rpc('accept_household_invitation', {
+        p_token_hash: pendingHash,
+      })
+      if (!error && data) {
+        clearPendingInvite()
+        return (data as { family_id: string }).family_id ?? null
+      }
+      // Invitation invalid/expired/revoked/already-used-by-another: drop it and fall
+      // through to normal bootstrap so the user still gets a usable (own) household.
+      console.warn('MamaHQ: invitation redemption failed', error)
+      clearPendingInvite()
+    } catch (e) {
+      console.warn('MamaHQ: invitation redemption threw', e)
+      clearPendingInvite()
+    }
+  }
+
   const { data, error } = await supabase.rpc('ensure_family')
   if (error) {
     console.warn('MamaHQ: ensure_family failed', error)
@@ -73,7 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session.user)
       setStatus('signed-in')
       setBootstrapping(true)
-      const fid = await ensureFamily(session.user.id)
+      // Invitation-aware: redeem a stashed invite (join existing household) or
+      // ensure the user's own household. Never both.
+      const fid = await resolveHousehold()
       if (!alive) return
       setFamilyId(fid)
       setBootstrapping(false)

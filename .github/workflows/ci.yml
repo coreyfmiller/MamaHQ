@@ -147,6 +147,9 @@ jobs:
       - name: Household Grocery Memory tests (Step 6)
         run: node scripts/test-household.ts
 
+      - name: Household Membership tests (Step 7)
+        run: node scripts/test-membership.ts
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop || true
