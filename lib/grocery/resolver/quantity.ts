@@ -16,6 +16,7 @@
 //  * "two 4L milks"            → value 2 (count), size { value 4, unit 'L' } per item.
 
 import type { ParsedQuantity } from './types.ts'
+import type { UnitDimension } from '../catalog/units.ts'
 import { readLeadingNumber, splitMultiplierToken } from './numbers.ts'
 import { recognizeUnit, parseFusedSize } from './units.ts'
 
@@ -89,6 +90,73 @@ export function parseQuantity(tokensIn: string[]): QuantityParse {
     // value already = the number; unit already set. Good.
   }
 
-  const rest = tokens.slice(idx)
+  let rest = tokens.slice(idx)
+
+  // 5) POSITION-INDEPENDENT MEASURE SIZE (Step 6 follow-up correction).
+  //    The peel above only captures a fused/standalone measure at the FRONT. Normal
+  //    grocery language also puts the package size AFTER an attribute/modifier, e.g.
+  //    "1% 2L milk" or "milk 2L". A measure size ("2L", "796 mL", "1.5 kg") carries
+  //    the same explicit structured meaning wherever it appears, so scan the residue
+  //    for exactly ONE measure size and fold it into the quantity — but ONLY when the
+  //    front peel didn't already capture a measure (so we never override an explicit
+  //    leading size, and never double-count). We deliberately handle ONLY weight/
+  //    volume MEASURE sizes here (not package words like "bag" and not bare counts),
+  //    so no concept token or count is ever stripped.
+  const alreadyHasMeasure =
+    !!qty.size || (qty.unit != null && (qty.unitKind === 'weight' || qty.unitKind === 'volume'))
+  if (!alreadyHasMeasure && rest.length > 1) {
+    const found = findResidueMeasureSize(rest)
+    if (found) {
+      // How to record it mirrors the leading-peel semantics:
+      //   * if a leading COUNT was present ("two 4L milks" pattern, or "3 1% 2L milk")
+      //     the size is a per-item size → qty.size.
+      //   * otherwise the measure IS the quantity ("1% 2L milk" → value 2, unit L),
+      //     matching how a leading "2L milk" is represented.
+      if (lead) {
+        qty.size = { value: found.size.value, unit: found.size.unit }
+      } else {
+        qty.value = found.size.value
+        qty.unit = found.size.unit
+        qty.unitKind = found.size.unitKind
+        qty.packaged = false
+      }
+      // Remove the consumed size token(s) from the residue so downstream attribute/
+      // concept resolution never sees them.
+      rest = rest.filter((_, i) => !found.indices.has(i))
+    }
+  }
+
   return { quantity: qty, rest }
+}
+
+interface ResidueSize {
+  size: { value: number; unit: string; unitKind: UnitDimension }
+  indices: Set<number>
+}
+
+/**
+ * Find the FIRST measure size in the residue tokens, either:
+ *   * a fused token ("2L", "796mL", "1.5kg"), or
+ *   * a split "<number> <measure-unit>" pair ("2 L", "500 g").
+ * Returns the parsed size + the residue indices it consumed, or null. Only
+ * weight/volume measures qualify; package words and bare counts are ignored so
+ * concept tokens are never stripped.
+ */
+function findResidueMeasureSize(rest: string[]): ResidueSize | null {
+  for (let i = 0; i < rest.length; i++) {
+    // Fused, e.g. "2L".
+    const fused = parseFusedSize(rest[i])
+    if (fused) {
+      return { size: { value: fused.value, unit: fused.unit, unitKind: fused.unitKind }, indices: new Set([i]) }
+    }
+    // Split "<number> <measure-unit>", e.g. "2 L" / "500 g".
+    const asNum = Number(rest[i])
+    if (Number.isFinite(asNum) && i + 1 < rest.length) {
+      const u = recognizeUnit(rest[i + 1])
+      if (u && (u.unitKind === 'weight' || u.unitKind === 'volume')) {
+        return { size: { value: asNum, unit: u.unit, unitKind: u.unitKind }, indices: new Set([i, i + 1]) }
+      }
+    }
+  }
+  return null
 }

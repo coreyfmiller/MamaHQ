@@ -144,6 +144,9 @@ jobs:
       - name: RLS / security / RPC-authorization tests
         run: node scripts/test-security.ts
 
+      - name: Household Grocery Memory tests (Step 6)
+        run: node scripts/test-household.ts
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop || true

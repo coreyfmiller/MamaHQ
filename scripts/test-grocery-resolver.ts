@@ -142,6 +142,95 @@ function attr(p: ProposedGroceryItem, id: string): string | boolean | undefined 
   ok(attr(p, 'bell_pepper.colour') === undefined, `"red onion" must not carry bell_pepper.colour`)
 }
 
+/* ------------- position-independent measure size (Step 6 follow-up) --------- */
+// A fused/standalone MEASURE size must survive regardless of whether it appears
+// before or after a recognized attribute/modifier. Both orderings must yield the
+// SAME explicit attribute AND the SAME explicit size. General correction — proven
+// across several catalog concepts, not milk-specific.
+
+// Helper: read the resolved measure size as a normalized "<value><unit>" string,
+// tolerating both representations (leading-count → quantity.size; bare measure →
+// quantity.value+unit).
+function measure(p: ProposedGroceryItem): string | null {
+  if (p.quantity.size) return `${p.quantity.size.value}${p.quantity.size.unit}`
+  if (p.quantity.unit && (p.quantity.unitKind === 'weight' || p.quantity.unitKind === 'volume')) {
+    return `${p.quantity.value}${p.quantity.unit}`
+  }
+  return null
+}
+
+// Milk (volume + fat %): the exact asymmetry that Step 6 surfaced.
+{
+  const before = resolveGroceryPhrase('2L 1% milk') // size before attr
+  const after = resolveGroceryPhrase('1% 2L milk') // size after attr
+  ok(measure(before) === '2L', `"2L 1% milk" keeps 2L (got ${measure(before)})`)
+  ok(measure(after) === '2L', `"1% 2L milk" keeps 2L (got ${measure(after)}) — the fixed case`)
+  ok(attr(before, 'milk.fat_percentage') === '1%', `"2L 1% milk" keeps 1%`)
+  ok(attr(after, 'milk.fat_percentage') === '1%', `"1% 2L milk" keeps 1%`)
+  ok(before.canonicalItemId === after.canonicalItemId && after.canonicalItemId === 'food.dairy_eggs.milk.milk', `both orderings → milk`)
+}
+{
+  const before = resolveGroceryPhrase('4L 2% milk')
+  const after = resolveGroceryPhrase('2% 4L milk')
+  ok(measure(before) === '4L' && measure(after) === '4L', `4L survives both orderings (got ${measure(before)}/${measure(after)})`)
+  ok(attr(before, 'milk.fat_percentage') === '2%' && attr(after, 'milk.fat_percentage') === '2%', `2% survives both orderings`)
+}
+// Ground beef (weight + lean): "500g lean ground beef" vs "lean 500g ground beef".
+{
+  const before = resolveGroceryPhrase('500g lean ground beef')
+  const after = resolveGroceryPhrase('lean 500g ground beef')
+  ok(measure(before) === '500g', `"500g lean ground beef" keeps 500g (got ${measure(before)})`)
+  ok(measure(after) === '500g', `"lean 500g ground beef" keeps 500g (got ${measure(after)})`)
+  ok(attr(before, 'ground_meat.lean') === 'lean' && attr(after, 'ground_meat.lean') === 'lean', `lean survives both orderings`)
+  ok(before.canonicalItemId === 'food.meat_seafood.beef.ground_beef' && after.canonicalItemId === 'food.meat_seafood.beef.ground_beef', `both → ground beef`)
+}
+// Chicken breast (weight + boneless): trailing size after a modifier.
+{
+  const before = resolveGroceryPhrase('500g boneless chicken breast')
+  const after = resolveGroceryPhrase('boneless 500g chicken breast')
+  ok(measure(before) === '500g' && measure(after) === '500g', `chicken 500g survives both orderings (got ${measure(before)}/${measure(after)})`)
+  ok(attr(before, 'chicken.cut_bone') === 'boneless' && attr(after, 'chicken.cut_bone') === 'boneless', `boneless survives both orderings`)
+}
+// Trailing size with NO attribute: "milk 2L".
+{
+  const p = resolveGroceryPhrase('milk 2L')
+  ok(measure(p) === '2L', `"milk 2L" keeps 2L (got ${measure(p)})`)
+  ok(p.canonicalItemId === 'food.dairy_eggs.milk.milk', `"milk 2L" → milk`)
+}
+// Leading count + attribute + trailing size → count preserved, size is per-item.
+{
+  const p = resolveGroceryPhrase('3 1% 2L milk')
+  ok(p.quantity.value === 3, `"3 1% 2L milk" count 3 (got ${p.quantity.value})`)
+  ok(p.quantity.size?.value === 2 && p.quantity.size?.unit === 'L', `"3 1% 2L milk" per-item size 2L (got ${JSON.stringify(p.quantity.size)})`)
+  ok(attr(p, 'milk.fat_percentage') === '1%', `"3 1% 2L milk" keeps 1%`)
+}
+// GUARD: the correction must NOT strip a non-measure numeric attribute. "size 4
+// diapers" — the "4" is an attribute value, not a measure size; diapers stays a
+// diaper with size 4 and no bogus measure.
+{
+  const p = resolveGroceryPhrase('size 4 diapers')
+  ok(measure(p) === null, `"size 4 diapers" has NO measure size (4 is an attribute, got ${measure(p)})`)
+  ok(attr(p, 'diapers.diaper_size') === '4', `"size 4 diapers" keeps size 4 attribute`)
+  ok(p.canonicalItemId === 'baby.diapering.disposable_diapers', `"size 4 diapers" → diapers`)
+}
+// GUARD: package words and counts are not treated as measure sizes.
+{
+  const p = resolveGroceryPhrase('3 cans tomato soup')
+  ok(measure(p) === null, `"3 cans tomato soup" has no measure size (can is a package)`)
+  ok(p.quantity.unit === 'can' && p.quantity.value === 3, `"3 cans…" still 3 cans`)
+}
+{
+  const p = resolveGroceryPhrase('2 dozen eggs')
+  ok(measure(p) === null, `"2 dozen eggs" has no measure size (dozen is a count)`)
+  ok(p.quantity.unit === 'dozen' && p.quantity.value === 2, `"2 dozen eggs" still 2 dozen`)
+}
+// GUARD: a leading brand/modifier + attribute still resolves without losing the mod.
+{
+  const p = resolveGroceryPhrase('natrel 2% milk')
+  ok(p.canonicalItemId === 'food.dairy_eggs.milk.milk', `"natrel 2% milk" → milk`)
+  ok(p.unmatchedModifiers.includes('natrel'), `"natrel 2% milk" keeps natrel as a modifier`)
+}
+
 /* -------------------------------- REPORT ----------------------------------- */
 console.log(`\nGrocery Resolver Gold Standard: ${passed} passed, ${failed} failed`)
 if (failed > 0) {
