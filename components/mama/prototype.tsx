@@ -10,6 +10,7 @@ import { MomProvider } from './mom'
 import { MemoriesProvider } from './memories'
 import { AppointmentsProvider } from './appointments'
 import { PartnerProvider } from './partner'
+import { HouseholdProvider } from './household'
 import { InboxProvider } from './inbox/store'
 import { BottomSheet, FullOverlay, Toast } from './sheet'
 import { OnboardingScreen } from './screens/onboarding'
@@ -147,6 +148,7 @@ export function Prototype() {
         <AuthProvider>
           <ProfileProvider>
             <LogsProvider>
+              <HouseholdProvider>
               <PartnerProvider>
                 <MomProvider>
                   <MemoriesProvider>
@@ -162,6 +164,7 @@ export function Prototype() {
                   </MemoriesProvider>
                 </MomProvider>
               </PartnerProvider>
+              </HouseholdProvider>
             </LogsProvider>
           </ProfileProvider>
         </AuthProvider>

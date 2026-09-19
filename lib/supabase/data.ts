@@ -288,6 +288,54 @@ export async function deletePartnerContact(id: string): Promise<void> {
   if (error) throw error
 }
 
+/* ---------------- Household people ---------------- */
+
+// A person who participates in the household, whether or not they have a MamaHQ
+// account. `user_id` is nullable: null = no account (assigned/attributed only, NO
+// app access), non-null = connected to an auth user. Identity is NOT authorization
+// — RLS still gates everything on authenticated family membership.
+export interface DbHouseholdPerson {
+  id: string
+  family_id: string
+  display_name: string
+  relationship: string | null
+  user_id: string | null
+  phone: string | null
+  email: string | null
+  created_at: string
+  updated_at: string
+}
+
+export async function fetchHouseholdPeople(familyId: string): Promise<DbHouseholdPerson[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('household_people')
+    .select('*')
+    .eq('family_id', familyId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as DbHouseholdPerson[]
+}
+
+export async function insertHouseholdPerson(
+  row: Partial<DbHouseholdPerson> & { id: string; family_id: string; display_name: string },
+): Promise<void> {
+  const { error } = await supabaseBrowser().from('household_people').insert(row)
+  if (error) throw error
+}
+
+export async function updateHouseholdPerson(
+  id: string,
+  patch: Partial<DbHouseholdPerson>,
+): Promise<void> {
+  const { error } = await supabaseBrowser().from('household_people').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteHouseholdPerson(id: string): Promise<void> {
+  const { error } = await supabaseBrowser().from('household_people').delete().eq('id', id)
+  if (error) throw error
+}
+
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
 // Deletes all of a family's data rows. Ordered so FK children go before parents.
@@ -304,6 +352,9 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     'memories',
     'captures',
     'partner_contacts',
+    // household_people are wiped too; the owner's connected person is re-created
+    // deterministically by ensure_family() on the next sign-in bootstrap.
+    'household_people',
     'babies',
   ]
   for (const t of tables) {
