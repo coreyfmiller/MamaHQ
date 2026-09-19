@@ -7,8 +7,9 @@ why migrations look the way they do.
 ## Mental model
 
 - **Authoritative schema** lives in `supabase/migrations/0001_baseline.sql` …
-  `0007_grocery_action_detail.sql`. Numeric prefixes are an ordering convention;
-  files apply in ascending order.
+  `0008_household_memory.sql`. Numeric prefixes are an ordering convention;
+  files apply in ascending order. (`0008` adds Household Grocery Memory — see
+  `docs/HOUSEHOLD_GROCERY_MEMORY.md`.)
 - **`supabase/migrations/_archive/`** is historical and superseded — **never run it.**
 - **Local/CI database** is a disposable Docker Postgres started by the Supabase CLI.
   Rebuilding it is free and safe.

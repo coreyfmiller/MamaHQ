@@ -433,6 +433,12 @@ export interface DbPurchaseEvent {
   source_type: string | null
   purchased_at: string
   created_at: string
+  // Step 6 structured immutable snapshot (see 0008_household_memory.sql).
+  canonical_item_id: string | null
+  resolved_attributes: { attribute_id: string; value: string | boolean }[]
+  package_size: { value: number; unit: string } | null
+  package_type: string | null
+  unmatched_modifiers: string[]
 }
 
 export async function insertPurchaseEvent(
@@ -479,6 +485,85 @@ export async function restoreGroceryItemRpc(itemId: string): Promise<void> {
   if (error) throw error
 }
 
+/* ---------------- Household Grocery Memory (Step 6) ---------------- */
+
+// CURRENT household knowledge: one row per variant of a canonical/custom concept.
+// This is materialized memory, NOT purchase history. See 0008_household_memory.sql
+// and docs/HOUSEHOLD_GROCERY_MEMORY.md.
+export interface DbHouseholdItem {
+  id: string
+  family_id: string
+  canonical_item_id: string | null
+  variant_key: string
+  display_name: string
+  brand: string | null
+  variant: string | null
+  package_size: { value: number; unit: string } | null
+  package_unit: string | null
+  package_type: string | null
+  resolved_attributes: { attribute_id: string; value: string | boolean }[]
+  store: string | null
+  evidence_state: 'observed' | 'emerging' | 'established' | 'user_set'
+  observation_count: number
+  is_user_set: boolean
+  is_default: boolean
+  last_observed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+// The auditable evidence ledger; each row traces to the purchase_event that made it.
+export interface DbHouseholdItemObservation {
+  id: string
+  family_id: string
+  household_item_id: string
+  purchase_event_id: string | null
+  observation_type: 'purchase'
+  observed_values: unknown
+  observed_at: string
+  created_at: string
+}
+
+// Load a family's materialized household memory (the enrichment source of truth).
+// One query; the store caches the result and indexes it — never per-keystroke.
+export async function fetchHouseholdItems(familyId: string): Promise<DbHouseholdItem[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('household_items')
+    .select('*')
+    .eq('family_id', familyId)
+  if (error) throw error
+  return (data ?? []) as DbHouseholdItem[]
+}
+
+// Observations for a variant (audit/debug + tests). Not needed on the hot path.
+export async function fetchHouseholdObservations(
+  familyId: string,
+  householdItemId: string,
+): Promise<DbHouseholdItemObservation[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('household_item_observations')
+    .select('*')
+    .eq('family_id', familyId)
+    .eq('household_item_id', householdItemId)
+    .order('observed_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DbHouseholdItemObservation[]
+}
+
+// Explicit "Make this my usual" — marks the variant user_set + default and clears
+// siblings (one default per concept). Authorization enforced server-side from the
+// variant's own family.
+export async function setHouseholdUsualRpc(householdItemId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('set_household_usual', { p_household_item_id: householdItemId })
+  if (error) throw error
+}
+
+// Undo an explicit preference; reverts to passive-learning state.
+export async function clearHouseholdUsualRpc(householdItemId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('clear_household_usual', { p_household_item_id: householdItemId })
+  if (error) throw error
+}
+
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
 // Deletes all of a family's data rows. Ordered so FK children go before parents.
@@ -495,6 +580,10 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     'memories',
     'captures',
     'partner_contacts',
+    // Household memory (Step 6): observations reference household_items +
+    // purchase_events; delete the ledger, then variants, before purchases/items.
+    'household_item_observations',
+    'household_items',
     // purchase_events references grocery_items (SET NULL), grocery_items references
     // household_people (SET NULL) — delete children first to keep it clean.
     'purchase_events',

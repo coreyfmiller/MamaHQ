@@ -36,17 +36,22 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
 - **Suggested milestone:** after the second-adult unlock.
 
 ### PurchaseEvent structured snapshot (Household Grocery Memory prerequisite)
-- **Status:** partial (basic snapshot exists; structured detail missing).
-- **Why it matters:** `purchase_events` snapshots `display_name, quantity, unit,
-  brand, variant, size, category, store, purchased_by_person_id, source_type` — but
-  **not** `canonical_item_id`, `resolved_attributes`, `package_size`, `package_type`,
-  or `unmatched_modifiers`. Robust "usual quantity / usual package / usual
-  attributes" learning needs those captured immutably at purchase time. This is a
-  **Step 6 prerequisite** (see `docs/PRODUCT_LIMITATIONS.md`); do NOT solve in 5C.
-- **Dependency:** none (additive columns on `purchase_events` + a change to
-  `complete_grocery_item`'s snapshot insert).
-- **Suggested milestone:** Step 6, as the first sub-task ("Purchase Event Snapshot
-  Review").
+- **Status:** RESOLVED in Step 6 (migration `0008_household_memory.sql`).
+- `purchase_events` now also snapshots `canonical_item_id`, `resolved_attributes`,
+  `package_size`, `package_type`, `unmatched_modifiers`, written atomically by
+  `complete_grocery_item`. This was the Step 6 prerequisite; it is done.
+
+### Household Grocery Memory — residual (Step 6 follow-ups)
+- **Status:** partial (infrastructure implemented in Step 6).
+- **What's done:** variants, observation ledger, conservative learning + thresholds,
+  explicit "make usual", enrichment with provenance, restore reversal, RLS.
+- **Residual / deferred (non-blocking):**
+  - brand/store enrichment: columns exist but the resolver does not parse brand/store
+    from the phrase, so those fields are only filled when a variant already carries
+    them. A future brand-aware resolver step would populate them.
+  - recency tie-breaker: implemented in `learning.ts` but intentionally not used to
+    break ambiguity among multiple established variants (conservative by design).
+  - "Usually Buy" / "Recently Bought" surfaces still absent (see below).
 
 ### Realtime Grocery synchronization
 - **Status:** deferred (absent).
