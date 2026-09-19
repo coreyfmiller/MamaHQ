@@ -1,27 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Plus, Minus, ShoppingCart, RotateCcw, Trash2, Check } from 'lucide-react'
 import { useNav } from '../context'
 import { useGrocery, type GroceryItem } from '../grocery'
 import { CheckBox, Screen, Scroll, StatusBar, TopBar } from '../ui'
+import { searchGrocery } from '@/lib/grocery/search/search'
+import { SHOPPING_CATEGORY_LABELS } from '@/lib/grocery/search/labels'
 
 /**
- * Grocery — the operational shared list (Step 2). Add items, adjust quantity,
- * tap to mark bought (which retains purchase history), and a "Bought" section to
- * restore or remove. Deliberately simple: no catalog, search, or AI.
+ * Grocery — the operational shared list. Add items (now with deterministic catalog
+ * autocomplete, Step 4), adjust quantity, tap to mark bought (retains purchase
+ * history), restore or remove. Autocomplete is assistance, never a gatekeeper:
+ * typing + Enter always adds — as a canonical item if selected, else custom.
  */
 export function GroceryScreen() {
   const { closeOverlay } = useNav()
   const { active, completed, addItem, editItem, completeItem, restoreItem, removeItem } = useGrocery()
-  const [draft, setDraft] = useState('')
-
-  const add = () => {
-    const text = draft.trim()
-    if (!text) return
-    addItem(text)
-    setDraft('')
-  }
 
   return (
     <Screen>
@@ -37,26 +32,7 @@ export function GroceryScreen() {
           </p>
         </header>
 
-        {/* Add row */}
-        <div className="flex items-center gap-2 rounded-2xl border border-border bg-card p-2 focus-within:border-primary">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') add()
-            }}
-            placeholder="Add an item… e.g. Milk, diapers, bananas"
-            className="min-w-0 flex-1 bg-transparent px-2 text-[16px] text-foreground outline-none placeholder:text-muted-foreground/60"
-          />
-          <button
-            onClick={add}
-            disabled={!draft.trim()}
-            aria-label="Add item"
-            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95 disabled:opacity-40"
-          >
-            <Plus className="size-5" strokeWidth={2} />
-          </button>
-        </div>
+        <AddRow onAdd={addItem} />
 
         {/* Active list */}
         {active.length === 0 ? (
@@ -114,6 +90,124 @@ export function GroceryScreen() {
         )}
       </Scroll>
     </Screen>
+  )
+}
+
+// The add input with deterministic catalog autocomplete. Keyboard: ↑/↓ move,
+// Enter selects the highlighted result (or adds the typed text as a custom item if
+// none highlighted), Escape closes the list. Touch/mouse: tap a result. Typing +
+// Enter with no highlight always adds fast — autocomplete never blocks entry.
+function AddRow({
+  onAdd,
+}: {
+  onAdd: (displayName: string, opts?: { canonicalItemId?: string | null }) => void
+}) {
+  const [draft, setDraft] = useState('')
+  const [open, setOpen] = useState(false)
+  const [highlight, setHighlight] = useState(-1) // -1 = no selection (Enter adds custom)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const results = useMemo(() => (draft.trim() ? searchGrocery(draft, 8) : []), [draft])
+
+  const reset = () => {
+    setDraft('')
+    setOpen(false)
+    setHighlight(-1)
+  }
+
+  const addCustom = () => {
+    const text = draft.trim()
+    if (!text) return
+    onAdd(text)
+    reset()
+  }
+
+  const addCanonical = (r: { displayName: string; canonicalId: string }) => {
+    onAdd(r.displayName, { canonicalItemId: r.canonicalId })
+    reset()
+    inputRef.current?.focus()
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' && results.length) {
+      e.preventDefault()
+      setOpen(true)
+      setHighlight((h) => Math.min((h < 0 ? -1 : h) + 1, results.length - 1))
+    } else if (e.key === 'ArrowUp' && results.length) {
+      e.preventDefault()
+      setHighlight((h) => Math.max(h - 1, -1))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (open && highlight >= 0 && results[highlight]) addCanonical(results[highlight])
+      else addCustom()
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+      setHighlight(-1)
+    }
+  }
+
+  const showList = open && draft.trim().length > 0 && results.length > 0
+
+  return (
+    <div className="relative">
+      <div className="flex items-center gap-2 rounded-2xl border border-border bg-card p-2 focus-within:border-primary">
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setOpen(true)
+            setHighlight(-1)
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 120)} // allow tap to register
+          onKeyDown={onKeyDown}
+          role="combobox"
+          aria-expanded={showList}
+          aria-controls="grocery-ac-list"
+          aria-autocomplete="list"
+          placeholder="Add an item… e.g. Milk, diapers, bananas"
+          className="min-w-0 flex-1 bg-transparent px-2 text-[16px] text-foreground outline-none placeholder:text-muted-foreground/60"
+        />
+        <button
+          onClick={addCustom}
+          disabled={!draft.trim()}
+          aria-label="Add item"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95 disabled:opacity-40"
+        >
+          <Plus className="size-5" strokeWidth={2} />
+        </button>
+      </div>
+
+      {showList && (
+        <ul
+          id="grocery-ac-list"
+          role="listbox"
+          className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-2xl border border-border bg-card shadow-lg"
+        >
+          {results.map((r, i) => (
+            <li key={r.canonicalId} role="option" aria-selected={i === highlight}>
+              <button
+                // onMouseDown (not onClick) so it fires before input blur closes the list
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  addCanonical(r)
+                }}
+                onMouseEnter={() => setHighlight(i)}
+                className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors ${
+                  i === highlight ? 'bg-sage-soft/60' : 'active:bg-muted'
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-foreground">{r.displayName}</span>
+                <span className="shrink-0 text-[12px] text-muted-foreground">
+                  {SHOPPING_CATEGORY_LABELS[r.shoppingCategory] ?? r.shoppingCategory}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

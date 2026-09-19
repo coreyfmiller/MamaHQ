@@ -345,6 +345,7 @@ export interface DbGroceryItem {
   id: string
   family_id: string
   list_id: string | null
+  canonical_item_id: string | null
   display_name: string
   quantity: number
   unit: string | null

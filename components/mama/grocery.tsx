@@ -14,6 +14,8 @@ export type GroceryStatus = 'active' | 'completed'
 export interface GroceryItem {
   id: string
   displayName: string
+  /** The catalog concept this item was matched to (Step 4). null = custom item. */
+  canonicalItemId?: string | null
   quantity: number
   unit?: string
   note?: string
@@ -33,7 +35,8 @@ interface GroceryCtx {
   hydrated: boolean
   active: GroceryItem[]
   completed: GroceryItem[]
-  addItem: (displayName: string, opts?: { quantity?: number; unit?: string; note?: string }) => void
+  /** Add an item. Pass canonicalItemId when it came from a catalog selection. */
+  addItem: (displayName: string, opts?: { quantity?: number; unit?: string; note?: string; canonicalItemId?: string | null }) => void
   editItem: (id: string, patch: Partial<Pick<GroceryItem, 'displayName' | 'quantity' | 'unit' | 'note' | 'category' | 'store' | 'assignedToPersonId'>>) => void
   /** Mark bought: sets status=completed, stamps completed_at, writes a purchase_event. */
   completeItem: (id: string) => void
@@ -71,6 +74,7 @@ function fromRow(r: db.DbGroceryItem): GroceryItem {
   return {
     id: r.id,
     displayName: r.display_name,
+    canonicalItemId: r.canonical_item_id,
     quantity: Number(r.quantity) || 1,
     unit: r.unit ?? undefined,
     note: r.note ?? undefined,
@@ -145,9 +149,12 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   const addItem: GroceryCtx['addItem'] = (displayName, opts) => {
     const name = displayName.trim()
     if (!name) return
+    // Autocomplete selection carries a canonical id; typed custom items don't.
+    const canonicalItemId = opts?.canonicalItemId ?? null
     const item: GroceryItem = {
       id: newId(),
       displayName: name,
+      canonicalItemId,
       quantity: opts?.quantity && opts.quantity > 0 ? opts.quantity : 1,
       unit: opts?.unit?.trim() || undefined,
       note: opts?.note?.trim() || undefined,
@@ -163,21 +170,32 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
         id: item.id,
         family_id: familyId,
         display_name: item.displayName,
+        canonical_item_id: canonicalItemId,
         quantity: item.quantity,
         unit: item.unit ?? null,
         note: item.note ?? null,
         added_by_person_id: item.addedByPersonId ?? null,
-        source_type: 'manual',
+        source_type: canonicalItemId ? 'autocomplete' : 'manual',
         status: 'active',
       }).catch((e) => console.warn('grocery sync', e))
     }
   }
 
   const editItem: GroceryCtx['editItem'] = (id, patch) => {
-    setItems((list) => list.map((it) => (it.id === id ? { ...it, ...patch } : it)))
+    // EDIT-CLEARS-CANONICAL rule: manually changing the display name breaks the
+    // catalog identity (e.g. "Milk" → "Chocolate milk"), so we clear the canonical
+    // reference. A fresh catalog selection re-sets it via addItem. (Resolver-based
+    // reclassification is a later step.)
+    const clearsCanonical = patch.displayName !== undefined
+    setItems((list) =>
+      list.map((it) => (it.id === id ? { ...it, ...patch, ...(clearsCanonical ? { canonicalItemId: null } : {}) } : it)),
+    )
     if (familyId) {
       const dbPatch: Partial<db.DbGroceryItem> = {}
-      if (patch.displayName !== undefined) dbPatch.display_name = patch.displayName
+      if (patch.displayName !== undefined) {
+        dbPatch.display_name = patch.displayName
+        dbPatch.canonical_item_id = null
+      }
       if (patch.quantity !== undefined) dbPatch.quantity = patch.quantity
       if (patch.unit !== undefined) dbPatch.unit = patch.unit || null
       if (patch.note !== undefined) dbPatch.note = patch.note || null
