@@ -46,8 +46,18 @@ export function enrichProposalWithHouseholdMemory(
   proposal: ProposedGroceryItem,
   memory: HouseholdMemory | null | undefined,
 ): HouseholdEnrichedProposal {
+  // A user-stated SIZE can arrive two ways from the resolver:
+  //   * "two 4L milks"  → quantity.size = { 4, 'L' } (a per-item size + a count), OR
+  //   * "2L milk"       → quantity.value=2, unit='L', unitKind='volume' (the measure
+  //                        IS the quantity; quantity.size stays undefined).
+  // Both are EXPLICIT size input and must not be overridden by household memory.
+  const measureIsSize =
+    (proposal.quantity.unitKind === 'volume' || proposal.quantity.unitKind === 'weight') &&
+    !!proposal.quantity.unit
+  const hasExplicitSize = !!proposal.quantity.size || measureIsSize
+
   const provenance: FieldProvenance = {
-    packageSize: proposal.quantity.size ? 'explicit' : 'none',
+    packageSize: hasExplicitSize ? 'explicit' : 'none',
     packageType: proposal.quantity.packaged && proposal.quantity.unit ? 'explicit' : 'none',
     attributes: proposal.extractedAttributes.length > 0 ? 'explicit' : 'none',
     brand: 'none',
@@ -77,8 +87,9 @@ export function enrichProposalWithHouseholdMemory(
   let enriched = false
   const src = sourceForState(variant)
 
-  // 1) Package size — fill only if the user gave none.
-  if (!next.quantity.size && variant.packageSize) {
+  // 1) Package size — fill only if the user gave none (neither a per-item size nor
+  //    an explicit volume/weight measure quantity).
+  if (!hasExplicitSize && variant.packageSize) {
     next.quantity.size = { value: variant.packageSize.value, unit: variant.packageSize.unit }
     provenance.packageSize = src
     enriched = true

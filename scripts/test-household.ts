@@ -338,7 +338,12 @@ async function main() {
     }
     const mem = buildHouseholdMemory([usual])
     const out = enrichProposalWithHouseholdMemory(resolveGroceryPhrase('2L milk'), mem)
-    assertEqual(out.proposal.quantity.size?.value, 2, 'explicit 2L preserved')
+    // "2L milk" puts the explicit 2L in the quantity measure (value+unit), not in
+    // quantity.size. The fix must (a) preserve that explicit 2 L, and (b) NOT fill
+    // the household 4L into quantity.size.
+    assertEqual(out.proposal.quantity.value, 2, 'explicit 2 preserved as quantity value')
+    assertEqual(out.proposal.quantity.unit, 'L', 'explicit L preserved as quantity unit')
+    assert(!out.proposal.quantity.size, 'household 4L did NOT override explicit 2L (no size fill)')
     assertEqual(out.provenance.packageSize, 'explicit', 'packageSize provenance explicit')
   })
 
@@ -351,7 +356,9 @@ async function main() {
     }
     const mem = buildHouseholdMemory([usual])
     const out = enrichProposalWithHouseholdMemory(resolveGroceryPhrase('1% 2L milk'), mem)
-    assertEqual(out.proposal.quantity.size?.value, 2, '2L preserved')
+    assertEqual(out.proposal.quantity.value, 2, 'explicit 2 preserved')
+    assertEqual(out.proposal.quantity.unit, 'L', 'explicit L preserved')
+    assert(!out.proposal.quantity.size, 'no size fill — 2L is explicit')
     const fat = out.proposal.extractedAttributes.filter((a) => a.attribute_id === FAT)
     assertEqual(String(fat[0].value), '1%', '1% preserved')
     assertEqual(out.enriched, false, 'nothing filled — both fields explicit')
