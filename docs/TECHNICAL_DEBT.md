@@ -54,19 +54,14 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   - "Usually Buy" / "Recently Bought" surfaces still absent (see below).
 
 ### Resolver drops a trailing measure that follows an attribute
-- **Status:** advisory (pre-existing Step 5A behavior, surfaced by Step 6 tests).
-- **Why it matters:** `resolveGroceryPhrase("1% 2L milk")` extracts the `1%`
-  attribute but **drops the `2L`** (returns quantity value 1, no size). Measure-first
-  ordering works: `"2L 1% milk"` and `"2L milk 1%"` both capture size + attribute.
-  So a user who types size *after* an attribute loses the size. This is a Resolver
-  (Step 5A) parsing gap, not an enrichment defect — enrichment faithfully handles
-  whatever the resolver produces. Left unchanged in Step 6 per the instruction not to
-  redesign the resolver unless a correctness issue blocks the step (this does not:
-  size-first phrasing works, and the household layer never overrides a size the
-  resolver *did* capture).
-- **Suggested milestone:** a small, well-tested Step 5A resolver follow-up that peels
-  a fused size token anywhere in the phrase (not only at the front), with its own
-  gold-standard cases.
+- **Status:** RESOLVED (Step 6 follow-up correction, `quantity.ts`).
+- `resolveGroceryPhrase` now folds a measure size (weight/volume — fused like "2L"
+  or split like "2 L") into the quantity **regardless of position**, so
+  "1% 2L milk" == "2L 1% milk" and "milk 2L" all preserve the explicit 2L. Package
+  words and bare counts are never folded, so concept tokens and counts are not
+  stripped. Covered by resolver gold-standard cases in both orderings across milk,
+  ground beef, and chicken breast, plus guards for "size 4 diapers", "3 cans …",
+  and "2 dozen eggs".
 
 ### Realtime Grocery synchronization
 - **Status:** deferred (absent).

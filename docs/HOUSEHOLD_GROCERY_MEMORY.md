@@ -153,11 +153,9 @@ refreshed only after events that change learning (completion / restore / make-us
   parsing from the phrase is not part of Step 6).
 - Default selection is intentionally conservative; recency is available as a
   tie-breaker in code but is not used to break ambiguity among established variants.
-- Enrichment respects whatever the Resolver captured. A known Step 5A phrasing gap —
-  a fused size that *follows* an attribute (e.g. "1% 2L milk") is dropped by the
-  resolver, while size-first ("2L 1% milk") works — is tracked in `TECHNICAL_DEBT.md`.
-  In the dropped-size case, household memory will (correctly) fill the missing size,
-  since from the enrichment layer's view the user did not state one.
+- Enrichment respects whatever the Resolver captured. A measure size is now
+  preserved regardless of position (e.g. "1% 2L milk" == "2L 1% milk"), so an
+  explicit size stated after an attribute is never overwritten by household memory.
 - No "Usually Buy" screen, shopping mode, store ordering, or barcode (deferred).
 - Second authenticated household adult still not implemented (Step-6 memory is
   family-scoped and works for the single owner today).

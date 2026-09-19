@@ -370,6 +370,28 @@ async function main() {
     assertEqual(out.enriched, false, 'nothing filled — both fields explicit')
   })
 
+  await test('enrichment: "1% 2L milk" (attribute-then-size) keeps BOTH vs conflicting household usual', async () => {
+    // After the Step 6 resolver correction, "1% 2L milk" parses BOTH fields. Prove
+    // that against a conflicting household usual (2% / 4L) neither is overwritten —
+    // this is the exact case that motivated the correction.
+    const usual: HouseholdVariant = {
+      id: 'v1', canonicalItemId: MILK, variantKey: 'k', displayName: 'Milk',
+      packageSize: { value: 4, unit: 'L' }, packageType: null, packageUnit: 'L',
+      resolvedAttributes: [{ attribute_id: FAT, value: '2%' }],
+      evidenceState: 'established', observationCount: 3, isUserSet: false, isDefault: true, lastObservedAt: null,
+    }
+    const mem = buildHouseholdMemory([usual])
+    const out = enrichProposalWithHouseholdMemory(resolveGroceryPhrase('1% 2L milk'), mem)
+    // The explicit 2L is carried as the measure quantity (value 2, unit L).
+    assertEqual(out.proposal.quantity.value, 2, 'explicit 2L preserved (household 4L did NOT override)')
+    assertEqual(out.proposal.quantity.unit, 'L', 'explicit L preserved')
+    assert(!out.proposal.quantity.size, 'household 4L not filled into size')
+    const fat = out.proposal.extractedAttributes.filter((a) => a.attribute_id === FAT)
+    assertEqual(fat.length, 1, 'exactly one milk-fat attribute')
+    assertEqual(String(fat[0].value), '1%', 'explicit 1% preserved (household 2% did NOT override)')
+    assertEqual(out.enriched, false, 'nothing filled — both fields explicit')
+  })
+
   await test('enrichment: ambiguous household (two established) fills nothing', async () => {
     const mk = (id: string, fat: string): HouseholdVariant => ({
       id, canonicalItemId: MILK, variantKey: id, displayName: 'Milk',
