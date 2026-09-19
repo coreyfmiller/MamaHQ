@@ -188,38 +188,47 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Re-read one item from the cloud and reconcile local state, so a failed atomic
+  // op never leaves the UI showing a false success (or a false failure).
+  const rehydrateItem = async (id: string) => {
+    if (!familyId) return
+    try {
+      const row = await db.fetchGroceryItem(id)
+      setItems((list) => {
+        if (!row) return list.filter((it) => it.id !== id)
+        return list.map((it) => (it.id === id ? fromRow(row) : it))
+      })
+    } catch (e) {
+      console.warn('grocery rehydrate', e)
+    }
+  }
+
+  // Completion is a SINGLE atomic server operation (mark completed + write the
+  // purchase snapshot, commit-both-or-neither, idempotent). We update optimistically
+  // for snappy UI, then reconcile from the cloud if the transaction fails.
   const completeItem: GroceryCtx['completeItem'] = (id) => {
     const item = items.find((it) => it.id === id)
     if (!item || item.status === 'completed') return
     const completedAt = new Date().toISOString()
     setItems((list) => list.map((it) => (it.id === id ? { ...it, status: 'completed', completedAt } : it)))
     if (familyId) {
-      db.updateGroceryItem(id, { status: 'completed', completed_at: completedAt }).catch((e) =>
-        console.warn('grocery sync', e),
-      )
-      // Retain a purchase-history snapshot (independent of the live item).
-      db.insertPurchaseEvent({
-        id: newId(),
-        family_id: familyId,
-        item_id: item.id,
-        display_name: item.displayName,
-        quantity: item.quantity,
-        unit: item.unit ?? null,
-        category: item.category ?? null,
-        store: item.store ?? null,
-        purchased_by_person_id: me?.id ?? null,
-        source_type: 'manual',
-        purchased_at: completedAt,
-      }).catch((e) => console.warn('grocery history sync', e))
+      db.completeGroceryItemRpc(id).catch((e) => {
+        console.warn('grocery complete failed', e)
+        // The atomic op did not commit — undo the optimistic change from truth.
+        void rehydrateItem(id)
+      })
     }
   }
 
   const restoreItem: GroceryCtx['restoreItem'] = (id) => {
+    const item = items.find((it) => it.id === id)
+    if (!item || item.status !== 'completed') return
     setItems((list) => list.map((it) => (it.id === id ? { ...it, status: 'active', completedAt: null } : it)))
     if (familyId) {
-      db.updateGroceryItem(id, { status: 'active', completed_at: null }).catch((e) =>
-        console.warn('grocery sync', e),
-      )
+      db.restoreGroceryItemRpc(id).catch((e) => {
+        console.warn('grocery restore failed', e)
+        void rehydrateItem(id)
+      })
     }
   }
 

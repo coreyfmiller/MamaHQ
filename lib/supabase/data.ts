@@ -427,6 +427,34 @@ export async function fetchPurchaseEvents(familyId: string): Promise<DbPurchaseE
   return (data ?? []) as DbPurchaseEvent[]
 }
 
+// Fetch a single grocery item (used to rehydrate the client after a failed
+// atomic operation, so the UI never shows a false success).
+export async function fetchGroceryItem(id: string): Promise<DbGroceryItem | null> {
+  const { data, error } = await supabaseBrowser()
+    .from('grocery_items')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return (data as DbGroceryItem) ?? null
+}
+
+// ATOMIC completion: marks the item completed AND writes the purchase_event
+// snapshot in ONE server-side transaction (commit both or neither). Idempotent —
+// repeat calls never create duplicate history. Authorization is enforced inside
+// the function from the item's own family; the caller passes only the item id.
+export async function completeGroceryItemRpc(itemId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('complete_grocery_item', { p_item_id: itemId })
+  if (error) throw error
+}
+
+// ATOMIC restore: sets the item active and reverses (deletes) the purchase_event
+// created by that completion. Authorization enforced server-side.
+export async function restoreGroceryItemRpc(itemId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('restore_grocery_item', { p_item_id: itemId })
+  if (error) throw error
+}
+
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
 // Deletes all of a family's data rows. Ordered so FK children go before parents.

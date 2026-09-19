@@ -88,3 +88,38 @@ partner work (tracked separately); nothing here needs rework when that lands.
 Canonical catalog, household items, aliases, unit registry, search/autocomplete,
 duplicate detection, realtime sync, offline queue, Meals, and AI/"Tell MamaHQ"
 routing — all out of scope for Step 2.
+
+---
+
+## Reliability correction — atomic + idempotent completion (migration 0004)
+
+The initial Step 2 `completeItem` did two independent client writes (update status,
+then insert purchase_event), fire-and-forget. That allowed split-brain (one succeeds,
+one fails), duplicate history (double-tap / retry / two devices), and orphaned events
+on restore. Corrected in `supabase/migrations/0004_grocery_completion.sql`:
+
+- **`completion_id`** on both `grocery_items` and `purchase_events`; a **partial
+  unique index** `purchase_events_completion_uniq (completion_id) where completion_id
+  is not null` makes duplicate history impossible.
+- **`complete_grocery_item(p_item_id)`** — SECURITY DEFINER, single transaction:
+  locks the item (`for update`), authorizes via `is_family_member(item.family_id)`
+  derived from the item (never a caller-supplied family_id), and if `active` stamps a
+  fresh `completion_id`, sets status/`completed_at`, and inserts the snapshot — commit
+  both or neither. Already-completed → idempotent no-op returning the existing
+  `completion_id`. The insert uses `on conflict (completion_id) where completion_id is
+  not null do nothing` for race safety.
+- **`restore_grocery_item(p_item_id)`** — SECURITY DEFINER, single transaction: sets
+  the item active, clears `completed_at`/`completion_id`, and **deletes the
+  purchase_event for that completion** (documented decision: an accidental check is a
+  reversed operational mistake, not immutable audit history, so it must not
+  contaminate purchase data).
+- **Client:** `GroceryProvider.completeItem`/`restoreItem` now call
+  `completeGroceryItemRpc`/`restoreGroceryItemRpc` (one call each). On failure they
+  **rehydrate the item from the cloud** rather than silently leaving a false success.
+  The public `useGrocery` API is unchanged.
+
+Verified against the live DB (temp rows, cleaned up): normal completion → 1 event;
+duplicate completion → still 1; restore → item active + event reversed; re-complete →
+exactly 1 new event; concurrent double-call in one statement → 1 event; non-member
+call → rejected ("not authorized for this family"), item unchanged; custom item name
+("Grandma's weird sauce") flows through with no catalog.
