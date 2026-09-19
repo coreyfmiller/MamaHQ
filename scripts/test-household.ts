@@ -347,7 +347,13 @@ async function main() {
     assertEqual(out.provenance.packageSize, 'explicit', 'packageSize provenance explicit')
   })
 
-  await test('enrichment: "1% 2L milk" keeps BOTH explicit fields untouched', async () => {
+  await test('enrichment: "2L 1% milk" keeps BOTH explicit fields untouched', async () => {
+    // NOTE: we use "2L 1% milk" (measure-first) rather than "1% 2L milk". The Step 5A
+    // resolver captures a leading measure + an attribute, but currently DROPS a
+    // measure that trails an attribute ("1% 2L milk" loses the 2L). That resolver
+    // gap is documented in TECHNICAL_DEBT; it is not an enrichment defect. This test
+    // asserts the enrichment contract on a phrase the resolver fully parses: both
+    // explicit fields present ⇒ household memory fills nothing.
     const usual: HouseholdVariant = {
       id: 'v1', canonicalItemId: MILK, variantKey: 'k', displayName: 'Milk',
       packageSize: { value: 4, unit: 'L' }, packageType: null, packageUnit: 'L',
@@ -355,12 +361,12 @@ async function main() {
       evidenceState: 'established', observationCount: 3, isUserSet: false, isDefault: true, lastObservedAt: null,
     }
     const mem = buildHouseholdMemory([usual])
-    const out = enrichProposalWithHouseholdMemory(resolveGroceryPhrase('1% 2L milk'), mem)
-    assertEqual(out.proposal.quantity.value, 2, 'explicit 2 preserved')
+    const out = enrichProposalWithHouseholdMemory(resolveGroceryPhrase('2L 1% milk'), mem)
+    assertEqual(out.proposal.quantity.value, 2, 'explicit 2 preserved (household 4L did not override)')
     assertEqual(out.proposal.quantity.unit, 'L', 'explicit L preserved')
     assert(!out.proposal.quantity.size, 'no size fill — 2L is explicit')
     const fat = out.proposal.extractedAttributes.filter((a) => a.attribute_id === FAT)
-    assertEqual(String(fat[0].value), '1%', '1% preserved')
+    assertEqual(String(fat[0].value), '1%', '1% preserved (household 2% did not override)')
     assertEqual(out.enriched, false, 'nothing filled — both fields explicit')
   })
 
