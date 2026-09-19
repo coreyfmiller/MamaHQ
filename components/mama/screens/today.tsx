@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { BookOpen, ChevronRight, Moon, Plus, Square } from 'lucide-react'
+import { BookOpen, ChevronRight, Moon, Plus, ShoppingCart, Square } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, dayNumber } from '../profile'
 import {
@@ -27,6 +27,7 @@ import { CategoryChip } from '../event-meta'
 import type { Category } from '@/lib/mama-data'
 import { pickAffirmation } from '@/lib/affirmations'
 import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
+import { useGrocery } from '../grocery'
 import { BottomNav, Card, CardLabel, LiveDot, Screen, Scroll, StatusBar } from '../ui'
 
 // After this long, a running sleep is more likely a forgotten timer than a real
@@ -321,9 +322,36 @@ export function TodayScreen({ empty = false }: { empty?: boolean }) {
 
         {/* Coming up */}
         <ComingUp />
+
+        {/* Grocery — a quick glance at the shared list */}
+        <GroceryCard />
       </Scroll>
       <Footer />
     </Screen>
+  )
+}
+
+// A compact entry point to the shared grocery list from Today.
+function GroceryCard() {
+  const { openOverlay } = useNav()
+  const { active } = useGrocery()
+  const count = active.length
+  return (
+    <button
+      onClick={() => openOverlay('grocery')}
+      className="flex w-full items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-3.5 text-left shadow-sm transition-transform active:scale-[0.99]"
+    >
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-sage-soft text-sage">
+        <ShoppingCart className="size-5" strokeWidth={1.75} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-semibold leading-tight">Grocery</p>
+        <p className="text-[13px] text-muted-foreground">
+          {count === 0 ? 'Shared list · nothing to buy' : `${count} item${count === 1 ? '' : 's'} to buy`}
+        </p>
+      </div>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+    </button>
   )
 }
 

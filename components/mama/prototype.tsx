@@ -11,6 +11,7 @@ import { MemoriesProvider } from './memories'
 import { AppointmentsProvider } from './appointments'
 import { PartnerProvider } from './partner'
 import { HouseholdProvider } from './household'
+import { GroceryProvider } from './grocery'
 import { InboxProvider } from './inbox/store'
 import { BottomSheet, FullOverlay, Toast } from './sheet'
 import { OnboardingScreen } from './screens/onboarding'
@@ -31,6 +32,7 @@ import { MemoriesScreen } from './screens/memories'
 import { PartnerScreen } from './screens/partner'
 import { Beyond90Screen } from './screens/beyond90'
 import { ReadScreen } from './screens/read'
+import { GroceryScreen } from './screens/grocery'
 import { ReminderScreen } from './screens/reminder'
 
 function ActiveTab() {
@@ -124,6 +126,9 @@ function Stage() {
       <FullOverlay open={overlay === 'read'}>
         <ReadScreen />
       </FullOverlay>
+      <FullOverlay open={overlay === 'grocery'}>
+        <GroceryScreen />
+      </FullOverlay>
       <FullOverlay open={overlay === 'settings'}>
         <SettingsScreen />
       </FullOverlay>
@@ -149,6 +154,7 @@ export function Prototype() {
           <ProfileProvider>
             <LogsProvider>
               <HouseholdProvider>
+              <GroceryProvider>
               <PartnerProvider>
                 <MomProvider>
                   <MemoriesProvider>
@@ -164,6 +170,7 @@ export function Prototype() {
                   </MemoriesProvider>
                 </MomProvider>
               </PartnerProvider>
+              </GroceryProvider>
               </HouseholdProvider>
             </LogsProvider>
           </ProfileProvider>

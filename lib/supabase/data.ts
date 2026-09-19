@@ -336,6 +336,97 @@ export async function deleteHouseholdPerson(id: string): Promise<void> {
   if (error) throw error
 }
 
+/* ---------------- Grocery (operational foundation — Step 2) ---------------- */
+
+// The operational grocery list row. `display_name` is the source of truth and
+// works with zero intelligence. Attribution points at household_people. Future
+// canonical_item_id / household_item_id are intentionally absent (deferred).
+export interface DbGroceryItem {
+  id: string
+  family_id: string
+  list_id: string | null
+  display_name: string
+  quantity: number
+  unit: string | null
+  brand: string | null
+  variant: string | null
+  size: string | null
+  category: string | null
+  store: string | null
+  note: string | null
+  photo_url: string | null
+  priority: number
+  added_by_person_id: string | null
+  assigned_to_person_id: string | null
+  source_type: string
+  source_id: string | null
+  status: 'active' | 'completed'
+  created_at: string
+  updated_at: string
+  completed_at: string | null
+}
+
+export async function fetchGroceryItems(familyId: string): Promise<DbGroceryItem[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('grocery_items')
+    .select('*')
+    .eq('family_id', familyId)
+    .order('priority', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DbGroceryItem[]
+}
+export async function insertGroceryItem(
+  row: Partial<DbGroceryItem> & { id: string; family_id: string; display_name: string },
+): Promise<void> {
+  const { error } = await supabaseBrowser().from('grocery_items').insert(row)
+  if (error) throw error
+}
+export async function updateGroceryItem(id: string, patch: Partial<DbGroceryItem>): Promise<void> {
+  const { error } = await supabaseBrowser().from('grocery_items').update(patch).eq('id', id)
+  if (error) throw error
+}
+export async function deleteGroceryItem(id: string): Promise<void> {
+  const { error } = await supabaseBrowser().from('grocery_items').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Retained purchase history — a denormalized snapshot written when an item is
+// completed as purchased, so history survives edits/removal of the source item.
+export interface DbPurchaseEvent {
+  id: string
+  family_id: string
+  item_id: string | null
+  display_name: string
+  quantity: number | null
+  unit: string | null
+  brand: string | null
+  variant: string | null
+  size: string | null
+  category: string | null
+  store: string | null
+  purchased_by_person_id: string | null
+  source_type: string | null
+  purchased_at: string
+  created_at: string
+}
+
+export async function insertPurchaseEvent(
+  row: Partial<DbPurchaseEvent> & { id: string; family_id: string; display_name: string },
+): Promise<void> {
+  const { error } = await supabaseBrowser().from('purchase_events').insert(row)
+  if (error) throw error
+}
+export async function fetchPurchaseEvents(familyId: string): Promise<DbPurchaseEvent[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('purchase_events')
+    .select('*')
+    .eq('family_id', familyId)
+    .order('purchased_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DbPurchaseEvent[]
+}
+
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
 // Deletes all of a family's data rows. Ordered so FK children go before parents.
@@ -352,6 +443,10 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     'memories',
     'captures',
     'partner_contacts',
+    // purchase_events references grocery_items (SET NULL), grocery_items references
+    // household_people (SET NULL) — delete children first to keep it clean.
+    'purchase_events',
+    'grocery_items',
     // household_people are wiped too; the owner's connected person is re-created
     // deterministically by ensure_family() on the next sign-in bootstrap.
     'household_people',
