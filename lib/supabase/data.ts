@@ -1098,9 +1098,11 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     // tasks/events. A hard reset would need a dedicated trusted RPC.
     'task_events',
     'tasks',
-    // Calendar (Step 10): participants cascade from calendar_events, but delete
-    // explicitly first for safety. Unlike tasks/care, calendar_events ALLOWS member
-    // DELETE (events are not an immutable ledger), so this actually wipes them.
+    // Calendar (Step 10): participants cascade from calendar_events. Like
+    // tasks/care/handoff, these are RPC-only writes (no direct-DELETE policy —
+    // deletion is centralized in delete_calendar_event), so this client DELETE is
+    // RLS-filtered to zero rows and does not error; it does not actually wipe them.
+    // Listed for FK ordering. A hard reset would use a dedicated trusted path.
     'calendar_event_participants',
     'calendar_events',
     // Care handoff (Step 9): care_handoffs + care_responsibility reference babies +

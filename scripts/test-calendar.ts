@@ -299,13 +299,24 @@ async function main() {
   // ========================================================================
   // DELETION
   // ========================================================================
-  await test('member can delete their family event (participants cascade)', async () => {
+  await test('member can delete their family event via the RPC (participants cascade)', async () => {
     const { data } = await createEvent(owner.client, famA, { title: 'Delete me', startsAt: soon, participants: [madelynPid] })
     const id = data as string
     const { error } = await owner.client.rpc('delete_calendar_event', { p_event_id: id })
     assert(!error, `delete failed: ${error?.message}`)
     assertEqual(await eventRow(A, id), null, 'event gone')
     assertEqual((await participantIds(A, id)).length, 0, 'participants cascaded')
+  })
+
+  await test('direct client DELETE is blocked (deletion only via the RPC — single boundary)', async () => {
+    const { data } = await createEvent(owner.client, famA, { title: 'No direct delete', startsAt: soon })
+    const id = data as string
+    // A member attempts a direct table DELETE; RLS has no delete policy → 0 rows.
+    await owner.client.from('calendar_events').delete().eq('id', id)
+    assert(await eventRow(A, id), 'event still exists after a direct client delete attempt')
+    // The RPC still works for the same member.
+    await owner.client.rpc('delete_calendar_event', { p_event_id: id })
+    assertEqual(await eventRow(A, id), null, 'RPC deletion still works')
   })
 
   await test('outsider cannot delete a Family A event', async () => {

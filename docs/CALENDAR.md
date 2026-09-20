@@ -117,10 +117,13 @@ de-duped replace).
 ### Deletion
 
 Unlike `task_events` (immutable history), a calendar event is **deletable** (Step 10
-§13). RLS allows a family member to delete their own family's event (and the
-`delete_calendar_event` RPC gives a consistent authorized path); no one can delete
-another family's event. No soft-delete was added — it wasn't justified by a current
-need.
+§13) — but deletion is centralized in the `delete_calendar_event` RPC as a **single
+trusted mutation boundary**. There is **no direct-DELETE RLS policy** (a member's
+direct `DELETE` is RLS-filtered to zero rows); the RPC authorizes from the event's
+own family so no one can delete another family's event. No soft-delete was added —
+it wasn't justified by a current need. (The "Start over" wipe therefore no-ops on
+calendar tables, exactly like tasks/care/handoff; a hard reset would use a dedicated
+trusted path.)
 
 ---
 

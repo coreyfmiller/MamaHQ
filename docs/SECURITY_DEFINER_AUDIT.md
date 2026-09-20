@@ -287,13 +287,15 @@ change), executed in CI.
 
 ## Step 10 addendum — Shared Calendar & Household Commitments
 
-Migration `0012_calendar_commitments.sql` adds a calendar domain. All client
-insert/update on `calendar_events` / `calendar_event_participants` is blocked by RLS
-(select for members; `with check (false)` insert/update guards). Member DELETE on
-`calendar_events` IS allowed (events are not immutable history; participants cascade)
-— scoped to the family so no one can delete another family's event. Writes flow
-through transactional SECURITY DEFINER RPCs so an event + its participants are always
-one coherent, family-safe unit.
+Migration `0012_calendar_commitments.sql` adds a calendar domain. ALL client writes
+— insert, update, AND delete — on `calendar_events` / `calendar_event_participants`
+are blocked by RLS (select for members; `with check (false)` insert/update guards;
+no delete policy). Every mutation flows through a transactional SECURITY DEFINER RPC
+— a single trusted mutation boundary — so an event + its participants are always one
+coherent, family-safe unit. (A calendar event is still deletable, unlike immutable
+task history, but only via `delete_calendar_event`, which authorizes from the event's
+own family so no one can delete another family's event. The Step 10 finalization
+review removed a redundant direct-DELETE policy in favour of this single boundary.)
 
 ### New SECURITY DEFINER functions
 
@@ -320,9 +322,10 @@ one coherent, family-safe unit.
   "accepted" (Step 10 has no acceptance workflow).
 - **EXECUTE — PASS.** `grant execute … to authenticated` on all RPCs; helpers are
   called internally; no `to public`.
-- **Least privilege — PASS.** Client insert/update blocked; only delete is granted to
-  members (intentional, family-scoped, non-destructive to other families). No
-  forge-via-direct-write path (tested).
+- **Least privilege — PASS.** Client insert/update/delete all blocked; every
+  mutation (including deletion) is via an authorized RPC — a single trusted
+  boundary. No forge-via-direct-write path and no redundant direct-DELETE policy
+  (tested: a direct client delete is RLS-filtered to zero rows).
 
 **Conclusion:** no vulnerability found. Event creation/editing is closed to direct
 client writes and mediated by authorized transactional definer functions; cross-family

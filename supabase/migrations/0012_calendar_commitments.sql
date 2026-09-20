@@ -143,15 +143,14 @@ create index if not exists calendar_event_participants_person
 
 -- ---------------------------------------------------------------------------
 -- 3) RLS — family-scoped, same is_family_member boundary as every table.
---    Members READ their household's events + participants. Writes (insert/update)
---    go through the transactional SECURITY DEFINER RPCs (client insert/update
---    blocked), so an event and its participants are always created/edited as one
---    coherent unit and no cross-family participant/responsible can be injected.
---
---    DELETE is INTENTIONALLY ALLOWED to family members (Step 10 §13): a calendar
---    event is not an immutable historical ledger (unlike task_events). A member may
---    legitimately delete their own family's event; RLS scopes it to the family so
---    no one can delete another family's event. (Participants cascade-delete.)
+--    Members READ their household's events + participants. ALL writes — insert,
+--    update, AND delete — go through the transactional SECURITY DEFINER RPCs
+--    (client insert/update/delete blocked), so there is a SINGLE trusted mutation
+--    boundary: an event + its participants are always created/edited/removed as one
+--    authorized, family-derived, coherent unit, and no cross-family participant/
+--    responsible can ever be injected. (A calendar event is still deletable — it's
+--    not immutable history like task_events — but deletion is centralized in
+--    delete_calendar_event rather than a redundant direct-DELETE policy.)
 -- ---------------------------------------------------------------------------
 alter table public.calendar_events enable row level security;
 alter table public.calendar_event_participants enable row level security;
@@ -165,9 +164,10 @@ create policy calendar_events_no_client_insert on public.calendar_events
 drop policy if exists calendar_events_no_client_update on public.calendar_events;
 create policy calendar_events_no_client_update on public.calendar_events
   for update using (false) with check (false);
+-- No direct-DELETE policy: deletion is only via delete_calendar_event (single
+-- trusted mutation boundary). Explicitly retire any prior permissive delete policy
+-- so re-applying this migration on a live DB is a clean no-op.
 drop policy if exists calendar_events_delete on public.calendar_events;
-create policy calendar_events_delete on public.calendar_events
-  for delete using (public.is_family_member(family_id));
 
 drop policy if exists calendar_event_participants_select on public.calendar_event_participants;
 create policy calendar_event_participants_select on public.calendar_event_participants
@@ -428,10 +428,11 @@ grant execute on function public.update_calendar_event(uuid, text, boolean, time
 
 -- ---------------------------------------------------------------------------
 -- delete_calendar_event(p_event_id) — delete an event (participants cascade).
--- A calendar event is deletable (Step 10 §13), unlike immutable task history.
--- Authorization from the event's own family. Idempotent: deleting an unknown/
--- already-deleted id is a no-op success. (RLS also permits a direct member delete;
--- this RPC gives a consistent, authorized, family-derived path for the client.)
+-- A calendar event is deletable (Step 10 §13), unlike immutable task history, but
+-- deletion is centralized HERE (there is no direct-DELETE RLS policy) so there is a
+-- single trusted, authorized, family-derived mutation boundary. Authorization from
+-- the event's own family. Idempotent: deleting an unknown/already-deleted id is a
+-- no-op success.
 -- ---------------------------------------------------------------------------
 create or replace function public.delete_calendar_event(p_event_id uuid)
 returns void
