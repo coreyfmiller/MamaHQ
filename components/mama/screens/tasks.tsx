@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ListChecks, Plus, RotateCcw, Clock, ChevronDown } from 'lucide-react'
+import { ListChecks, Plus, RotateCcw, Clock, ChevronDown, Check, Hand } from 'lucide-react'
 import { useNav } from '../context'
 import { useHousehold, type HouseholdPerson } from '../household'
 import { useTasks, type Task } from '../tasks'
@@ -18,7 +18,8 @@ const UNASSIGNED = '__unassigned__'
 
 export function TasksScreen() {
   const { closeOverlay, showToast } = useNav()
-  const { available, hydrated, open, completed, mine, create, assign, complete, reopen } = useTasks()
+  const { available, hydrated, open, completed, mine, mePersonId, create, assign, complete, reopen, accept, relinquish } =
+    useTasks()
   const { people, me } = useHousehold()
   const [view, setView] = useState<View>('open')
 
@@ -102,18 +103,21 @@ export function TasksScreen() {
                     ownerName={personName(t.assignedToPersonId)}
                     people={assignablePeople}
                     meId={me?.id ?? null}
+                    mePersonId={mePersonId}
                     onComplete={() => complete(t.id)}
                     onReopen={() => reopen(t.id)}
                     onAssign={(pid) => assign(t.id, pid)}
+                    onAccept={() => accept(t.id)}
+                    onRelinquish={() => relinquish(t.id)}
                   />
                 ))}
               </div>
             )}
 
             <p className="rounded-2xl bg-muted/60 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
-              Assigning a task tells MamaHQ who&apos;s responsible. It doesn&apos;t yet notify them or
-              mean they&apos;ve agreed — that&apos;s coming. For now it&apos;s a shared, honest record of who
-              owns what.
+              Assigning a task asks someone to take it. It becomes theirs when they press
+              &ldquo;I&apos;ve got it.&rdquo; Until then it&apos;s assigned, not accepted — so you know whether it&apos;s
+              really off your plate.
             </p>
           </>
         )}
@@ -258,20 +262,35 @@ function TaskRow({
   ownerName,
   people,
   meId,
+  mePersonId,
   onComplete,
   onReopen,
   onAssign,
+  onAccept,
+  onRelinquish,
 }: {
   task: Task
   ownerName: string | null
   people: HouseholdPerson[]
   meId: string | null
+  mePersonId: string | null
   onComplete: () => void
   onReopen: () => void
   onAssign: (personId: string | null) => void
+  onAccept: () => void
+  onRelinquish: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const done = task.status === 'completed'
+
+  // Acceptance state (Step 9). Assignment ≠ acceptance: we only ever show
+  // "has it ✓" once the person has explicitly accepted.
+  const assignedToMe = !!mePersonId && task.assignedToPersonId === mePersonId
+  const accepted = !!task.acknowledgedAt && !!task.acknowledgedByPersonId
+  const acceptedByMe = accepted && task.acknowledgedByPersonId === mePersonId
+  const acceptedName = accepted
+    ? people.find((p) => p.id === task.acknowledgedByPersonId)?.displayName ?? null
+    : null
 
   return (
     <Card className="space-y-2">
@@ -292,7 +311,7 @@ function TaskRow({
               onClick={() => setEditing((v) => !v)}
               className="font-medium text-foreground/80 underline-offset-2 hover:underline"
             >
-              {ownerName ?? 'Unassigned'}
+              {ownerName ? (ownerName === 'Me' ? 'Assigned to me' : `Assigned to ${ownerName}`) : 'Unassigned'}
             </button>
             {task.dueAt && (
               <>
@@ -314,6 +333,39 @@ function TaskRow({
           </button>
         )}
       </div>
+
+      {/* Acceptance affordance / status — only for open tasks. Completion stays a
+          separate action (the checkbox above). */}
+      {!done && (
+        <div className="pl-9">
+          {acceptedByMe ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-soft px-2.5 py-1 text-[12px] font-semibold text-sage">
+                <Check className="size-3.5" strokeWidth={3} /> You have this
+              </span>
+              <button
+                onClick={onRelinquish}
+                className="text-[12px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              >
+                I can&apos;t take this
+              </button>
+            </div>
+          ) : accepted ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-soft px-2.5 py-1 text-[12px] font-semibold text-sage">
+              <Check className="size-3.5" strokeWidth={3} /> {acceptedName ?? 'Someone'} has it
+            </span>
+          ) : assignedToMe ? (
+            <button
+              onClick={onAccept}
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-[13px] font-semibold text-primary-foreground transition-transform active:scale-[0.98]"
+            >
+              <Hand className="size-3.5" /> I&apos;ve got it
+            </button>
+          ) : task.assignedToPersonId ? (
+            <span className="text-[12px] text-muted-foreground">Waiting for {ownerName === 'Me' ? 'you' : ownerName} to accept</span>
+          ) : null}
+        </div>
+      )}
 
       {editing && (
         <div className="rounded-2xl bg-muted/50 p-3">

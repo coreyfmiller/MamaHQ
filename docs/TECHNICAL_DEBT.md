@@ -46,13 +46,22 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   Mom/Me surface); see the legacy audit in `docs/TASKS.md`.
 
 ### Task acknowledgement ("I've got it")
-- **Status:** deferred (schema is acknowledgement-ready).
-- **Why it matters:** assignment records *who owns* a task; it does NOT record that
-  the assignee has *accepted* it. Real mental-load transfer needs the difference
-  ("Mom assigned this" vs "James has it ✓"). Step 8 deliberately does not build it.
-- **Dependency:** none blocking — `task_events.event_type` accepts a new
-  `acknowledged` value additively; the UI already avoids implying acceptance.
-- **Suggested milestone:** a dedicated acknowledgement/handoff step.
+- **Status:** RESOLVED in Step 9 (migration `0011_responsibility_handoff.sql`).
+- Explicit acceptance is now modelled: current acceptance on `tasks`
+  (`acknowledged_at`/`_by_user_id`/`_by_household_person_id`) + `accepted` /
+  `relinquished` events. Only the assigned connected account can accept; reassign /
+  reopen / relinquish invalidate it; acceptance is distinct from completion. See
+  `docs/CARE_HANDOFF.md`.
+
+### Care Handoff — external delivery + acknowledgment (revisited)
+- **Status:** PARTIAL — in-app acknowledgement now exists (Step 9); external
+  delivery still absent.
+- **What's done (Step 9):** a `care_responsibility` holder + `care_handoffs` state
+  machine (propose/accept/decline/cancel), atomic holder transfer on accept,
+  deterministic care summary, connected-recipient enforcement, full RLS + security
+  tests. "James has the baby ✓" is trustworthy in-app.
+- **Still deferred:** no SMS/email/push delivery, no realtime, no proxy acceptance
+  for account-less caregivers. `lib/notify.ts` remains a no-op seam.
 
 ### Tasks — realtime / notifications
 - **Status:** deferred (absent).

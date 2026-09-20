@@ -228,3 +228,56 @@ direct client writes and mediated entirely by authorized, transactional definer
 functions. Behaviorally verified by `scripts/test-tasks.ts` (cross-family rejection,
 RLS read/write/mutate/history isolation, idempotent create/complete, ownership
 retained through completion, account-less ownership), executed in CI.
+
+
+---
+
+## Step 9 addendum — Responsibility Acceptance & Care Handoff
+
+Migration `0011_responsibility_handoff.sql` adds task-acceptance and care-handoff
+functions, and **redefines** two Step 8 functions (`assign_task`, `reopen_task`) to
+clear current acceptance. All writes to `tasks` / `task_events` /
+`care_responsibility` / `care_handoffs` are blocked at the client by RLS (select +
+explicit `false` insert/update guards, no delete policy — least privilege, matching
+the Step 8 correction), so these functions are the only mutation path.
+
+### New / changed SECURITY DEFINER functions
+
+| Function | search_path | Authorization | Notes |
+|---|---|---|---|
+| `my_person_in_family(family)` | `public` ✓ | reads `auth.uid()` | internal helper; returns the caller's connected person id or null; exposes nothing else |
+| `accept_task(task)` | `public` ✓ | `auth.uid()` not null; `is_family_member(task.family_id)`; **assignee's linked user_id must equal auth.uid()** | blocks proxy/impersonation and account-less acceptance; idempotent; does not complete |
+| `relinquish_task(task)` | `public` ✓ | `auth.uid()` not null; family member; **only `acknowledged_by_user_id == auth.uid()`** | clears acceptance, keeps assignment; idempotent |
+| `assign_task(task, person?)` (redefined) | `public` ✓ | family member; `assert_task_assignee` | now also clears acknowledgement on real owner change (reassignment invalidates acceptance) |
+| `reopen_task(task)` (redefined) | `public` ✓ | family member | now also clears acknowledgement (reopen requires re-acceptance) |
+| `ensure_care_responsibility(family)` | `public` ✓ | `auth.uid()` not null; `is_family_member(family)` | idempotent bootstrap; first caller becomes initial holder; derives subject from `babies` server-side |
+| `propose_care_handoff(family, to_person, context)` | `public` ✓ | family member; **recipient must be same-family AND connected** | cross-family / account-less recipient rejected; one-pending unique index; holder unchanged |
+| `accept_care_handoff(handoff)` | `public` ✓ | **only recipient's linked account** | transactional: marks accepted AND moves holder; stale (non-pending) rejected; idempotent; row-locked |
+| `decline_care_handoff(handoff)` | `public` ✓ | only recipient's linked account | holder unchanged; non-pending rejected; idempotent |
+| `cancel_care_handoff(handoff)` | `public` ✓ | proposer OR current-holder account | holder unchanged; makes stale accept impossible; idempotent |
+
+### Criterion findings (Step 9)
+- **Authorization — PASS.** Acceptance/decline require the *specific* linked account
+  (identity verified against `household_people.user_id`), not merely family
+  membership — this is what makes "James has it" trustworthy and blocks
+  impersonation. Cancel is limited to the sending side. All family/identity
+  references are derived from the row, never caller-supplied.
+- **search_path — PASS.** All pin `set search_path = public`.
+- **Input validation — PASS.** uuid params type-checked by Postgres; `context` is a
+  jsonb parameter stored verbatim (never interpreted/executed); status transitions
+  guarded by explicit `pending` checks.
+- **Identity handling — PASS.** Holder/owner/acknowledger are `household_people`
+  ids; the acting account is `auth.uid()`. Acceptance is never inferred; an
+  account-less person can never be recorded as having accepted.
+- **EXECUTE — PASS.** `grant execute … to authenticated` on all RPCs; no `to public`.
+- **Idempotency / concurrency — PASS.** Row-locked (`for update`); accept/decline/
+  cancel idempotent on terminal state; the one-pending unique index + status guard
+  make a propose/cancel/accept race resolve to exactly one winner with an atomic
+  holder transition (no intermediate "care disappears / two holders" state).
+
+**Conclusion:** no vulnerability found. Acceptance and care-holder state cannot be
+forged by direct client writes (RLS) and can only be changed by the correctly
+authorized linked account through the transactional RPCs. Behaviorally verified by
+`scripts/test-handoff.ts` (impersonation, cross-family, unconnected, forge-via-update,
+reassign/reopen/relinquish clearing, stale/duplicate transitions, atomic holder
+change), executed in CI.

@@ -153,6 +153,9 @@ jobs:
       - name: Tasks / Ownership tests (Step 8)
         run: node scripts/test-tasks.ts
 
+      - name: Responsibility / Care Handoff tests (Step 9)
+        run: node scripts/test-handoff.ts
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop || true

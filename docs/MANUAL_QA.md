@@ -114,6 +114,52 @@ Two authenticated adults (the mental-load proof):
 13. **[HUMAN]** As Mom: reopen it, reassign to herself. *Expected:* coherent state;
     owner is now Mom, status open.
 
+## Responsibility Acceptance & Care Handoff — Step 9 (all [HUMAN], OUTSTANDING)
+
+Automated `test:handoff` proves the DB/authorization/RLS behavior in CI. The
+following prove the UI + two-adult flow on a real build. **Do NOT mark passed unless
+a human runs them.**
+
+Task acceptance:
+
+1. **[HUMAN]** As Mom: create "Take garbage out", assign James.
+2. **[HUMAN]** As James (2nd account, same household): open Tasks → Mine. The task
+   shows **"I've got it"**. Press it. Expected: **"You have this ✓"**.
+3. **[HUMAN]** As Mom: refetch. Expected: the task shows **"James has it ✓"** (not
+   before he accepted).
+4. **[HUMAN]** As James: complete it. History shows created-by-Mom, assigned-James,
+   accepted-James, completed-James.
+
+Reassignment invalidates acceptance:
+
+5. **[HUMAN]** James accepts a task → Mom reassigns it to Sarah. Expected: it no
+   longer shows "James has it"; it shows "Assigned to Sarah / waiting to accept".
+   Sarah must press "I've got it" herself.
+
+Relinquish:
+
+6. **[HUMAN]** James accepts, then presses "I can't take this". Expected: acceptance
+   clears, task stays assigned to James (not reassigned).
+
+Care acceptance:
+
+7. **[HUMAN]** As Mom (current holder): Baby → "Care right now" → Hand off care →
+   pick James. Expected: preview shows only logged facts (last feed/diaper/nap); send.
+8. **[HUMAN]** Before James accepts: Mom is still the current holder ("Handoff
+   pending → James").
+9. **[HUMAN]** As James: open the pending handoff, press "I've got it". Expected:
+   James becomes current holder; Mom (after refetch) sees James has it.
+
+Decline:
+
+10. **[HUMAN]** Mom → James, James presses "Can't take over". Expected: Mom remains
+    current holder; nothing implies James took it.
+
+Cancel / stale:
+
+11. **[HUMAN]** Mom proposes → James, then Mom cancels before James accepts.
+    Expected: Mom remains holder; James can no longer accept the stale request.
+
 ## Mobile / ergonomics (all [HUMAN], OUTSTANDING)
 
 Verify on an actual phone (or accurate device emulation):
