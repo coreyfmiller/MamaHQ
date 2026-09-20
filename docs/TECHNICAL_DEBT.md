@@ -35,11 +35,39 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   household_people (carrying phone/email/notify prefs) and retire the table.
 - **Dependency:** none blocking.
 
-### mom_items.assignee string → assignee_person_id
-- **Status:** advisory (unchanged by Step 7).
+### mom_items.assignee string → tasks / assignee_person_id
+- **Status:** advisory (destination now exists as of Step 8).
 - **Why it matters:** `mom_items.assignee` is the legacy `'partner'` string.
-  Ownership should reference `household_people.id`. A future additive migration adds
-  `assignee_person_id uuid → household_people`, backfills, then deprecates the string.
+  Ownership should reference `household_people.id`. Step 8 built the durable
+  destination — `public.tasks` with `assigned_to_person_id → household_people` — so
+  the convergence target is no longer hypothetical. A future step should migrate
+  `mom_items` tasks onto `tasks` (or add `assignee_person_id` + backfill) and
+  deprecate the `'partner'` string. Not done in Step 8 (Tasks did not rewrite the
+  Mom/Me surface); see the legacy audit in `docs/TASKS.md`.
+
+### Task acknowledgement ("I've got it")
+- **Status:** deferred (schema is acknowledgement-ready).
+- **Why it matters:** assignment records *who owns* a task; it does NOT record that
+  the assignee has *accepted* it. Real mental-load transfer needs the difference
+  ("Mom assigned this" vs "James has it ✓"). Step 8 deliberately does not build it.
+- **Dependency:** none blocking — `task_events.event_type` accepts a new
+  `acknowledged` value additively; the UI already avoids implying acceptance.
+- **Suggested milestone:** a dedicated acknowledgement/handoff step.
+
+### Tasks — realtime / notifications
+- **Status:** deferred (absent).
+- **Why it matters:** a partner must refetch to see task changes; no push/email/SMS
+  is sent when a task is assigned. Both are intentionally out of Step 8.
+- **Dependency:** realtime is best introduced across household domains together;
+  notifications need a provider (Resend/Twilio) + the acknowledgement design.
+- **Suggested milestone:** post-acknowledgement, alongside the broader realtime pass.
+
+### Recurring tasks
+- **Status:** deferred (absent, by design).
+- **Why it matters:** garbage day, medication refills, school forms, filters, bills
+  are recurring responsibilities, but recurrence has its own semantics (generation,
+  skip, completion-of-an-instance) that would muddy the Step 8 foundation.
+- **Suggested milestone:** its own step after the base task system is proven.
 
 ### Care Handoff — external delivery + acknowledgment
 - **Status:** partial (assignment exists; delivery/ack absent).

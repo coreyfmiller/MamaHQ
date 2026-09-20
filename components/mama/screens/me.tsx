@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, ChevronRight, Heart, Moon, Plus, Sparkles, Star, Sun, Smile, Users, X } from 'lucide-react'
+import { Bell, ChevronRight, Heart, ListChecks, Moon, Plus, Sparkles, Star, Sun, Smile, Users, X } from 'lucide-react'
 import { useNav } from '../context'
 import { CategoryChip } from '../event-meta'
 import { BottomNav, Card, CardLabel, CheckBox, Screen, Scroll, StatusBar } from '../ui'
@@ -216,6 +216,7 @@ export function MeScreen() {
 
         <Card className="divide-y divide-border/50 py-1">
           {[
+            { icon: ListChecks, label: 'Tasks', sub: 'Who owns what', action: () => openOverlay('tasks') },
             { icon: Users, label: 'Household', sub: 'People & invites', action: () => openOverlay('people') },
             { icon: Users, label: 'Partner view', sub: 'Share the load', action: () => openOverlay('partner') },
             { icon: Bell, label: 'Reminders', sub: 'See a preview', action: () => openOverlay('reminder') },

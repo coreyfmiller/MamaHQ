@@ -81,6 +81,39 @@ Perform in the running app (`pnpm dev` or the deployed site), signed in.
 
 ---
 
+## Tasks / Ownership — Step 8 (all [HUMAN], OUTSTANDING)
+
+Automated `test:tasks` proves the DB/ownership/RLS behavior in CI (creation,
+assignment integrity, cross-family rejection, completion actor/ownership retention,
+reopen, "Mine" resolution, account-less ownership). The following prove the UI +
+the two-adult flow on a real build. **Do NOT mark passed unless a human runs them.**
+
+Single adult:
+
+1. **[HUMAN]** Me → Tasks opens the Tasks surface.
+2. **[HUMAN]** Type "Take garbage out" and press Enter / tap +.
+   *Expected:* appears under Open as `Take garbage out · Unassigned`.
+3. **[HUMAN]** Use "Assign someone or set a due date"; assign to a person; set a due
+   date. *Expected:* the row shows the owner name and the due time (e.g. "Tonight").
+4. **[HUMAN]** Complete it (tap the checkbox). *Expected:* moves to Done; toast.
+5. **[HUMAN]** Reopen it (Done view → reopen). *Expected:* returns to Open, ownership
+   preserved.
+6. **[HUMAN]** Reassign it via the inline owner picker. *Expected:* owner changes.
+7. **[HUMAN]** Refresh. *Expected:* tasks (Open + Done) reload unchanged.
+
+Two authenticated adults (the mental-load proof):
+
+8. **[HUMAN]** As Mom: create "Take garbage out tonight", assign to James, due tonight.
+9. **[HUMAN]** As James (second account, member of the same household): sign in, open
+   Tasks, switch to **Mine**. *Expected:* the task appears under Mine (owned by James),
+   even though Mom created it.
+10. **[HUMAN]** As James: complete it.
+11. **[HUMAN]** As Mom: refetch/reload. *Expected:* the task shows completed.
+12. **[HUMAN]** (If history surfaced later) confirm created-by-Mom, owned-by-James,
+    completed-by-James read coherently.
+13. **[HUMAN]** As Mom: reopen it, reassign to herself. *Expected:* coherent state;
+    owner is now Mom, status open.
+
 ## Mobile / ergonomics (all [HUMAN], OUTSTANDING)
 
 Verify on an actual phone (or accurate device emulation):

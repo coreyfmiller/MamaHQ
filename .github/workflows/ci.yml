@@ -150,6 +150,9 @@ jobs:
       - name: Household Membership tests (Step 7)
         run: node scripts/test-membership.ts
 
+      - name: Tasks / Ownership tests (Step 8)
+        run: node scripts/test-tasks.ts
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop || true

@@ -657,6 +657,141 @@ export async function clearHouseholdUsualRpc(householdItemId: string): Promise<v
   if (error) throw error
 }
 
+/* ---------------- Tasks / Ownership (Step 8) ---------------- */
+
+// A durable, family-scoped RESPONSIBILITY row. Ownership points at a
+// household_people id (assigned_to_person_id) — which may be account-less — and is
+// distinct from the CREATOR (created_by_user_id) and the COMPLETER
+// (completed_by_user_id). Assignment is NOT authorization; RLS gates access on
+// family membership. Writes go through the RPCs below (atomic with history), not
+// direct table inserts/updates. See 0010_tasks.sql and docs/TASKS.md.
+export interface DbTask {
+  id: string
+  family_id: string
+  title: string
+  notes: string | null
+  status: 'open' | 'completed'
+  /** OWNERSHIP → household_people.id (may have no account). null = unassigned. */
+  assigned_to_person_id: string | null
+  /** CREATOR → the auth user who captured it (independent of ownership). */
+  created_by_user_id: string | null
+  source: 'manual' | 'tell_mamahq' | 'household_member' | 'care_handoff' | 'calendar' | 'system'
+  due_at: string | null
+  completed_at: string | null
+  /** COMPLETER → the auth user who actually completed it (≠ owner). */
+  completed_by_user_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Append-only history of important task transitions (HISTORICAL TRUTH). The task
+// row is current truth; these events preserve who owned/assigned/completed what.
+export interface DbTaskEvent {
+  id: string
+  family_id: string
+  task_id: string
+  event_type: 'created' | 'assigned' | 'reassigned' | 'completed' | 'reopened'
+  actor_user_id: string | null
+  prev_person_id: string | null
+  new_person_id: string | null
+  metadata: unknown
+  created_at: string
+}
+
+export async function fetchTasks(familyId: string): Promise<DbTask[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('tasks')
+    .select('*')
+    .eq('family_id', familyId)
+    // Open first, then by due date (nulls last), then newest — a natural order that
+    // needs no priority levels (Step 8 §19).
+    .order('status', { ascending: true })
+    .order('due_at', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DbTask[]
+}
+
+// A task's history, oldest → newest (so the UI can read it as a timeline).
+export async function fetchTaskEvents(familyId: string, taskId: string): Promise<DbTaskEvent[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('task_events')
+    .select('*')
+    .eq('family_id', familyId)
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as DbTaskEvent[]
+}
+
+// Rehydrate a single task after a mutation (so the UI reflects server truth).
+export async function fetchTask(id: string): Promise<DbTask | null> {
+  const { data, error } = await supabaseBrowser().from('tasks').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return (data as DbTask) ?? null
+}
+
+// ATOMIC create: inserts the task AND its 'created' (+ initial 'assigned') event in
+// one server-side transaction. Idempotent on the client-supplied task id — a retry
+// with the same id returns the existing task, never a duplicate. Authorization +
+// assignment integrity (assignee must belong to the family) are enforced
+// server-side. Returns the task id.
+export async function createTaskRpc(args: {
+  familyId: string
+  title: string
+  assignedToPersonId?: string | null
+  dueAt?: string | null
+  notes?: string | null
+  source?: DbTask['source']
+  clientTaskId?: string | null
+}): Promise<string> {
+  const { data, error } = await supabaseBrowser().rpc('create_task', {
+    p_family_id: args.familyId,
+    p_title: args.title,
+    p_assigned_to_person_id: args.assignedToPersonId ?? null,
+    p_due_at: args.dueAt ?? null,
+    p_notes: args.notes ?? null,
+    p_source: args.source ?? 'manual',
+    p_client_task_id: args.clientTaskId ?? null,
+  })
+  if (error) throw error
+  return data as string
+}
+
+// ATOMIC assign/reassign/unassign: updates the owner AND appends an 'assigned' or
+// 'reassigned' event in one transaction. personId null = unassign. Assigning the
+// same owner is a no-op (no spurious event). Authorization + assignment integrity
+// enforced server-side.
+export async function assignTaskRpc(taskId: string, personId: string | null): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('assign_task', {
+    p_task_id: taskId,
+    p_person_id: personId,
+  })
+  if (error) throw error
+}
+
+// ATOMIC complete: marks completed + records the completer AND appends a 'completed'
+// event. Does NOT rewrite ownership. Idempotent (repeat calls create no duplicate
+// event). Any authorized adult may complete.
+export async function completeTaskRpc(taskId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('complete_task', { p_task_id: taskId })
+  if (error) throw error
+}
+
+// ATOMIC reopen: status → open, clears completion metadata, appends a 'reopened'
+// event. Preserves ownership + identity. Idempotent on an already-open task.
+export async function reopenTaskRpc(taskId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('reopen_task', { p_task_id: taskId })
+  if (error) throw error
+}
+
+// Delete a task (and its events cascade). Members only (RLS-scoped). Used for
+// explicit removal; completion/reopen are the normal lifecycle, not deletion.
+export async function deleteTask(id: string): Promise<void> {
+  const { error } = await supabaseBrowser().from('tasks').delete().eq('id', id)
+  if (error) throw error
+}
+
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
 // Deletes all of a family's data rows. Ordered so FK children go before parents.
@@ -673,6 +808,10 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     'memories',
     'captures',
     'partner_contacts',
+    // Tasks (Step 8): task_events reference tasks (cascade) + household_people
+    // (SET NULL); delete the event history first, then the tasks, before people.
+    'task_events',
+    'tasks',
     // Invitations (Step 7) reference household_people (SET NULL) — remove first.
     'household_invitations',
     // Household memory (Step 6): observations reference household_items +
