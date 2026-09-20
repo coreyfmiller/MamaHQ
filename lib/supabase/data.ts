@@ -682,15 +682,24 @@ export interface DbTask {
   completed_by_user_id: string | null
   created_at: string
   updated_at: string
+  /** CURRENT ACCEPTANCE (Step 9). null = assigned but not yet accepted ("I've got
+   *  it" not pressed). Cleared by reassign / reopen / relinquish. Historical
+   *  acceptance lives in task_events. See 0011_responsibility_handoff.sql. */
+  acknowledged_at: string | null
+  /** The RESPONSIBILITY ACTOR (auth user) who accepted. */
+  acknowledged_by_user_id: string | null
+  /** The HouseholdPerson who accepted (== assigned_to_person_id at accept time). */
+  acknowledged_by_household_person_id: string | null
 }
 
 // Append-only history of important task transitions (HISTORICAL TRUTH). The task
-// row is current truth; these events preserve who owned/assigned/completed what.
+// row is current truth; these events preserve who owned/assigned/accepted/
+// completed what. Step 9 adds 'accepted' and 'relinquished'.
 export interface DbTaskEvent {
   id: string
   family_id: string
   task_id: string
-  event_type: 'created' | 'assigned' | 'reassigned' | 'completed' | 'reopened'
+  event_type: 'created' | 'assigned' | 'reassigned' | 'accepted' | 'relinquished' | 'completed' | 'reopened'
   actor_user_id: string | null
   prev_person_id: string | null
   new_person_id: string | null
@@ -780,8 +789,27 @@ export async function completeTaskRpc(taskId: string): Promise<void> {
 
 // ATOMIC reopen: status → open, clears completion metadata, appends a 'reopened'
 // event. Preserves ownership + identity. Idempotent on an already-open task.
+// Step 9: reopen also clears any current acceptance (re-acceptance required).
 export async function reopenTaskRpc(taskId: string): Promise<void> {
   const { error } = await supabaseBrowser().rpc('reopen_task', { p_task_id: taskId })
+  if (error) throw error
+}
+
+// ATOMIC accept (Step 9 — "I've got it"): the account LINKED to the task's assigned
+// HouseholdPerson explicitly takes responsibility. Sets the current-acceptance
+// columns + appends an 'accepted' event. Does NOT complete the task. Server rejects
+// anyone who is not the assigned person's connected account. Idempotent.
+export async function acceptTaskRpc(taskId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('accept_task', { p_task_id: taskId })
+  if (error) throw error
+}
+
+// ATOMIC relinquish (Step 9 — "I can't take this"): the accepting account releases
+// responsibility. Clears current acceptance + appends a 'relinquished' event. Does
+// NOT change assignment (still assigned, but explicitly not held) and does NOT
+// reassign. Only the account that accepted may relinquish. Idempotent.
+export async function relinquishTaskRpc(taskId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('relinquish_task', { p_task_id: taskId })
   if (error) throw error
 }
 
@@ -790,6 +818,110 @@ export async function reopenTaskRpc(taskId: string): Promise<void> {
 // task_events (least privilege — task_events is historical truth). The lifecycle is
 // complete/reopen via the RPCs above. A hard reset, if ever needed, would be a
 // dedicated trusted RPC, not a client delete.
+
+/* ---------------- Care Handoff (Step 9) ---------------- */
+
+// CURRENT holder of active care for a subject (the family's baby). Current truth;
+// the handoff records are historical truth. holder_person_id is a HouseholdPerson.
+// See 0011_responsibility_handoff.sql and docs/CARE_HANDOFF.md.
+export interface DbCareResponsibility {
+  id: string
+  family_id: string
+  subject_baby_id: string | null
+  holder_person_id: string | null
+  updated_at: string
+  created_at: string
+}
+
+// A proposed/accepted/declined/cancelled care transfer. A proposed handoff does
+// NOT transfer responsibility; the holder changes only when the recipient accepts.
+export interface DbCareHandoff {
+  id: string
+  family_id: string
+  subject_baby_id: string | null
+  from_person_id: string | null
+  to_person_id: string
+  proposed_by_user_id: string | null
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled'
+  /** Deterministic operational summary snapshot captured at propose time. */
+  context: unknown
+  created_at: string
+  resolved_at: string | null
+  resolved_by_user_id: string | null
+}
+
+// Read the family's current care-responsibility row (may be absent until ensured).
+export async function fetchCareResponsibility(familyId: string): Promise<DbCareResponsibility | null> {
+  const { data, error } = await supabaseBrowser()
+    .from('care_responsibility')
+    .select('*')
+    .eq('family_id', familyId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as DbCareResponsibility) ?? null
+}
+
+// Read the family's care handoffs (newest first). Members only (RLS-scoped).
+export async function fetchCareHandoffs(familyId: string): Promise<DbCareHandoff[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('care_handoffs')
+    .select('*')
+    .eq('family_id', familyId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as DbCareHandoff[]
+}
+
+// Idempotently create the family's care-responsibility row (first caller becomes
+// the initial holder) and return its id. Authorization enforced server-side.
+export async function ensureCareResponsibilityRpc(familyId: string): Promise<string> {
+  const { data, error } = await supabaseBrowser().rpc('ensure_care_responsibility', {
+    p_family_id: familyId,
+  })
+  if (error) throw error
+  return data as string
+}
+
+// Propose a care handoff to a CONNECTED HouseholdPerson in the same family. Does
+// NOT change the current holder. context is the deterministic summary snapshot.
+// Returns the handoff id. Server rejects cross-family / account-less recipients and
+// enforces one pending handoff at a time.
+export async function proposeCareHandoffRpc(
+  familyId: string,
+  toPersonId: string,
+  context: Record<string, unknown>,
+): Promise<string> {
+  const { data, error } = await supabaseBrowser().rpc('propose_care_handoff', {
+    p_family_id: familyId,
+    p_to_person_id: toPersonId,
+    p_context: context,
+  })
+  if (error) throw error
+  return data as string
+}
+
+// Recipient accepts: atomically marks the handoff accepted AND moves the current
+// holder to the recipient. Only the recipient's connected account may accept.
+// Stale (cancelled/declined) accept rejected; idempotent.
+export async function acceptCareHandoffRpc(handoffId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('accept_care_handoff', { p_handoff_id: handoffId })
+  if (error) throw error
+}
+
+// Recipient declines: current holder unchanged. Only the recipient may decline.
+export async function declineCareHandoffRpc(handoffId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('decline_care_handoff', { p_handoff_id: handoffId })
+  if (error) throw error
+}
+
+// Sender (proposer or current holder) cancels a pending handoff before acceptance.
+// Makes the stale request unacceptable. Current holder unchanged.
+export async function cancelCareHandoffRpc(handoffId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('cancel_care_handoff', { p_handoff_id: handoffId })
+  if (error) throw error
+}
 
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
@@ -815,6 +947,12 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     // tasks/events. A hard reset would need a dedicated trusted RPC.
     'task_events',
     'tasks',
+    // Care handoff (Step 9): care_handoffs + care_responsibility reference babies +
+    // household_people (SET NULL). Like tasks/task_events these are RPC-only writes
+    // (no delete policy), so this client DELETE is RLS-filtered to zero rows and
+    // does not error — it does not actually wipe them. Listed for FK ordering.
+    'care_handoffs',
+    'care_responsibility',
     // Invitations (Step 7) reference household_people (SET NULL). Also RPC-only
     // writes (no delete policy) — this delete is a no-op that does not error.
     'household_invitations',

@@ -184,19 +184,17 @@ completed-by-James).
 
 ---
 
-## Acknowledgement-ready, but not built
+## Acknowledgement — built in Step 9
 
-A future MamaHQ must distinguish "Mom assigned this to James" from "James knows it's
-his and has taken it" ("James has it ✓"). **Step 8 does not build acknowledgement.**
-But the design does not prevent it:
-
-- `task_events.event_type` can add `acknowledged` additively (open CHECK).
-- The UI never implies the assignee has *accepted* responsibility — copy explicitly
-  says assignment "doesn't yet notify them or mean they've agreed."
-
-This distinction is central to the mental-load thesis: assignment records *who owns*
-it; a later step will record *"I've got it"*, which is when assignment becomes real
-mental-load transfer.
+Step 8 established assignment; **Step 9 added explicit acceptance** ("I've got it"),
+so MamaHQ now distinguishes "Mom assigned this to James" from "James has taken it
+✓". Current acceptance lives on the task row (`acknowledged_at`,
+`acknowledged_by_user_id`, `acknowledged_by_household_person_id`); historical
+acceptance is in `task_events` (`accepted` / `relinquished`). Only the assigned,
+connected account may accept; reassignment, reopen, and relinquish all invalidate
+current acceptance; acceptance is distinct from completion. Full design in
+`docs/CARE_HANDOFF.md`. This is what turns assignment into real mental-load transfer:
+assignment records *who owns* it; acceptance records that they've *taken* it.
 
 ---
 

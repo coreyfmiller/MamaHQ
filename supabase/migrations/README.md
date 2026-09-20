@@ -184,3 +184,25 @@ Ownership** system — the first durable responsibility layer:
 
 Authoritative apply order for a clean environment is now `0001 → … → 0010`. See
 `docs/TASKS.md` and the Step 8 addendum in `docs/SECURITY_DEFINER_AUDIT.md`.
+
+## Step 9 — 0011_responsibility_handoff.sql
+
+`0011_responsibility_handoff.sql` (additive, after `0010`) adds **responsibility
+acceptance** and a minimal **care handoff** domain:
+
+- **Task acceptance:** adds `acknowledged_at` / `acknowledged_by_user_id` /
+  `acknowledged_by_household_person_id` to `tasks` (current acceptance), widens the
+  `task_events` CHECK to include `accepted` / `relinquished`, and adds
+  `accept_task` / `relinquish_task` RPCs. **Redefines** `assign_task` and
+  `reopen_task` (create-or-replace) so reassignment and reopen clear current
+  acceptance. Only the assigned connected account may accept; acceptance ≠ completion.
+- **Care handoff:** adds `care_responsibility` (current holder, one row per
+  family/subject) and `care_handoffs` (propose/accept/decline/cancel state machine,
+  one pending per family/subject). RLS blocks all client writes (RPC-only, no delete
+  policy — least privilege). RPCs: `ensure_care_responsibility`,
+  `propose_care_handoff`, `accept_care_handoff` (atomic holder move),
+  `decline_care_handoff`, `cancel_care_handoff`, plus the `my_person_in_family`
+  helper. Recipients must be connected accounts; stale/duplicate transitions are safe.
+
+Authoritative apply order for a clean environment is now `0001 → … → 0011`. See
+`docs/CARE_HANDOFF.md` and the Step 9 addendum in `docs/SECURITY_DEFINER_AUDIT.md`.

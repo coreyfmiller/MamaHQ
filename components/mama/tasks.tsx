@@ -33,6 +33,11 @@ export interface Task {
   /** COMPLETER → the auth user who completed it (≠ owner). */
   completedByUserId: string | null
   createdAt: string
+  /** CURRENT ACCEPTANCE (Step 9). null = assigned but not accepted ("I've got it"
+   *  not pressed). Cleared by reassign / reopen / relinquish. */
+  acknowledgedAt: string | null
+  acknowledgedByUserId: string | null
+  acknowledgedByPersonId: string | null
 }
 
 export interface TaskEvent {
@@ -64,10 +69,18 @@ interface TasksCtx {
   /** "Mine" = tasks owned by the HouseholdPerson linked to the current account.
    *  NOT tasks the current user created. */
   mine: Task[]
+  /** The current user's linked HouseholdPerson id (for "is this mine / can I
+   *  accept it"), or null if the account isn't linked to a person. */
+  mePersonId: string | null
   create: (input: CreateTaskInput) => Promise<void>
   assign: (taskId: string, personId: string | null) => Promise<void>
   complete: (taskId: string) => Promise<void>
   reopen: (taskId: string) => Promise<void>
+  /** Accept ("I've got it") — only valid for a task assigned to the current user's
+   *  own person and not yet accepted. Server enforces this. */
+  accept: (taskId: string) => Promise<void>
+  /** Relinquish ("I can't take this") — the accepting person releases it. */
+  relinquish: (taskId: string) => Promise<void>
   // NOTE: no `remove` — Step 8 has no delete-task workflow and RLS blocks direct
   // client DELETE of tasks/task_events (least privilege; task_events is history).
   /** Load a task's history timeline (oldest → newest). */
@@ -81,10 +94,13 @@ const Ctx = createContext<TasksCtx>({
   open: [],
   completed: [],
   mine: [],
+  mePersonId: null,
   create: async () => {},
   assign: async () => {},
   complete: async () => {},
   reopen: async () => {},
+  accept: async () => {},
+  relinquish: async () => {},
   history: async () => [],
 })
 
@@ -111,6 +127,9 @@ function fromRow(r: db.DbTask): Task {
     completedAt: r.completed_at,
     completedByUserId: r.completed_by_user_id,
     createdAt: r.created_at,
+    acknowledgedAt: r.acknowledged_at,
+    acknowledgedByUserId: r.acknowledged_by_user_id,
+    acknowledgedByPersonId: r.acknowledged_by_household_person_id,
   }
 }
 
@@ -127,7 +146,7 @@ function sortTasks(list: Task[]): Task[] {
 }
 
 export function TasksProvider({ children }: { children: ReactNode }) {
-  const { familyId, status } = useAuth()
+  const { familyId, status, user } = useAuth()
   const { me } = useHousehold()
   const [tasks, setTasks] = useState<Task[]>([])
   const [hydrated, setHydrated] = useState(false)
@@ -181,6 +200,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       completedAt: null,
       completedByUserId: null,
       createdAt: new Date().toISOString(),
+      acknowledgedAt: null,
+      acknowledgedByUserId: null,
+      acknowledgedByPersonId: null,
     }
     setTasks((list) => sortTasks([optimistic, ...list]))
     try {
@@ -238,6 +260,45 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     if (familyId) await reload(familyId).catch(() => {})
   }
 
+  const accept: TasksCtx['accept'] = async (taskId) => {
+    const now = new Date().toISOString()
+    // Optimistic: mark accepted by me (server re-validates that I'm the assignee).
+    setTasks((list) =>
+      list.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              acknowledgedAt: now,
+              acknowledgedByUserId: user?.id ?? null,
+              acknowledgedByPersonId: me?.id ?? t.assignedToPersonId,
+            }
+          : t,
+      ),
+    )
+    try {
+      await db.acceptTaskRpc(taskId)
+    } catch (e) {
+      console.warn('tasks accept', e)
+    }
+    if (familyId) await reload(familyId).catch(() => {})
+  }
+
+  const relinquish: TasksCtx['relinquish'] = async (taskId) => {
+    setTasks((list) =>
+      list.map((t) =>
+        t.id === taskId
+          ? { ...t, acknowledgedAt: null, acknowledgedByUserId: null, acknowledgedByPersonId: null }
+          : t,
+      ),
+    )
+    try {
+      await db.relinquishTaskRpc(taskId)
+    } catch (e) {
+      console.warn('tasks relinquish', e)
+    }
+    if (familyId) await reload(familyId).catch(() => {})
+  }
+
   const history: TasksCtx['history'] = async (taskId) => {
     if (!familyId) return []
     try {
@@ -274,14 +335,17 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       open,
       completed,
       mine,
+      mePersonId: me?.id ?? null,
       create,
       assign,
       complete,
       reopen,
+      accept,
+      relinquish,
       history,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, hydrated, familyId, open, completed, mine],
+    [tasks, hydrated, familyId, open, completed, mine, me],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

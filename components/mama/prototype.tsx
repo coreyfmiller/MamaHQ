@@ -13,6 +13,7 @@ import { PartnerProvider } from './partner'
 import { HouseholdProvider } from './household'
 import { GroceryProvider } from './grocery'
 import { TasksProvider } from './tasks'
+import { CareProvider } from './care'
 import { InboxProvider } from './inbox/store'
 import { BottomSheet, FullOverlay, Toast } from './sheet'
 import { OnboardingScreen } from './screens/onboarding'
@@ -36,6 +37,7 @@ import { ReadScreen } from './screens/read'
 import { GroceryScreen } from './screens/grocery'
 import { PeopleScreen } from './screens/people'
 import { TasksScreen } from './screens/tasks'
+import { CareHandoffScreen } from './screens/care-handoff'
 import { ReminderScreen } from './screens/reminder'
 
 function ActiveTab() {
@@ -138,6 +140,9 @@ function Stage() {
       <FullOverlay open={overlay === 'tasks'}>
         <TasksScreen />
       </FullOverlay>
+      <FullOverlay open={overlay === 'careHandoff'}>
+        <CareHandoffScreen />
+      </FullOverlay>
       <FullOverlay open={overlay === 'settings'}>
         <SettingsScreen />
       </FullOverlay>
@@ -165,6 +170,7 @@ export function Prototype() {
               <HouseholdProvider>
               <GroceryProvider>
               <TasksProvider>
+              <CareProvider>
               <PartnerProvider>
                 <MomProvider>
                   <MemoriesProvider>
@@ -180,6 +186,7 @@ export function Prototype() {
                   </MemoriesProvider>
                 </MomProvider>
               </PartnerProvider>
+              </CareProvider>
               </TasksProvider>
               </GroceryProvider>
               </HouseholdProvider>
