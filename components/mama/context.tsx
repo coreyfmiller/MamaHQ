@@ -21,6 +21,7 @@ export type Overlay =
   | 'read'
   | 'grocery'
   | 'people'
+  | 'tasks'
   | null
 
 interface PrototypeCtx {

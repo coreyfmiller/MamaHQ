@@ -162,3 +162,69 @@ guard-trigger functions. All were audited against the same five criteria.
 (`family_members` self-insert, `household_people.user_id` hijack) are now closed.
 Behaviorally verified by `scripts/test-security.ts` (fabrication/hijack/enumeration)
 and `scripts/test-membership.ts` (lifecycle), executed in CI.
+
+
+---
+
+## Step 8 addendum — Tasks, Responsibilities & Ownership
+
+Migration `0010_tasks.sql` adds five `SECURITY DEFINER` functions. **All** client
+writes to `tasks` / `task_events` — insert, update, AND delete — are blocked by RLS,
+so these functions are the only mutation path; each performs its state change and its
+history event in one transaction. Least-privilege posture (hardened in the Step 8
+finalization review):
+
+- `tasks`: `select` (members) + explicit `insert`/`update` `with check (false)`
+  guards; **no delete policy** (RLS default-deny → client DELETE refused). There is
+  no product "delete task" workflow in Step 8, so no destructive client path is
+  granted.
+- `task_events`: `select` (members) + explicit `insert`/`update` `with check (false)`
+  guards; **no delete policy**. Events are HISTORICAL TRUTH — a client can neither
+  forge, alter, nor erase them; only the RPCs (which bypass RLS as table owner)
+  write them.
+
+An earlier draft of this migration granted members a `for delete using
+(is_family_member(...))` on both tables (to let the "Start over" wipe delete rows).
+That was removed as unnecessary destructive surface: the wipe's client DELETE is now
+simply RLS-filtered to zero rows for these tables (no error), matching how
+`household_invitations` (also RPC-only-write, no delete policy) already behaves.
+
+### New SECURITY DEFINER functions
+
+| Function | search_path | Authorization | Notes |
+|---|---|---|---|
+| `assert_task_assignee(family, person)` | `public` ✓ | internal helper; validates the person exists AND `household_people.family_id = family` | returns the person id or raises `assignee person not found` / `... not in this family`; `null` person = unassigned (allowed). Only called by the task RPCs, which have already authorized the caller against the family. |
+| `create_task(family, title, assignee?, due?, notes?, source?, client_task_id?)` | `public` ✓ | `auth.uid()` not null; `is_family_member(family)` | idempotent on `client_task_id` (the PK): a retry returns the existing task, no duplicate `created` event; if a supplied id exists in another family the caller is refused; assignment integrity via `assert_task_assignee`; `source` is whitelisted (falls back to `manual`). |
+| `assign_task(task, person?)` | `public` ✓ | `auth.uid()` not null; `is_family_member(task.family_id)` (row-derived) | `for update` lock; same-owner is a no-op (no event); assignment integrity via `assert_task_assignee` (cross-family/nonexistent rejected). |
+| `complete_task(task)` | `public` ✓ | `auth.uid()` not null; `is_family_member(task.family_id)` (row-derived) | `for update` lock; already-completed is a no-op (no duplicate event); records `completed_by_user_id = auth.uid()` WITHOUT changing ownership. |
+| `reopen_task(task)` | `public` ✓ | `auth.uid()` not null; `is_family_member(task.family_id)` (row-derived) | `for update` lock; already-open is a no-op; clears completion metadata, preserves ownership + identity. |
+
+### Criterion findings (Step 8)
+- **Authorization checks — PASS.** The mutating RPCs authorize against the target
+  **row's own `family_id`** (`assign`/`complete`/`reopen`) or the passed `family_id`
+  checked with `is_family_member` (`create`). No function trusts a caller-supplied
+  identity for trust. `assert_task_assignee` prevents cross-family ownership (a
+  Family A task can never be owned by a Family B person) — enforced in the DB, not
+  the UI.
+- **search_path safety — PASS.** All five pin `set search_path = public`.
+- **Input validation — PASS.** `title` is trimmed and length-guarded (raises on
+  empty); `source` is whitelisted; uuid params are type-checked by Postgres; a
+  valid-but-unknown task id raises `task not found`; `client_task_id` is used only as
+  a primary key (no interpolation, no injection surface).
+- **Family-identity handling — PASS.** Ownership references `household_people.id`
+  (never an auth user id), and is orthogonal to authorization (`family_members`).
+  Assignment never grants access; an account-less person may own a task with zero
+  ability to read anything.
+- **EXECUTE privileges — PASS.** `grant execute … to authenticated` on all four RPCs;
+  `assert_task_assignee` is granted implicitly for internal calls but performs no
+  privileged data exposure (it returns only the echoed id or raises). No `to public`.
+- **Idempotency / concurrency — PASS.** `create` is idempotent on the client id;
+  `complete`/`reopen`/`assign` short-circuit on unchanged state and take a `for
+  update` row lock, so concurrent completers/reassigners serialize to one coherent
+  final state with exactly one event.
+
+**Conclusion:** no vulnerability found. The Tasks mutation surface is closed to
+direct client writes and mediated entirely by authorized, transactional definer
+functions. Behaviorally verified by `scripts/test-tasks.ts` (cross-family rejection,
+RLS read/write/mutate/history isolation, idempotent create/complete, ownership
+retained through completion, account-less ownership), executed in CI.

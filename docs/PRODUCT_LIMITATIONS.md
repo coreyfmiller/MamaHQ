@@ -11,6 +11,10 @@ knowledge until it actually ships.
 | Capability | Status | Reality today |
 |---|---|---|
 | **Second authenticated household adult** | IMPLEMENTED (Step 7) | Secure invitations (hashed one-time token, expiry), transactional acceptance that links the existing person and joins the same household, invitation-aware bootstrap, People UI with account status, and hardened membership/identity RLS. One active household per user; member-removal workflow deferred. See `docs/HOUSEHOLD_MEMBERSHIP.md`. |
+| **Household Tasks / Ownership** | IMPLEMENTED (Step 8) | Durable family-scoped `tasks` + `task_events`, minimal `open`/`completed` lifecycle, ownership by a `household_people` id (may be account-less), creator/owner/completer kept distinct, atomic SECURITY DEFINER RPCs (create/assign/complete/reopen) with idempotency + concurrency safety, DB-enforced assignment integrity, family-scoped RLS, and a Tasks UI (fast capture, assign picker, Open/Mine/Done, complete/reopen/reassign). See `docs/TASKS.md`. |
+| **Task acknowledgement ("I've got it")** | NOT IMPLEMENTED | Assignment records who *owns* a task; it does not record that the assignee has *accepted* it. Schema is acknowledgement-ready (extensible `task_events`); UI never implies acceptance. Deferred to a later step. |
+| **Task notifications / realtime** | NOT IMPLEMENTED | Assigning a task sends no push/email/SMS; a partner must refetch to see changes. No realtime subscriptions for tasks. |
+| **Recurring tasks** | NOT IMPLEMENTED | No recurrence infrastructure (garbage day, refills, forms, bills). Deferred deliberately — recurrence has its own semantics. |
 | **Realtime sync** | NOT IMPLEMENTED | No Supabase realtime subscriptions. Changes require a manual refetch; a second device won't live-update. |
 | **Offline support** | NOT IMPLEMENTED | No IndexedDB, no offline state, no mutation queue, no reconciliation. Online-only. |
 | **Care Handoff — external delivery** | NOT IMPLEMENTED | Assignment exists; no SMS/email/WhatsApp/iMessage/share is sent. `lib/notify.ts` is a no-op seam. |

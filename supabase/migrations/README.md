@@ -161,3 +161,26 @@ multi-adult household foundation:
 Authoritative apply order for a clean environment is now `0001 → … → 0009`. See
 `docs/HOUSEHOLD_MEMBERSHIP.md` and the Step 7 addendum in
 `docs/SECURITY_DEFINER_AUDIT.md`.
+
+## Step 8 — 0010_tasks.sql
+
+`0010_tasks.sql` (additive, after `0009`) introduces the household **Tasks /
+Ownership** system — the first durable responsibility layer:
+
+- `tasks` — the current responsibility row: `title`, minimal `status`
+  (`open`|`completed`), `assigned_to_person_id` (OWNERSHIP → `household_people`,
+  `on delete set null`), `created_by_user_id` (CREATOR → `auth.users`),
+  `completed_by_user_id` (COMPLETER, distinct from owner), optional `due_at`,
+  `source` provenance (`manual` used; others reserved).
+- `task_events` — a lean append-only history (`created`/`assigned`/`reassigned`/
+  `completed`/`reopened`; CHECK is extensible for a future `acknowledged`).
+- RLS: family members may **read** tasks/events and **delete** their family's rows;
+  direct client **INSERT/UPDATE are blocked** — all writes go through atomic
+  SECURITY DEFINER RPCs so a state change + its history event are one transaction.
+- RPCs: `create_task`, `assign_task`, `complete_task`, `reopen_task` (each atomic,
+  authorized from the row's own family, idempotent on retry, row-locked for
+  concurrency) + `assert_task_assignee` (DB-enforced assignment integrity: an
+  assignee must belong to the task's family; cross-family/nonexistent are rejected).
+
+Authoritative apply order for a clean environment is now `0001 → … → 0010`. See
+`docs/TASKS.md` and the Step 8 addendum in `docs/SECURITY_DEFINER_AUDIT.md`.
