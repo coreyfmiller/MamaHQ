@@ -1132,3 +1132,59 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     if (error) throw error
   }
 }
+
+/* ---------------------------- Notifications (Step 11) ---------------------------- */
+
+// A durable, RECIPIENT-SCOPED attention record. RLS ensures the browser only ever
+// reads rows addressed to the current user (recipient_user_id = auth.uid()), so
+// there is no family_id filter needed on reads — the row is either mine or invisible.
+// A notification POINTS AT domain truth (task/care/calendar); it is never truth
+// itself. Generation is trusted server-side (emit_notification inside domain RPCs);
+// there is intentionally no client insert path here.
+export interface DbNotification {
+  id: string
+  family_id: string
+  recipient_user_id: string
+  actor_user_id: string | null
+  type:
+    | 'task_assigned'
+    | 'task_accepted'
+    | 'care_handoff_proposed'
+    | 'care_handoff_accepted'
+    | 'calendar_responsibility_assigned'
+  domain: 'task' | 'care' | 'calendar'
+  entity_id: string | null
+  title: string
+  metadata: Record<string, unknown>
+  dedupe_key: string
+  created_at: string
+  read_at: string | null
+}
+
+// Fetch MY notifications (RLS scopes to the current user), newest first. The
+// authoritative persisted created_at drives ordering — never a client clock.
+export async function fetchNotifications(limit = 50): Promise<DbNotification[]> {
+  const { data, error } = await supabaseBrowser()
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as DbNotification[]
+}
+
+// Mark ONE of my notifications read (idempotent server-side). RLS + the RPC's
+// recipient check both guarantee I can only mark my own.
+export async function markNotificationReadRpc(notificationId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('mark_notification_read', {
+    p_notification_id: notificationId,
+  })
+  if (error) throw error
+}
+
+// Mark ALL of my unread notifications read. Returns how many were affected.
+export async function markAllNotificationsReadRpc(): Promise<number> {
+  const { data, error } = await supabaseBrowser().rpc('mark_all_notifications_read')
+  if (error) throw error
+  return Number(data ?? 0)
+}

@@ -159,6 +159,9 @@ jobs:
       - name: Calendar / Commitments tests (Step 10)
         run: node scripts/test-calendar.ts
 
+      - name: Realtime / Notifications tests (Step 11)
+        run: node scripts/test-notifications.ts
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop || true
