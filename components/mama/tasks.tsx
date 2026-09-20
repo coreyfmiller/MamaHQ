@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { useHousehold } from './household'
+import { useRealtimeInvalidation } from './realtime'
 import * as db from '@/lib/supabase/data'
 
 // Step 8 — Tasks / Ownership on the client.
@@ -181,6 +182,13 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       alive = false
     }
   }, [familyId, status])
+
+  // Realtime: another session changed tasks/task_events for this family → refetch
+  // canonical task state. Idempotent, so it's safe even when it echoes our own
+  // optimistic mutation.
+  useRealtimeInvalidation('tasks', () => {
+    if (familyId) void reload(familyId).catch(() => {})
+  })
 
   const create: TasksCtx['create'] = async (input) => {
     if (!familyId) return

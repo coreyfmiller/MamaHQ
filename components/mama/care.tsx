@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useLogs, lastOfKind, activeSleep, clockTime, elapsed, type LogEntry } from './logs'
+import { useRealtimeInvalidation } from './realtime'
 import * as db from '@/lib/supabase/data'
 
 // Step 9 — Care Handoff on the client.
@@ -188,6 +189,12 @@ export function CareProvider({ children }: { children: ReactNode }) {
   const refresh = async () => {
     if (familyId) await load(familyId).catch(() => {})
   }
+
+  // Realtime: another session changed care_handoffs/care_responsibility → refetch
+  // canonical holder + handoff state. Idempotent (safe self-echo).
+  useRealtimeInvalidation('care', () => {
+    if (familyId) void load(familyId).catch(() => {})
+  })
 
   const buildContext = () => careContextFromLogs(logs)
 

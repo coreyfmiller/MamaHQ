@@ -8,6 +8,7 @@ import { BottomNav, Card, CardLabel, CheckBox, Screen, Scroll, StatusBar } from 
 import { LeafSprig } from '../decor'
 import { useMom, dayKey, type Mood, type MomItem } from '../mom'
 import { useAppointments, nextAppointment, relativeDay, shortTime } from '../appointments'
+import { useNotifications } from '../notifications'
 
 const moodOptions: { id: Mood; label: string; icon: 'moon' | 'sun' | 'smile' | 'star' }[] = [
   { id: 'tired', label: 'Tired', icon: 'moon' },
@@ -135,6 +136,7 @@ export function MeScreen() {
   const { state, addTask, addQuestion, toggleTask, toggleQuestion, removeTask, removeQuestion } = useMom()
   const { appointments } = useAppointments()
   const nextAppt = nextAppointment(appointments)
+  const { unreadCount } = useNotifications()
 
   return (
     <Screen>
@@ -212,6 +214,30 @@ export function MeScreen() {
             </p>
           )}
           <AddInline label="Add a question" placeholder="e.g. Breastfeeding discomfort" onAdd={addQuestion} />
+        </Card>
+
+        {/* Notifications entry with a live unread badge. */}
+        <Card className="py-1">
+          <button
+            onClick={() => openOverlay('notifications')}
+            className="flex w-full items-center gap-3.5 py-3 text-left"
+          >
+            <span className="relative flex size-9 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <Bell className="size-[18px]" strokeWidth={1.75} />
+              {unreadCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-[18px] text-primary-foreground">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold leading-tight">Notifications</p>
+              <p className="text-[13px] text-muted-foreground">
+                {unreadCount > 0 ? `${unreadCount} need${unreadCount === 1 ? 's' : ''} your attention` : 'When someone needs you'}
+              </p>
+            </div>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </button>
         </Card>
 
         <Card className="divide-y divide-border/50 py-1">

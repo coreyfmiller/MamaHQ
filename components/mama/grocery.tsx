@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { useHousehold } from './household'
+import { useRealtimeInvalidation } from './realtime'
 import * as db from '@/lib/supabase/data'
 import type { ProposedGroceryItem } from '@/lib/grocery/resolver/types'
 import { resolveGroceryAction } from '@/lib/grocery/actions/resolve-action'
@@ -186,16 +187,22 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   const [householdVariants, setHouseholdVariants] = useState<HouseholdVariant[]>([])
   const [householdMemory, setHouseholdMemory] = useState<HouseholdMemory>(() => emptyHouseholdMemory())
 
+  // Canonical reload of the cloud list (used by the load effect AND by realtime
+  // invalidation). Idempotent: it replaces state with server truth, so an echo of
+  // our own optimistic mutation reconciles harmlessly.
+  const reloadCloud = async (fid: string) => {
+    const rows = await db.fetchGroceryItems(fid)
+    setItems(rows.map(fromRow))
+  }
+
   useEffect(() => {
     let alive = true
     setHydrated(false)
 
     if (familyId) {
-      db.fetchGroceryItems(familyId)
-        .then((rows) => {
-          if (!alive) return
-          setItems(rows.map(fromRow))
-          setHydrated(true)
+      reloadCloud(familyId)
+        .then(() => {
+          if (alive) setHydrated(true)
         })
         .catch(() => {
           if (!alive) return
@@ -215,6 +222,12 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
       alive = false
     }
   }, [familyId, status])
+
+  // Realtime: another session changed the shared grocery list → refetch canonical
+  // items. Only meaningful when signed in with a family (local mode has no channel).
+  useRealtimeInvalidation('grocery', () => {
+    if (familyId) void reloadCloud(familyId).catch(() => {})
+  })
 
   // Mirror to localStorage only when signed out (cloud is source of truth otherwise).
   useEffect(() => {

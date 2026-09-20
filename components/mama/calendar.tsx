@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useNow } from './logs'
+import { useRealtimeInvalidation } from './realtime'
 import * as db from '@/lib/supabase/data'
 
 // Step 10 — Shared Calendar & Household Commitments on the client.
@@ -203,6 +204,13 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const refresh = async () => {
     if (familyId) await reload(familyId).catch(() => {})
   }
+
+  // Realtime: another session created/edited/deleted an event or changed its
+  // participants/responsible person → refetch canonical calendar. The coordinator
+  // coalesces the event + participant row bursts into one refetch. Idempotent.
+  useRealtimeInvalidation('calendar', () => {
+    if (familyId) void reload(familyId).catch(() => {})
+  })
 
   const create: CalendarCtx['create'] = async (input) => {
     if (!familyId) return { ok: false, error: 'not signed in' }
