@@ -331,3 +331,60 @@ review removed a redundant direct-DELETE policy in favour of this single boundar
 client writes and mediated by authorized transactional definer functions; cross-family
 participant/responsible injection is impossible; deletion is family-scoped. Verified
 by `scripts/test-calendar.ts` in CI.
+
+
+---
+
+## Step 11 addendum — Realtime & Notifications
+
+Migration `0013_realtime_notifications.sql` adds a durable, recipient-scoped
+`notifications` table and generates notifications from a **trusted database boundary**.
+Direct client INSERT into `notifications` is blocked by RLS (`with check (false)`);
+generation happens only inside the domain RPCs via an internal helper, in the SAME
+transaction as the state change. RLS on `notifications` is **recipient-scoped**
+(`recipient_user_id = auth.uid()` for select/update) — stricter than family-scoped.
+
+### New SECURITY DEFINER functions
+
+| Function | search_path | Authorization | Notes |
+|---|---|---|---|
+| `notif_account_for_person(family, person)` | `public` ✓ | internal helper | resolves `household_people.user_id` ONLY if the person is in `family`; returns null for unknown/cross-family/account-less → caller emits nothing |
+| `emit_notification(family, recipient, actor, type, domain, entity, title, dedupe_key, metadata)` | `public` ✓ | internal-only; **not granted** to any client role | self-suppresses (`recipient = actor` → null); re-verifies recipient is an ACTIVE `family_members` row (defense in depth); dedupes on a UNIQUE `dedupe_key` (`on conflict do nothing`); reachable only through the domain RPCs |
+| `mark_notification_read(notification)` | `public` ✓ | `auth.uid()` not null; row's `recipient_user_id = auth.uid()` | idempotent (already-read/unknown → no-op); a non-recipient is rejected / sees no row |
+| `mark_all_notifications_read()` | `public` ✓ | `auth.uid()` not null | updates only `recipient_user_id = auth.uid()` rows; returns count |
+
+### Redefined domain RPCs (emit added; Step 8/9/10 semantics unchanged)
+
+`create_task`, `assign_task`, `accept_task`, `propose_care_handoff`,
+`accept_care_handoff`, `create_calendar_event`, `update_calendar_event` are recreated
+(idempotent `create or replace`) to call `emit_notification` on their person-directed
+transition. GRANT argument-type lists **exactly** match each signature in order
+(the Step 10 lesson — a mismatched GRANT arg list fails clean provision with SQLSTATE
+42883). No authorization, family-derivation, locking, or idempotency behavior changed.
+
+### Criterion findings (Step 11)
+- **Authorization — PASS.** `emit_notification` is never client-callable (no grant);
+  it is invoked only by RPCs that already authorized the caller against the family. It
+  additionally re-verifies the recipient is an active family member. `mark_*` are
+  scoped to `auth.uid()`; a user can only ever change their own read state.
+- **search_path — PASS.** All four new functions pin `set search_path = public`; the
+  redefined RPCs keep their pins.
+- **Recipient integrity — PASS.** Recipients are resolved from a family-validated
+  HouseholdPerson (`notif_account_for_person`) or a row-derived account (task creator,
+  handoff proposer). A cross-family person resolves to null → no notification. A
+  client cannot select an arbitrary recipient (no client insert; helper not granted).
+- **Self / account-less handling — PASS.** Actor == recipient → suppressed. Account-
+  less HouseholdPerson (user_id null) → no digital notification fabricated.
+- **Dedupe / idempotency — PASS.** Deterministic `dedupe_key` + UNIQUE index make a
+  retried/echoed emit a silent no-op; the idempotent domain RPCs never reach emit
+  twice anyway.
+- **Domain independence — PASS.** `mark_*` touch only `read_at`; reading a
+  notification cannot change task/care/calendar truth (tested).
+- **EXECUTE — PASS.** `grant execute … to authenticated` on the two `mark_*` RPCs and
+  the redefined domain RPCs; `emit_notification` + `notif_account_for_person` have NO
+  grant (internal). No `to public`.
+
+**Conclusion:** no vulnerability found. Notifications cannot be forged, misdirected to
+another household, impersonated, or read/marked by a non-recipient (recipient-scoped
+RLS). Generation is trusted and transactional. Behaviorally verified by
+`scripts/test-notifications.ts` in CI.

@@ -180,6 +180,55 @@ a human runs them.**
 6. **[HUMAN]** Delete: delete an event. *Expected:* removed for both accounts after refetch.
 7. **[HUMAN]** Cross-family: a second unrelated household cannot see or mutate the event.
 
+## Realtime & Notifications — Step 11 (all [HUMAN], OUTSTANDING)
+
+Automated `test:notifications` proves generation, recipient-scoped security, dedupe,
+self-suppression, and domain-independence in CI with real JWTs. **Websocket realtime
+delivery CANNOT be proven in CI** — the following two-browser scenarios must be run by
+a human. **Do NOT mark realtime QA passed unless a human runs it.**
+
+Set-up: two browsers (or a browser + a private window), signed in as two adults in the
+SAME household (use the Step 7 invite flow to connect the second account).
+
+Realtime — shared truth updates without refresh:
+
+1. **[HUMAN]** Grocery: add "Milk" in Browser A. *Expected:* Browser B's list shows
+   Milk within ~1–2s, no manual refresh. Complete it in A → B reflects it. Restore in
+   A → B reflects it.
+2. **[HUMAN]** Tasks: create/assign a task to Person B in A. *Expected:* B's Tasks
+   updates live. B accepts ("I've got it") → A's task shows accepted.
+3. **[HUMAN]** Care: propose a handoff A→B. *Expected:* B sees the pending handoff
+   live. B accepts → A's current holder updates without refresh.
+4. **[HUMAN]** Calendar: create, then edit, then delete an event in A. *Expected:* B's
+   calendar updates on each, coalesced (no flicker on the create's participant burst).
+5. **[HUMAN]** Self-echo: perform a mutation in A. *Expected:* A shows no duplicate row
+   and no flicker when the realtime echo of A's own change arrives.
+
+Notifications — attention directed correctly:
+
+6. **[HUMAN]** Assign a task to B in A. *Expected:* B's bell badge increments live; the
+   center shows "New task for you: …"; A gets NO notification (self/actor).
+7. **[HUMAN]** B accepts the task. *Expected:* A (the creator) gets "… has it: …"; B
+   gets nothing (self).
+8. **[HUMAN]** Care handoff proposed A→B. *Expected:* B notified "… wants to hand off
+   care to you". B accepts → A notified "… has the baby".
+9. **[HUMAN]** Calendar: designate B responsible for an event. *Expected:* B notified
+   "You're handling: …" (copy must NOT say "accepted").
+10. **[HUMAN]** Self-suppression: assign a task to YOURSELF in A. *Expected:* no
+    notification.
+11. **[HUMAN]** Read state: open a notification → it marks read, badge decrements, and
+    tapping navigates to the right domain (Tasks/Care/Calendar).
+12. **[HUMAN]** Multi-tab: open A in two tabs; mark a notification read in one.
+    *Expected:* the other tab converges to read after its refetch.
+13. **[HUMAN]** Recipient privacy: confirm B's notifications never appear for A even
+    though they share a family.
+
+Reconnect / recovery:
+
+14. **[HUMAN]** Sleep/close Browser B (or drop its network). Make grocery/task/calendar
+    changes in A. Reconnect/wake B. *Expected:* B refetches canonical state on
+    reconnect and shows everything it missed — no manual refresh.
+
 ## Mobile / ergonomics (all [HUMAN], OUTSTANDING)
 
 Verify on an actual phone (or accurate device emulation):
