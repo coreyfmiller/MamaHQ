@@ -336,7 +336,7 @@ begin
   return eid;
 end $$;
 
-grant execute on function public.create_calendar_event(uuid, text, boolean, timestamptz, timestamptz, date, date, text, text, uuid, uuid[]) to authenticated;
+grant execute on function public.create_calendar_event(uuid, text, boolean, timestamptz, timestamptz, date, date, text, text, uuid, uuid[], uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- update_calendar_event(...) — edit an event AND replace its participants in ONE
