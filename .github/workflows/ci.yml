@@ -156,6 +156,9 @@ jobs:
       - name: Responsibility / Care Handoff tests (Step 9)
         run: node scripts/test-handoff.ts
 
+      - name: Calendar / Commitments tests (Step 10)
+        run: node scripts/test-calendar.ts
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop || true

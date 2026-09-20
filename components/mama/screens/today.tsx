@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { BookOpen, ChevronRight, Moon, Plus, ShoppingCart, Square } from 'lucide-react'
+import { BookOpen, CalendarDays, ChevronRight, Moon, Plus, ShoppingCart, Square } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, dayNumber } from '../profile'
 import {
@@ -28,6 +28,8 @@ import type { Category } from '@/lib/mama-data'
 import { pickAffirmation } from '@/lib/affirmations'
 import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
 import { useGrocery } from '../grocery'
+import { useCalendar, type CalendarEvent } from '../calendar'
+import { useHousehold } from '../household'
 import { BottomNav, Card, CardLabel, LiveDot, Screen, Scroll, StatusBar } from '../ui'
 
 // After this long, a running sleep is more likely a forgotten timer than a real
@@ -323,6 +325,9 @@ export function TodayScreen({ empty = false }: { empty?: boolean }) {
         {/* Coming up */}
         <ComingUp />
 
+        {/* Today's shared calendar commitments */}
+        <TodayCalendar />
+
         {/* Grocery — a quick glance at the shared list */}
         <GroceryCard />
       </Scroll>
@@ -352,6 +357,80 @@ function GroceryCard() {
       </div>
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
     </button>
+  )
+}
+
+// Today's shared household commitments (Step 10): what's happening today, who it's
+// for, and who's handling it. Deterministic + structured. Only shown when signed in
+// with events today; otherwise a quiet entry point to the calendar.
+function TodayCalendar() {
+  const { openOverlay, composeEvent } = useNav()
+  const { available, today } = useCalendar()
+  const { people, me } = useHousehold()
+  if (!available) return null
+
+  const personName = (id: string | null): string | null => {
+    if (!id) return null
+    const p = people.find((x) => x.id === id)
+    if (!p) return null
+    return me && p.id === me.id ? 'Me' : p.displayName
+  }
+
+  const eventTime = (e: CalendarEvent): string => {
+    if (e.allDay) return 'All day'
+    if (!e.startsAt) return ''
+    return new Date(e.startsAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  }
+
+  if (today.length === 0) {
+    return (
+      <button
+        onClick={() => openOverlay('calendar')}
+        className="flex w-full items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-3.5 text-left shadow-sm transition-transform active:scale-[0.99]"
+      >
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-sage-soft text-sage">
+          <CalendarDays className="size-5" strokeWidth={1.75} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-semibold leading-tight">Calendar</p>
+          <p className="text-[13px] text-muted-foreground">Nothing on the shared calendar today</p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      </button>
+    )
+  }
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex items-center justify-between">
+        <CardLabel className="text-foreground">On the calendar today</CardLabel>
+        <button onClick={() => openOverlay('calendar')} className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
+          See all <ChevronRight className="size-3.5" />
+        </button>
+      </div>
+      <div className="space-y-2">
+        {today.map((e) => {
+          const participantNames = e.participantIds.map(personName).filter(Boolean) as string[]
+          const responsibleName = personName(e.responsiblePersonId)
+          return (
+            <button key={e.id} onClick={() => composeEvent(e.id)} className="flex w-full items-start gap-3 rounded-2xl bg-blue-soft/40 p-3 text-left transition-transform active:scale-[0.99]">
+              <span className="w-16 shrink-0 pt-0.5 text-[12px] font-semibold text-muted-foreground">{eventTime(e)}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-semibold leading-tight">{e.title}</p>
+                {participantNames.length > 0 && (
+                  <p className="text-[13px] text-foreground/80">{participantNames.join(', ')}</p>
+                )}
+                {responsibleName && (
+                  <p className="text-[13px] font-medium text-sage">
+                    {responsibleName === 'Me' ? "You're handling this" : `${responsibleName} is handling this`}
+                  </p>
+                )}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </Card>
   )
 }
 

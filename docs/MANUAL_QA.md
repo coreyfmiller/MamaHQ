@@ -160,6 +160,26 @@ Cancel / stale:
 11. **[HUMAN]** Mom proposes → James, then Mom cancels before James accepts.
     Expected: Mom remains holder; James can no longer accept the stale request.
 
+## Shared Calendar & Commitments — Step 10 (all [HUMAN], OUTSTANDING)
+
+Automated `test:calendar` proves the DB/authorization/RLS/time behavior in CI. The
+following prove the UI + two-adult flow on a real build. **Do NOT mark passed unless
+a human runs them.**
+
+1. **[HUMAN]** As Mom: Today → "On the calendar today" (or Calendar) → Add event.
+   Create "Dentist", timed Thursday 2:00 PM, participant Madelyn, responsible James.
+   *Expected:* appears under Upcoming as `Dentist · Thu · 2:00 PM / Madelyn / James is handling this`.
+2. **[HUMAN]** As James (2nd account, same household): open Calendar, refetch.
+   *Expected:* sees the same event; under **Mine** it shows "You're handling this".
+3. **[HUMAN]** All-day: create "School closed", all-day, a specific date.
+   *Expected:* shows "All day" on exactly that date (does not shift a day).
+4. **[HUMAN]** Multiple participants: create "Family dinner" with several people.
+   *Expected:* all participant names shown; no responsible line needed.
+5. **[HUMAN]** Edit: as James change the location to "Saint John Dental".
+   *Expected:* Mom, after refetch, sees the updated location.
+6. **[HUMAN]** Delete: delete an event. *Expected:* removed for both accounts after refetch.
+7. **[HUMAN]** Cross-family: a second unrelated household cannot see or mutate the event.
+
 ## Mobile / ergonomics (all [HUMAN], OUTSTANDING)
 
 Verify on an actual phone (or accurate device emulation):

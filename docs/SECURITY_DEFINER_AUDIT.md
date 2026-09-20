@@ -281,3 +281,53 @@ authorized linked account through the transactional RPCs. Behaviorally verified 
 `scripts/test-handoff.ts` (impersonation, cross-family, unconnected, forge-via-update,
 reassign/reopen/relinquish clearing, stale/duplicate transitions, atomic holder
 change), executed in CI.
+
+
+---
+
+## Step 10 addendum — Shared Calendar & Household Commitments
+
+Migration `0012_calendar_commitments.sql` adds a calendar domain. ALL client writes
+— insert, update, AND delete — on `calendar_events` / `calendar_event_participants`
+are blocked by RLS (select for members; `with check (false)` insert/update guards;
+no delete policy). Every mutation flows through a transactional SECURITY DEFINER RPC
+— a single trusted mutation boundary — so an event + its participants are always one
+coherent, family-safe unit. (A calendar event is still deletable, unlike immutable
+task history, but only via `delete_calendar_event`, which authorizes from the event's
+own family so no one can delete another family's event. The Step 10 finalization
+review removed a redundant direct-DELETE policy in favour of this single boundary.)
+
+### New SECURITY DEFINER functions
+
+| Function | search_path | Authorization | Notes |
+|---|---|---|---|
+| `assert_calendar_person(family, person)` | `public` ✓ | internal helper | validates a person exists AND `household_people.family_id = family`; raises `person is not in this family` on cross-family; `null` = none (allowed) |
+| `set_calendar_participants(event, family, ids[])` | `public` ✓ | internal helper | replaces participants; validates EACH via `assert_calendar_person`; de-dups; only called by create/update after the caller is authorized |
+| `create_calendar_event(family, …, participant_ids[], client_event_id)` | `public` ✓ | `auth.uid()` not null; `is_family_member(family)` | idempotent on `client_event_id`; validates responsible + every participant against the family; time model enforced by table CHECK |
+| `update_calendar_event(event, …, clear_responsible, participant_ids[], replace_participants)` | `public` ✓ | `auth.uid()` not null; `is_family_member(event.family_id)` (row-derived) | validates a new responsible + replacement participants against the event's family; timed↔all-day recomputed coherently; participant replace is atomic |
+| `delete_calendar_event(event)` | `public` ✓ | `auth.uid()` not null; `is_family_member(event.family_id)` (row-derived) | idempotent no-op on unknown id; participants cascade |
+
+### Criterion findings (Step 10)
+- **Authorization — PASS.** Create authorizes the passed family via `is_family_member`;
+  update/delete authorize from the event's OWN `family_id` (row-derived). Every
+  participant and the responsible person is validated against that family — a Family A
+  event can never reference a Family B person (create OR update), tested.
+- **search_path — PASS.** All five pin `set search_path = public`.
+- **Input validation — PASS.** `title` trimmed + length-guarded; time model enforced
+  by the `calendar_events_time_model` CHECK (correct pair present, end ≥ start);
+  `client_event_id` used only as PK (no injection). jsonb is not used here.
+- **Identity handling — PASS.** Participants/responsible are `household_people` ids;
+  creator is `auth.uid()`. Being referenced grants no access (RLS gates on
+  `family_members`). Account-less people can be referenced but nothing implies they
+  "accepted" (Step 10 has no acceptance workflow).
+- **EXECUTE — PASS.** `grant execute … to authenticated` on all RPCs; helpers are
+  called internally; no `to public`.
+- **Least privilege — PASS.** Client insert/update/delete all blocked; every
+  mutation (including deletion) is via an authorized RPC — a single trusted
+  boundary. No forge-via-direct-write path and no redundant direct-DELETE policy
+  (tested: a direct client delete is RLS-filtered to zero rows).
+
+**Conclusion:** no vulnerability found. Event creation/editing is closed to direct
+client writes and mediated by authorized transactional definer functions; cross-family
+participant/responsible injection is impossible; deletion is family-scoped. Verified
+by `scripts/test-calendar.ts` in CI.
