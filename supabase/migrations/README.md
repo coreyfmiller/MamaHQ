@@ -206,3 +206,29 @@ acceptance** and a minimal **care handoff** domain:
 
 Authoritative apply order for a clean environment is now `0001 → … → 0011`. See
 `docs/CARE_HANDOFF.md` and the Step 9 addendum in `docs/SECURITY_DEFINER_AUDIT.md`.
+
+## Step 10 — 0012_calendar_commitments.sql
+
+`0012_calendar_commitments.sql` (additive, after `0011`) adds the **Shared Calendar
+& Household Commitments** domain (a NEW domain alongside the existing narrow
+`appointments` feature, which is unchanged):
+
+- `calendar_events` — the core event: `title`, `notes`, `location`, `all_day`, a
+  timed pair (`starts_at`/`ends_at timestamptz`) OR an all-day pair
+  (`start_date`/`end_date date`) enforced coherent by a CHECK, an optional
+  `responsible_person_id` (→ household_people, a designation not an acceptance) and
+  `created_by_user_id`.
+- `calendar_event_participants` — who an event is about (M:N → household_people,
+  unique per event/person).
+- RLS: members read events + participants and may DELETE their family's events
+  (events are not immutable history); insert/update are RPC-only (client writes
+  blocked). Cross-family reads/writes blocked.
+- RPCs: `create_calendar_event`, `update_calendar_event`, `delete_calendar_event`
+  (transactional event + participants), plus `assert_calendar_person` (cross-family
+  integrity) and `set_calendar_participants` (atomic validated replace). All
+  SECURITY DEFINER, `search_path=public`, family-authorized.
+- Timezone strategy: timed events store an unambiguous UTC instant; all-day events
+  store plain dates so they never tz-shift.
+
+Authoritative apply order for a clean environment is now `0001 → … → 0012`. See
+`docs/CALENDAR.md` and the Step 10 addendum in `docs/SECURITY_DEFINER_AUDIT.md`.

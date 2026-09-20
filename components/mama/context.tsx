@@ -23,6 +23,8 @@ export type Overlay =
   | 'people'
   | 'tasks'
   | 'careHandoff'
+  | 'calendar'
+  | 'calendarCompose'
   | null
 
 interface PrototypeCtx {
@@ -42,6 +44,11 @@ interface PrototypeCtx {
   openAppointment: (id: string) => void
   /** Convenience: open the composer to create (id null) or edit an appointment. */
   composeAppointment: (id?: string | null) => void
+  /** Which calendar event the compose screen edits (null = composing new). */
+  selectedEventId: string | null
+  setSelectedEventId: (id: string | null) => void
+  /** Convenience: open the calendar composer to create (null) or edit an event. */
+  composeEvent: (id?: string | null) => void
 }
 
 const noop = () => {}
@@ -60,6 +67,9 @@ const defaultCtx: PrototypeCtx = {
   setSelectedApptId: noop,
   openAppointment: noop,
   composeAppointment: noop,
+  selectedEventId: null,
+  setSelectedEventId: noop,
+  composeEvent: noop,
 }
 
 const Ctx = createContext<PrototypeCtx>(defaultCtx)
@@ -82,6 +92,7 @@ export function PrototypeProvider({
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedApptId, setSelectedApptId] = useState<string | null>(null)
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
   const openAppointment = (id: string) => {
     setSelectedApptId(id)
@@ -90,6 +101,10 @@ export function PrototypeProvider({
   const composeAppointment = (id: string | null = null) => {
     setSelectedApptId(id)
     setOverlay('apptCompose')
+  }
+  const composeEvent = (id: string | null = null) => {
+    setSelectedEventId(id)
+    setOverlay('calendarCompose')
   }
 
   const showToast = (msg: string) => {
@@ -117,6 +132,9 @@ export function PrototypeProvider({
         setSelectedApptId,
         openAppointment,
         composeAppointment,
+        selectedEventId,
+        setSelectedEventId,
+        composeEvent,
       }}
     >
       {children}

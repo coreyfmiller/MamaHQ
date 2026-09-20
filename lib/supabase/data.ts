@@ -923,6 +923,157 @@ export async function cancelCareHandoffRpc(handoffId: string): Promise<void> {
   if (error) throw error
 }
 
+/* ---------------- Calendar & Commitments (Step 10) ---------------- */
+
+// A shared household calendar event. Distinct concepts (never collapsed):
+//   participants = who the event is ABOUT (calendar_event_participants → people)
+//   responsible_person_id = who is designated to HANDLE it (a designation, NOT an
+//     acceptance — Step 10 stores it but builds no acceptance workflow)
+//   created_by_user_id = who created it (provenance)
+// Timezone: timed events use starts_at/ends_at (timestamptz, UTC); all-day events
+// use start_date/end_date (plain date, never tz-shifts). all_day selects which.
+// Writes go through the RPCs below (atomic event + participants); reads are direct.
+// See 0012_calendar_commitments.sql and docs/CALENDAR.md.
+export interface DbCalendarEvent {
+  id: string
+  family_id: string
+  title: string
+  notes: string | null
+  location: string | null
+  all_day: boolean
+  /** Timed model (all_day=false): unambiguous instant + optional end. */
+  starts_at: string | null
+  ends_at: string | null
+  /** All-day model (all_day=true): plain dates, no tz shift. */
+  start_date: string | null
+  end_date: string | null
+  /** OPTIONAL designated responsible HouseholdPerson (≠ acceptance, ≠ creator). */
+  responsible_person_id: string | null
+  created_by_user_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DbCalendarEventParticipant {
+  id: string
+  event_id: string
+  family_id: string
+  person_id: string
+  created_at: string
+}
+
+// An event with its participant person ids resolved (one read stitched in the
+// provider). Kept separate from the row type so the DB shape stays faithful.
+export interface DbCalendarEventWithParticipants extends DbCalendarEvent {
+  participant_ids: string[]
+}
+
+export async function fetchCalendarEvents(familyId: string): Promise<DbCalendarEventWithParticipants[]> {
+  const sb = supabaseBrowser()
+  const [eventsRes, partsRes] = await Promise.all([
+    sb.from('calendar_events').select('*').eq('family_id', familyId),
+    sb.from('calendar_event_participants').select('event_id, person_id').eq('family_id', familyId),
+  ])
+  if (eventsRes.error) throw eventsRes.error
+  if (partsRes.error) throw partsRes.error
+  const byEvent = new Map<string, string[]>()
+  for (const p of (partsRes.data ?? []) as { event_id: string; person_id: string }[]) {
+    const list = byEvent.get(p.event_id) ?? []
+    list.push(p.person_id)
+    byEvent.set(p.event_id, list)
+  }
+  return ((eventsRes.data ?? []) as DbCalendarEvent[]).map((e) => ({
+    ...e,
+    participant_ids: byEvent.get(e.id) ?? [],
+  }))
+}
+
+export async function fetchCalendarEvent(id: string): Promise<DbCalendarEvent | null> {
+  const { data, error } = await supabaseBrowser().from('calendar_events').select('*').eq('id', id).maybeSingle()
+  if (error) throw error
+  return (data as DbCalendarEvent) ?? null
+}
+
+// ATOMIC create: inserts the event AND its participants in one server-side
+// transaction. Every participant + the responsible person is validated against the
+// family (cross-family injection rejected). Idempotent on the client-supplied id.
+// Timed: pass allDay=false + startsAt (+ optional endsAt). All-day: allDay=true +
+// startDate (+ optional endDate). Returns the event id.
+export async function createCalendarEventRpc(args: {
+  familyId: string
+  title: string
+  allDay?: boolean
+  startsAt?: string | null
+  endsAt?: string | null
+  startDate?: string | null
+  endDate?: string | null
+  location?: string | null
+  notes?: string | null
+  responsiblePersonId?: string | null
+  participantIds?: string[] | null
+  clientEventId?: string | null
+}): Promise<string> {
+  const { data, error } = await supabaseBrowser().rpc('create_calendar_event', {
+    p_family_id: args.familyId,
+    p_title: args.title,
+    p_all_day: args.allDay ?? false,
+    p_starts_at: args.startsAt ?? null,
+    p_ends_at: args.endsAt ?? null,
+    p_start_date: args.startDate ?? null,
+    p_end_date: args.endDate ?? null,
+    p_location: args.location ?? null,
+    p_notes: args.notes ?? null,
+    p_responsible_person_id: args.responsiblePersonId ?? null,
+    p_participant_ids: args.participantIds ?? null,
+    p_client_event_id: args.clientEventId ?? null,
+  })
+  if (error) throw error
+  return data as string
+}
+
+// ATOMIC update: edits fields and (optionally) replaces the participant set in one
+// transaction. Pass replaceParticipants=true with participantIds to replace them
+// ([] clears). clearResponsible=true clears the responsible person (a null id means
+// "leave unchanged"). Authorization + family integrity enforced server-side.
+export async function updateCalendarEventRpc(args: {
+  eventId: string
+  title?: string | null
+  allDay?: boolean | null
+  startsAt?: string | null
+  endsAt?: string | null
+  startDate?: string | null
+  endDate?: string | null
+  location?: string | null
+  notes?: string | null
+  responsiblePersonId?: string | null
+  clearResponsible?: boolean
+  participantIds?: string[] | null
+  replaceParticipants?: boolean
+}): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('update_calendar_event', {
+    p_event_id: args.eventId,
+    p_title: args.title ?? null,
+    p_all_day: args.allDay ?? null,
+    p_starts_at: args.startsAt ?? null,
+    p_ends_at: args.endsAt ?? null,
+    p_start_date: args.startDate ?? null,
+    p_end_date: args.endDate ?? null,
+    p_location: args.location ?? null,
+    p_notes: args.notes ?? null,
+    p_responsible_person_id: args.responsiblePersonId ?? null,
+    p_clear_responsible: args.clearResponsible ?? false,
+    p_participant_ids: args.participantIds ?? null,
+    p_replace_participants: args.replaceParticipants ?? false,
+  })
+  if (error) throw error
+}
+
+// Delete an event (participants cascade). Authorization enforced server-side.
+export async function deleteCalendarEventRpc(eventId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('delete_calendar_event', { p_event_id: eventId })
+  if (error) throw error
+}
+
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
 // Deletes all of a family's data rows. Ordered so FK children go before parents.
@@ -947,6 +1098,11 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     // tasks/events. A hard reset would need a dedicated trusted RPC.
     'task_events',
     'tasks',
+    // Calendar (Step 10): participants cascade from calendar_events, but delete
+    // explicitly first for safety. Unlike tasks/care, calendar_events ALLOWS member
+    // DELETE (events are not an immutable ledger), so this actually wipes them.
+    'calendar_event_participants',
+    'calendar_events',
     // Care handoff (Step 9): care_handoffs + care_responsibility reference babies +
     // household_people (SET NULL). Like tasks/task_events these are RPC-only writes
     // (no delete policy), so this client DELETE is RLS-filtered to zero rows and

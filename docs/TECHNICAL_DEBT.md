@@ -71,6 +71,20 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   notifications need a provider (Resend/Twilio) + the acknowledgement design.
 - **Suggested milestone:** post-acknowledgement, alongside the broader realtime pass.
 
+### Calendar — recurrence, external sync, notifications, commitment acceptance
+- **Status:** deferred (Step 10 base domain implemented; extensions absent by design).
+- **What's done (Step 10):** `calendar_events` + `calendar_event_participants` keyed
+  to household_people, optional responsible person, timezone-safe timed/all-day/
+  multi-day, transactional SECURITY DEFINER RPCs, family-scoped RLS, Calendar UI +
+  Today integration. See `docs/CALENDAR.md`.
+- **Deferred (non-blocking):** recurrence (RRULE/series/exceptions); external calendar
+  sync (Google/Apple/Outlook/ICS); calendar notifications/reminders; conflict
+  detection; Tell-MamaHQ/AI event parsing; task↔event and care-handoff↔event linking;
+  custody scheduling; a calendar commitment-acceptance workflow (an "I've got it" on
+  an event — would reuse the Step 9 acceptance pattern). The schema avoids obvious
+  dead ends (clean timed/all-day split; participants as a real M:N) so these remain
+  additive later.
+
 ### Recurring tasks
 - **Status:** deferred (absent, by design).
 - **Why it matters:** garbage day, medication refills, school forms, filters, bills
