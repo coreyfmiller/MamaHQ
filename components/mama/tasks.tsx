@@ -68,7 +68,8 @@ interface TasksCtx {
   assign: (taskId: string, personId: string | null) => Promise<void>
   complete: (taskId: string) => Promise<void>
   reopen: (taskId: string) => Promise<void>
-  remove: (taskId: string) => Promise<void>
+  // NOTE: no `remove` — Step 8 has no delete-task workflow and RLS blocks direct
+  // client DELETE of tasks/task_events (least privilege; task_events is history).
   /** Load a task's history timeline (oldest → newest). */
   history: (taskId: string) => Promise<TaskEvent[]>
 }
@@ -84,7 +85,6 @@ const Ctx = createContext<TasksCtx>({
   assign: async () => {},
   complete: async () => {},
   reopen: async () => {},
-  remove: async () => {},
   history: async () => [],
 })
 
@@ -238,15 +238,6 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     if (familyId) await reload(familyId).catch(() => {})
   }
 
-  const remove: TasksCtx['remove'] = async (taskId) => {
-    setTasks((list) => list.filter((t) => t.id !== taskId))
-    try {
-      await db.deleteTask(taskId)
-    } catch (e) {
-      console.warn('tasks remove', e)
-    }
-  }
-
   const history: TasksCtx['history'] = async (taskId) => {
     if (!familyId) return []
     try {
@@ -287,7 +278,6 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       assign,
       complete,
       reopen,
-      remove,
       history,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

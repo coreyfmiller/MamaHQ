@@ -163,15 +163,34 @@ create index if not exists task_events_family
 
 -- ---------------------------------------------------------------------------
 -- 3) RLS — family-scoped, same is_family_member boundary as every table.
---    READ is allowed to members. WRITES are blocked at the client: every mutation
---    goes through the atomic SECURITY DEFINER RPCs (which run as table owner and
---    bypass RLS), so a task's state change and its history event are always one
---    transaction. This is the Grocery reliability lesson applied to Tasks.
+--    READ is allowed to members. ALL WRITES (insert/update/delete) are blocked at
+--    the client: every mutation goes through the atomic SECURITY DEFINER RPCs
+--    (which run as table owner and bypass RLS), so a task's state change and its
+--    history event are always one transaction. This is the Grocery reliability
+--    lesson applied to Tasks, plus least privilege:
+--
+--      * task_events is HISTORICAL TRUTH — a normal client must never be able to
+--        directly INSERT, UPDATE, or DELETE an event. Only the RPCs write events.
+--      * tasks has no product "delete task" workflow in Step 8, so direct client
+--        DELETE is not granted either (no unnecessary destructive path). The task
+--        lifecycle is complete/reopen via RPC, not deletion.
+--
+--    RLS default-deny: with NO permissive policy for a command, that command
+--    matches nothing for the `authenticated`/`anon` roles and is refused. So we
+--    grant ONLY select, plus explicit false insert/update guards for clarity.
+--    (The SECURITY DEFINER RPCs bypass RLS entirely, so they are unaffected.)
+--
+--    NOTE on "Start over": clearFamilyData() runs as the authenticated user and
+--    issues client DELETEs. With deletes blocked, those calls simply affect zero
+--    rows for tasks/task_events (RLS filters them) and do not error — exactly how
+--    household_invitations (also RPC-only-write, no delete policy) already behaves.
+--    A future explicit reset RPC (or ON DELETE CASCADE from families) can wipe them
+--    if a hard reset is ever required; Step 8 does not add that destructive path.
 -- ---------------------------------------------------------------------------
 alter table public.tasks enable row level security;
 alter table public.task_events enable row level security;
 
--- tasks: members read; no direct client writes.
+-- tasks: members READ their family's tasks; no direct client writes of any kind.
 drop policy if exists tasks_select on public.tasks;
 create policy tasks_select on public.tasks
   for select using (public.is_family_member(family_id));
@@ -184,15 +203,13 @@ drop policy if exists tasks_no_client_update on public.tasks;
 create policy tasks_no_client_update on public.tasks
   for update using (false) with check (false);
 
--- Deletes stay possible for members (e.g. "Start over" wipe runs as the user, and
--- a member removing their own family's task is legitimate). Scoped to the family.
+-- Explicitly retire any prior permissive delete policy (idempotent on re-apply):
+-- direct client DELETE of a task is NOT allowed (no Delete Task workflow exists).
 drop policy if exists tasks_delete on public.tasks;
-create policy tasks_delete on public.tasks
-  for delete using (public.is_family_member(family_id));
 
--- task_events: members read; no direct client writes (events are written only by
--- the RPCs, atomically with the state change). Deletes scoped to family for the
--- "Start over" wipe.
+-- task_events: members READ; NO direct client insert/update/delete. Events are
+-- written only by the trusted RPCs, atomically with the state change, and are
+-- historical truth that clients must not be able to erase or alter.
 drop policy if exists task_events_select on public.task_events;
 create policy task_events_select on public.task_events
   for select using (public.is_family_member(family_id));
@@ -205,9 +222,10 @@ drop policy if exists task_events_no_client_update on public.task_events;
 create policy task_events_no_client_update on public.task_events
   for update using (false) with check (false);
 
+-- Explicitly retire any prior permissive delete policy (idempotent on re-apply):
+-- direct client DELETE of a task event is NOT allowed (history is immutable to
+-- clients).
 drop policy if exists task_events_delete on public.task_events;
-create policy task_events_delete on public.task_events
-  for delete using (public.is_family_member(family_id));
 
 commit;
 

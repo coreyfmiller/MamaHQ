@@ -785,12 +785,11 @@ export async function reopenTaskRpc(taskId: string): Promise<void> {
   if (error) throw error
 }
 
-// Delete a task (and its events cascade). Members only (RLS-scoped). Used for
-// explicit removal; completion/reopen are the normal lifecycle, not deletion.
-export async function deleteTask(id: string): Promise<void> {
-  const { error } = await supabaseBrowser().from('tasks').delete().eq('id', id)
-  if (error) throw error
-}
+// NOTE: there is intentionally no client-side task delete. Tasks have no product
+// "delete" workflow in Step 8, and RLS blocks direct client DELETE of tasks and
+// task_events (least privilege — task_events is historical truth). The lifecycle is
+// complete/reopen via the RPCs above. A hard reset, if ever needed, would be a
+// dedicated trusted RPC, not a client delete.
 
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
 
@@ -809,10 +808,15 @@ export async function clearFamilyData(familyId: string): Promise<void> {
     'captures',
     'partner_contacts',
     // Tasks (Step 8): task_events reference tasks (cascade) + household_people
-    // (SET NULL); delete the event history first, then the tasks, before people.
+    // (SET NULL). Listed for FK ordering (children before people), but note these
+    // two tables block direct client DELETE (RLS: RPC-only writes; task_events is
+    // historical truth). So — exactly like household_invitations below — this delete
+    // is RLS-filtered to zero rows and does not error; it does not actually wipe
+    // tasks/events. A hard reset would need a dedicated trusted RPC.
     'task_events',
     'tasks',
-    // Invitations (Step 7) reference household_people (SET NULL) — remove first.
+    // Invitations (Step 7) reference household_people (SET NULL). Also RPC-only
+    // writes (no delete policy) — this delete is a no-op that does not error.
     'household_invitations',
     // Household memory (Step 6): observations reference household_items +
     // purchase_events; delete the ledger, then variants, before purchases/items.

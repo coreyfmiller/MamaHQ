@@ -130,13 +130,30 @@ belongs to the task's family**, raising otherwise. Both `create_task` and
 ## RLS
 
 Family-scoped, identical `is_family_member(family_id)` boundary as every table.
-Members may **read** their family's `tasks` and `task_events`; they may **delete**
-their own family's rows (for the "Start over" wipe). All **writes** are via the RPCs.
+Members may **read** their family's `tasks` and `task_events`. **All writes —
+insert, update, AND delete — are blocked at the client** (RLS default-deny + explicit
+`with check (false)` guards); every mutation goes through the SECURITY DEFINER RPCs.
+This is both the atomic-history requirement and least privilege:
+
+- **`task_events` is historical truth** — a normal client can never directly insert,
+  update, or delete an event. Only the RPCs write events.
+- **`tasks` has no "delete task" workflow in Step 8**, so direct client DELETE is not
+  granted either — no unnecessary destructive path. The lifecycle is complete/reopen
+  via RPC, not deletion.
+
 Verified with real authenticated JWT users in `scripts/test-tasks.ts`:
 
 - Owner A / Partner A can read, create, complete, and reassign Family A tasks.
 - User B cannot read, create into, complete, reassign, or read the history of Family A.
-- Direct client insert/update is blocked (no silent status flip).
+- Direct client insert/update/**delete** is blocked on both `tasks` and
+  `task_events` (no silent status flip; history cannot be erased or altered);
+  cross-family insert/delete of events is blocked; the trusted RPCs still write the
+  full legitimate lifecycle.
+
+("Start over" / `clearFamilyData` runs as the user and issues client DELETEs; for
+these two tables the delete is RLS-filtered to zero rows and does not error — exactly
+how `household_invitations` already behaves. A hard reset, if ever needed, would be a
+dedicated trusted RPC, not a client delete. Step 8 adds no such destructive path.)
 
 ## SECURITY DEFINER
 

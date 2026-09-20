@@ -168,10 +168,26 @@ and `scripts/test-membership.ts` (lifecycle), executed in CI.
 
 ## Step 8 addendum — Tasks, Responsibilities & Ownership
 
-Migration `0010_tasks.sql` adds five `SECURITY DEFINER` functions. All writes to
-`tasks` / `task_events` are blocked at the client by RLS (`with check (false)` /
-`using (false)`), so these functions are the only mutation path — each performs its
-state change and its history event in one transaction.
+Migration `0010_tasks.sql` adds five `SECURITY DEFINER` functions. **All** client
+writes to `tasks` / `task_events` — insert, update, AND delete — are blocked by RLS,
+so these functions are the only mutation path; each performs its state change and its
+history event in one transaction. Least-privilege posture (hardened in the Step 8
+finalization review):
+
+- `tasks`: `select` (members) + explicit `insert`/`update` `with check (false)`
+  guards; **no delete policy** (RLS default-deny → client DELETE refused). There is
+  no product "delete task" workflow in Step 8, so no destructive client path is
+  granted.
+- `task_events`: `select` (members) + explicit `insert`/`update` `with check (false)`
+  guards; **no delete policy**. Events are HISTORICAL TRUTH — a client can neither
+  forge, alter, nor erase them; only the RPCs (which bypass RLS as table owner)
+  write them.
+
+An earlier draft of this migration granted members a `for delete using
+(is_family_member(...))` on both tables (to let the "Start over" wipe delete rows).
+That was removed as unnecessary destructive surface: the wipe's client DELETE is now
+simply RLS-filtered to zero rows for these tables (no error), matching how
+`household_invitations` (also RPC-only-write, no delete policy) already behaves.
 
 ### New SECURITY DEFINER functions
 

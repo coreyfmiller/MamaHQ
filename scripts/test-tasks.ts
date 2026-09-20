@@ -358,6 +358,80 @@ async function main() {
   })
 
   // ========================================================================
+  // LEAST PRIVILEGE — task_events is HISTORICAL TRUTH; clients cannot write it,
+  // and there is no client task-delete path. All event writes are via RPC only.
+  // (A blocked write under RLS is not necessarily an error — PostgREST filters the
+  // affected rows — so we assert against GROUND TRUTH read back as service role.)
+  // ========================================================================
+  await test('a family member cannot directly INSERT a task event', async () => {
+    const id = await createTask(owner.client, famA, 'Event insert attempt', { assignee: jamesPid })
+    // Attempt a forged event as the authenticated owner (a real member of famA).
+    await owner.client.from('task_events').insert({
+      family_id: famA, task_id: id, event_type: 'completed', actor_user_id: owner.id,
+    })
+    // Ground truth: only the RPC-created events exist (created + assigned), no forged 'completed'.
+    const { data } = await A.from('task_events').select('event_type').eq('task_id', id)
+    const types = (data ?? []).map((e) => (e as { event_type: string }).event_type)
+    assert(!types.includes('completed'), 'no client-forged completed event was inserted')
+    assertEqual(types.length, 2, 'only the two RPC events (created + assigned) exist')
+  })
+
+  await test('a family member cannot directly UPDATE a task event', async () => {
+    const id = await createTask(owner.client, famA, 'Event update attempt')
+    const { data: before } = await A.from('task_events').select('id, event_type').eq('task_id', id).single()
+    const evId = (before as { id: string; event_type: string }).id
+    await owner.client.from('task_events').update({ event_type: 'reopened' }).eq('id', evId)
+    // Ground truth: the event type is unchanged.
+    const { data: after } = await A.from('task_events').select('event_type').eq('id', evId).single()
+    assertEqual((after as { event_type: string }).event_type, 'created', 'event type unchanged by a client update')
+  })
+
+  await test('a family member cannot directly DELETE a task event (history is immutable to clients)', async () => {
+    const id = await createTask(owner.client, famA, 'Event delete attempt', { assignee: jamesPid })
+    const { count: before } = await A.from('task_events').select('*', { count: 'exact', head: true }).eq('task_id', id)
+    await owner.client.from('task_events').delete().eq('task_id', id)
+    const { count: after } = await A.from('task_events').select('*', { count: 'exact', head: true }).eq('task_id', id)
+    assertEqual(after, before, 'task events still present after a client delete attempt')
+    assert((after ?? 0) >= 2, 'the created + assigned events survive')
+  })
+
+  await test('a family member cannot directly DELETE a task (no delete workflow exists)', async () => {
+    const id = await createTask(owner.client, famA, 'Task delete attempt')
+    await owner.client.from('tasks').delete().eq('id', id)
+    // Ground truth: the task still exists.
+    const row = await taskRow(A, id)
+    assert(row, 'task still exists after a client delete attempt')
+    assertEqual(row?.id, id, 'same task row remains')
+  })
+
+  await test('Family B cannot INSERT / DELETE Family A task events', async () => {
+    const id = await createTask(owner.client, famA, 'Cross-family event attack', { assignee: jamesPid })
+    // Outsider forges an event into famA...
+    await outsider.client.from('task_events').insert({
+      family_id: famA, task_id: id, event_type: 'reopened', actor_user_id: outsider.id,
+    })
+    // ...and tries to erase famA history.
+    await outsider.client.from('task_events').delete().eq('task_id', id)
+    const { data } = await A.from('task_events').select('event_type').eq('task_id', id)
+    const types = (data ?? []).map((e) => (e as { event_type: string }).event_type)
+    assertEqual(types.length, 2, 'famA events untouched by outsider (still created + assigned)')
+    assert(!types.includes('reopened'), 'no outsider-forged event exists')
+  })
+
+  await test('trusted RPCs still create legitimate events after the least-privilege lockdown', async () => {
+    const id = await createTask(owner.client, famA, 'RPC events still work', { assignee: jamesPid })
+    await partner.client.rpc('complete_task', { p_task_id: id })
+    await owner.client.rpc('reopen_task', { p_task_id: id })
+    await owner.client.rpc('assign_task', { p_task_id: id, p_person_id: ownerPid })
+    const ev = await events(owner.client, famA, id)
+    const types = ev.map((e) => e.event_type)
+    // created, assigned(James), completed, reopened, reassigned(James→Mom)
+    assert(types.includes('created') && types.includes('assigned') && types.includes('completed')
+      && types.includes('reopened') && types.includes('reassigned'),
+      `expected the full RPC-written lifecycle, got: ${types.join(',')}`)
+  })
+
+  // ========================================================================
   // HISTORICAL PERSON — account status does not define ownership (§14, §15)
   // ========================================================================
   await test('a task may be owned by an account-less person; ownership persists', async () => {
