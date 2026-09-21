@@ -485,7 +485,7 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   care = I currently hold care or a handoff is waiting on me. A relationship label
   ("partner"/"Mom") never implies responsibility.
 
-### Today partial-failure relies on new provider `loadError` flags
+### Today partial-failure relies on new provider `loadError` flags (race-guarded)
 - **Status:** RESOLVED for the domains Today reads; PARTIAL elsewhere.
 - **Why it matters:** §22/§23 require Today to distinguish "failed to load" from
   "empty". The tasks/calendar/care providers previously swallowed fetch errors
@@ -494,6 +494,13 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   here". Grocery is treated as non-core (count only) and does not surface a distinct
   error on Today. The other list OVERLAYS (People/Tasks/Calendar/Grocery screens) still
   fall back rather than showing an inline retry — a future small cross-surface pass.
+- **Stale-request race (fixed in final review):** every reload goes through a
+  monotonic `reloadSeq`/`loadSeq` ref, so only the LATEST reload may set rows or
+  `loadError`. This prevents a slow earlier request that rejects from stamping
+  `loadError=true` on top of a newer successful reload (initial-load vs realtime vs
+  mutation-triggered reload), and prevents a stale success/failure from clobbering
+  newer state. Sign-out/family-change bumps the sequence so an in-flight reload from a
+  previous family cannot apply afterward.
 
 ### Baby-care logs are not wired to the realtime coordinator
 - **Status:** advisory (pre-existing; reaffirmed by Beta Phase 3).

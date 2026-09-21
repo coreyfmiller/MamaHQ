@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useRealtimeInvalidation } from './realtime'
@@ -159,9 +159,25 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   // "failed to load" from "genuinely empty" instead of silently showing zero tasks.
   const [loadError, setLoadError] = useState(false)
 
+  // Monotonic reload sequence: only the LATEST reload may drive tasks/loadError, so a
+  // slow earlier request that rejects can never stamp loadError=true (or overwrite
+  // rows) on top of a newer successful reload (initial-load vs realtime vs mutation
+  // race). Every reload path goes through this guard.
+  const reloadSeq = useRef(0)
+
   const reload = async (fid: string) => {
-    const rows = await db.fetchTasks(fid)
-    setTasks(sortTasks(rows.map(fromRow)))
+    const seq = ++reloadSeq.current
+    try {
+      const rows = await db.fetchTasks(fid)
+      if (seq !== reloadSeq.current) return // a newer reload superseded us — discard
+      setTasks(sortTasks(rows.map(fromRow)))
+      setLoadError(false)
+    } catch (e) {
+      if (seq !== reloadSeq.current) return // stale failure — a newer reload owns state
+      console.warn('tasks sync', e)
+      setLoadError(true)
+      throw e
+    }
   }
 
   useEffect(() => {
@@ -169,12 +185,8 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     setHydrated(false)
 
     if (familyId) {
-      setLoadError(false)
       reload(familyId)
-        .catch((e) => {
-          console.warn('tasks sync', e)
-          if (alive) setLoadError(true)
-        })
+        .catch(() => {})
         .finally(() => {
           if (alive) setHydrated(true)
         })
@@ -184,8 +196,10 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     }
 
     // Signed out: no shared family → no tasks. Mark hydrated so the UI can render
-    // an appropriate empty/sign-in state rather than a spinner.
+    // an appropriate empty/sign-in state rather than a spinner. Bump the sequence so
+    // any in-flight reload from a previous family can't apply after sign-out.
     if (status !== 'loading') {
+      reloadSeq.current++
       setTasks([])
       setLoadError(false)
       setHydrated(true)
@@ -197,7 +211,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
   // Realtime: another session changed tasks/task_events for this family → refetch
   // canonical task state. Idempotent, so it's safe even when it echoes our own
-  // optimistic mutation.
+  // optimistic mutation. Goes through the same race-guarded reload.
   useRealtimeInvalidation('tasks', () => {
     if (familyId) void reload(familyId).catch(() => {})
   })

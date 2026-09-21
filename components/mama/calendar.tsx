@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useNow } from './logs'
@@ -180,21 +180,32 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   // instead of "nothing on the calendar" when the fetch actually failed.
   const [loadError, setLoadError] = useState(false)
 
+  // Monotonic reload sequence: only the LATEST reload may drive events/loadError, so
+  // a slow earlier request that rejects can't stamp loadError=true over a newer
+  // successful reload (initial vs realtime vs mutation race).
+  const reloadSeq = useRef(0)
+
   const reload = async (fid: string) => {
-    const rows = await db.fetchCalendarEvents(fid)
-    setEvents(sortEvents(rows.map(fromRow)))
+    const seq = ++reloadSeq.current
+    try {
+      const rows = await db.fetchCalendarEvents(fid)
+      if (seq !== reloadSeq.current) return
+      setEvents(sortEvents(rows.map(fromRow)))
+      setLoadError(false)
+    } catch (e) {
+      if (seq !== reloadSeq.current) return
+      console.warn('calendar sync', e)
+      setLoadError(true)
+      throw e
+    }
   }
 
   useEffect(() => {
     let alive = true
     setHydrated(false)
     if (familyId) {
-      setLoadError(false)
       reload(familyId)
-        .catch((e) => {
-          console.warn('calendar sync', e)
-          if (alive) setLoadError(true)
-        })
+        .catch(() => {})
         .finally(() => {
           if (alive) setHydrated(true)
         })
@@ -203,6 +214,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       }
     }
     if (status !== 'loading') {
+      reloadSeq.current++
       setEvents([])
       setLoadError(false)
       setHydrated(true)

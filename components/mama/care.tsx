@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useLogs, lastOfKind, activeSleep, clockTime, elapsed, type LogEntry } from './logs'
@@ -154,7 +154,13 @@ export function CareProvider({ children }: { children: ReactNode }) {
   // load" from "no care state". True if EITHER core fetch (holder/handoffs) rejects.
   const [loadError, setLoadError] = useState(false)
 
+  // Monotonic load sequence: only the LATEST load may apply holder/handoffs/loadError,
+  // so a slow earlier load can't overwrite a newer one or wrongly set loadError after
+  // newer success (initial vs realtime vs mutation-triggered load race).
+  const loadSeq = useRef(0)
+
   const load = async (fid: string) => {
+    const seq = ++loadSeq.current
     // Ensure the responsibility row exists (first caller becomes initial holder),
     // then read current holder + handoffs.
     try {
@@ -166,6 +172,7 @@ export function CareProvider({ children }: { children: ReactNode }) {
       db.fetchCareResponsibility(fid),
       db.fetchCareHandoffs(fid),
     ])
+    if (seq !== loadSeq.current) return // a newer load superseded us — discard
     if (resp.status === 'fulfilled') setHolderPersonId(resp.value?.holder_person_id ?? null)
     if (hs.status === 'fulfilled') setHandoffs(hs.value.map(fromHandoffRow))
     // A rejected holder/handoff fetch means we can't trust the care projection.
@@ -186,6 +193,7 @@ export function CareProvider({ children }: { children: ReactNode }) {
       }
     }
     if (status !== 'loading') {
+      loadSeq.current++
       setHolderPersonId(null)
       setHandoffs([])
       setLoadError(false)

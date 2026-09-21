@@ -356,6 +356,53 @@ function todayAt(h: number, m = 0): string {
 }
 
 // ==========================================================================
+// REOPEN / REASSIGN semantics (follow canonical domain state)
+// ==========================================================================
+// A reopened task (status back to 'open') reappears in mine/attention.
+{
+  const reopened = task({ id: 're', assignedToPersonId: ME, status: 'open', acknowledgedAt: null, dueAt: todayAt(8) })
+  const m = buildTodayModel(base({ tasks: [reopened] }))
+  ok(m.mine.some((x) => x.id === 're'), 'a reopened (open) task assigned to me is in mine again')
+  ok(m.attention.some((a) => a.refId === 're'), 'a reopened open task assigned to me is attention again')
+}
+// A task reassigned AWAY from me (now owned by Alex) leaves my mine/attention entirely.
+{
+  const m = buildTodayModel(base({ tasks: [task({ id: 'gone', assignedToPersonId: ALEX, acknowledgedAt: null, dueAt: todayAt(8) })] }))
+  ok(!m.mine.some((x) => x.id === 'gone'), 'a task reassigned to Alex is no longer mine')
+  ok(!m.attention.some((a) => a.refId === 'gone'), 'a task reassigned to Alex is not my attention')
+  ok(m.household.some((h) => h.personId === ALEX && h.tasks.some((t) => t.id === 'gone')), 'it shows under Alex in household')
+}
+// An accepted partner task shows under household as "has it" (accepted), never mine.
+{
+  const m = buildTodayModel(base({ tasks: [task({ id: 'pa', assignedToPersonId: ALEX, acknowledgedAt: todayAt(7) })] }))
+  const alex = m.household.find((h) => h.personId === ALEX)
+  eq(alex?.tasks.find((t) => t.id === 'pa')?.acceptance, 'accepted', "accepted partner task shows 'accepted' under household")
+  ok(m.mine.length === 0, 'accepted partner task is never mine')
+}
+// Unassigned open task appears in NEITHER mine nor household (no owner to attribute).
+{
+  const m = buildTodayModel(base({ tasks: [task({ id: 'un', assignedToPersonId: null, dueAt: todayAt(8) })] }))
+  ok(m.mine.length === 0, 'unassigned task is not mine')
+  ok(m.household.length === 0, 'unassigned task is not attributed to anyone in household')
+  ok(m.attention.length === 0, 'unassigned task creates no attention')
+}
+// Ordering: equal-rank, equal-time items are stable by refId (no array-order dependence).
+{
+  const tasksA = [
+    task({ id: 'b', assignedToPersonId: ME, acknowledgedAt: todayAt(6), dueAt: todayAt(15) }),
+    task({ id: 'a', assignedToPersonId: ME, acknowledgedAt: todayAt(6), dueAt: todayAt(15) }),
+  ]
+  const m1 = buildTodayModel(base({ tasks: tasksA }))
+  const m2 = buildTodayModel(base({ tasks: [...tasksA].reverse() }))
+  eq(
+    m1.attention.map((a) => a.refId).join(','),
+    m2.attention.map((a) => a.refId).join(','),
+    'attention order does not depend on input array order (stable by refId at equal rank/time)',
+  )
+  eq(m1.attention[0].refId, 'a', 'equal rank+time → stable ascending by refId')
+}
+
+// ==========================================================================
 console.log(`\nToday projection: ${passed} passed, ${failed} failed`)
 if (failed > 0) {
   console.log('\nFailures:')
