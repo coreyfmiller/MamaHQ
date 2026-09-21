@@ -594,7 +594,9 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   but nothing delivers a reminder (no push/SMS/email — deferred product-wide). Phase 4
   relabeled the toggle to say it only saves a preference and MamaHQ can't send
   notifications yet, rather than implying "a day before · an hour before" delivery.
-  Real delivery + the legacy-Appointments/Calendar consolidation remain deferred.
+  (Beta Phase 6 then retired the legacy Appointments UI entirely, including this
+  toggle's screen — see the Calendar & Appointments consolidation section below. Real
+  reminder delivery remains deferred.)
 
 ---
 
@@ -681,3 +683,49 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   loads. The demo `baby` fixture is no longer imported by the product app (it still
   backs the SEPARATE marketing landing site under `components/mama-hq/*`, which is out
   of scope).
+
+---
+
+## Calendar & Appointments consolidation (Beta Phase 6)
+
+### Legacy Appointments UI retired; data left dormant (no migration)
+- **Status:** RESOLVED for the user-facing duplication; data cleanup deferred.
+- **What changed:** the closed beta had TWO scheduling systems — the canonical Step 10
+  shared **Calendar** and an older **Appointments** feature. Phase 6 retired the legacy
+  Appointments UI so there is ONE scheduling truth. Removed: `screens/appointment.tsx`,
+  `screens/appt-compose.tsx`, `screens/upcoming.tsx`, the `appointment`/`apptCompose`/
+  `upcoming` overlays, and the `openAppointment`/`composeAppointment`/`selectedApptId`
+  nav plumbing. The Me "Coming up" card now reads the canonical Calendar
+  (`useCalendar().upcoming[0]` → opens Calendar; "Add to the calendar" → the Calendar
+  composer via `composeEvent(null)`).
+- **Data preservation (deliberate, no migration):** the `appointments` /
+  `appointment_questions` tables (migration `0001`) and any historical beta rows are
+  NOT deleted. Hiding the UI strands nothing destructively; the migration chain stays
+  at `0014`. The rows remain queryable in the database but are no longer surfaced.
+- **Retained-but-dormant code:** `components/mama/appointments.tsx`
+  (`AppointmentsProvider` + `useAppointments`) is still mounted so the reset flow’s
+  `clearAppointments()` keeps working and so any future import path has the data layer
+  available. The dead Inbox capture→appointment path (`inbox/commit.ts`,
+  `screens/inbox.tsx`) is unchanged (already unreachable since Beta Phase 1) — it still
+  references the provider but is never rendered.
+- **Suggested milestone:** a later cleanup could (a) drop the retained
+  `AppointmentsProvider` + `appointments.tsx` once reset is re-pointed, and (b) migrate
+  or drop the `appointments`/`appointment_questions` tables — the latter is the only
+  part that would need a migration, and only if real beta rows should be moved onto
+  `calendar_events` first. Prefer migrating any real rows before dropping.
+
+### Calendar recurrence — still absent (reaffirmed)
+- **Status:** deferred (absent, by design). Phase 6 did NOT add recurrence. Repeating
+  commitments (weekly practice, medication refills) remain one-time events for the
+  beta. Recurrence has its own generation/skip/exception semantics and is a dedicated
+  future step; no recurrence schema was created.
+
+### External calendar sync — still absent (reaffirmed)
+- **Status:** deferred (absent, by design). No Google/Apple/Outlook sync and no ICS
+  import/export. The Calendar remains internal household scheduling truth for the beta.
+
+### Calendar/appointment reminder delivery — still absent (reaffirmed)
+- **Status:** deferred (absent). MamaHQ delivers no push/email/SMS/calendar alarms. The
+  legacy appointment "Remind me" preference toggle is gone with its retired screen; no
+  scheduling surface implies delivery. Real delivery remains product-wide deferred work
+  (see the notification-delivery debt item).
