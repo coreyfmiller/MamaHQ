@@ -607,3 +607,59 @@ human because they exercise real React state, optimistic writes, and two devices
 14. **[HUMAN]** Review the Baby screen, quick-log sheet, and care-handoff overlay at
     320 / 375 / 390 / 430px: no horizontal overflow, reachable actions, long baby names
     wrap, safe-area CTAs.
+
+---
+
+## Beta Phase 6 — Calendar & Appointments consolidation (all [HUMAN], OUTSTANDING)
+
+Scope: one scheduling source of truth (the canonical Step 10 shared Calendar); the
+legacy Appointments UI is retired. No new scheduling architecture, no recurrence, no
+external sync, no reminder delivery, no migration (chain stays at `0014`). CI proves
+the Calendar DB/security suite (`test:calendar`) and Today/Tell/First90 pure suites;
+the items below need a human because they exercise navigation and two-account realtime.
+
+### One scheduling home
+1. **[HUMAN]** There is NO "Appointments" destination anywhere: not in Me, not in a
+   menu, not from a notification, not from Today. The only scheduling surface is the
+   Calendar.
+2. **[HUMAN]** Me → "Coming up": with a future Calendar event, the card shows that
+   event's title + when and tapping it opens the Calendar. With no upcoming event, the
+   card reads "Add to the calendar" and opens the Calendar composer (not a legacy
+   appointment composer).
+
+### Calendar CRUD (single account)
+3. **[HUMAN]** Create a timed event (title, start/end, location, notes, a participant,
+   a responsible person) → it appears under Upcoming and on its Day.
+4. **[HUMAN]** Create an all-day event and a multi-day event → correct "All day" /
+   date-range display.
+5. **[HUMAN]** Edit an event (change time, swap responsible person, replace
+   participants) and delete an event → both reflect immediately.
+6. **[HUMAN]** Past events remain queryable via the Day view; overlapping events are
+   both shown.
+
+### Participants / responsibility / account-less
+7. **[HUMAN]** An account-less household person CAN be added as a participant and as the
+   responsible person (Calendar does NOT require a connected account — that's Step 9
+   Care, a different domain). "Mine" shows events where you're a participant OR
+   responsible, and the card says who's handling it.
+
+### Two accounts
+8. **[HUMAN]** Member A creates/edits/deletes an event; Member B sees the change via the
+   existing Step 11 realtime refetch (no manual reload needed), with correct
+   participant/responsible display.
+
+### Routing
+9. **[HUMAN]** Today "Add event" → Calendar. Tell a scheduling sentence ("James has
+   soccer pickup Thursday at 6") → a Calendar proposal requiring confirmation → creates
+   a Calendar event (never a legacy appointment). First-90 "Tell MamaHQ" → Tell; "Save a
+   question for my doctor" → Me → Questions (NOT the Calendar).
+
+### Truthfulness
+10. **[HUMAN]** No scheduling surface implies push/email/SMS/reminder delivery. No fake
+    or sample appointments/events appear. Appointment preparation (doctor questions)
+    stays in Me, distinct from schedule.
+
+### Mobile
+11. **[HUMAN]** Review the Calendar screen, Calendar composer, and Me "Coming up" card at
+    320 / 375 / 390 / 430px: no horizontal overflow, reachable actions, long titles
+    wrap, safe-area CTAs.
