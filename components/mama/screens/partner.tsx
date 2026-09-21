@@ -1,10 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Heart, Users, Trash2, MessageSquare, Mail } from 'lucide-react'
+import { Heart, Users, Trash2 } from 'lucide-react'
 import { useNav } from '../context'
 import { usePartner } from '../partner'
-import { notifier } from '@/lib/notify'
 import { Card, CardLabel, Screen, Scroll, StatusBar, TopBar } from '../ui'
 
 export function PartnerScreen() {
@@ -22,7 +21,8 @@ export function PartnerScreen() {
             Share the load <Users className="size-5 text-sage" strokeWidth={1.75} />
           </h1>
           <p className="mt-1 text-[15px] leading-relaxed text-muted-foreground">
-            Add a partner or helper so you can hand things off — and, soon, send them a nudge.
+            Keep a partner or helper&apos;s details handy. To truly share the load, invite them
+            from Household so they get their own account.
           </p>
         </header>
 
@@ -70,19 +70,12 @@ function SavedPartner({ onEdit, onRemove }: { onEdit: () => void; onRemove: () =
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
-          <Channel on={partner.notifySms} icon={<MessageSquare className="size-3.5" />} label="Texts" />
-          <Channel on={partner.notifyEmail} icon={<Mail className="size-3.5" />} label="Emails" />
-        </div>
       </Card>
 
-      {/* Honest state: delivery isn't live yet. */}
-      {!notifier.isConfigured() && (partner.notifySms || partner.notifyEmail) && (
-        <p className="rounded-2xl bg-muted/60 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
-          Heads up: message delivery isn&apos;t switched on yet. {partner.name} is saved, and
-          hand-offs will start sending once notifications go live.
-        </p>
-      )}
+      {/* Beta Phase 1: no SMS/email delivery controls are shown — MamaHQ must never
+          imply a notification channel it can't actually deliver. Partners who have
+          their own account receive real in-app notifications; that is the live
+          channel today. */}
 
       {confirmRemove ? (
         <div className="flex gap-2">
@@ -111,18 +104,6 @@ function SavedPartner({ onEdit, onRemove }: { onEdit: () => void; onRemove: () =
   )
 }
 
-function Channel({ on, icon, label }: { on: boolean; icon: React.ReactNode; label: string }) {
-  return (
-    <span
-      className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium ${
-        on ? 'bg-sage-soft text-sage' : 'bg-muted text-muted-foreground'
-      }`}
-    >
-      {icon} {label} {on ? 'on' : 'off'}
-    </span>
-  )
-}
-
 function PartnerForm({
   initial,
   onSave,
@@ -135,8 +116,6 @@ function PartnerForm({
   const [name, setName] = useState(initial?.name ?? '')
   const [phone, setPhone] = useState(initial?.phone ?? '')
   const [email, setEmail] = useState(initial?.email ?? '')
-  const [notifySms, setNotifySms] = useState(initial?.notifySms ?? false)
-  const [notifyEmail, setNotifyEmail] = useState(initial?.notifyEmail ?? false)
 
   const emailValid = email.trim() === '' || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())
   const canSave = name.trim().length > 0 && emailValid
@@ -181,22 +160,10 @@ function PartnerForm({
         />
       </Field>
 
-      <div className="space-y-2 border-t border-border/60 pt-3">
-        <Toggle
-          label="Send them texts"
-          sub="Hand-offs and reminders by SMS"
-          on={notifySms}
-          disabled={!phone.trim()}
-          onToggle={() => setNotifySms((v) => !v)}
-        />
-        <Toggle
-          label="Send them emails"
-          sub="Hand-offs and reminders by email"
-          on={notifyEmail}
-          disabled={!email.trim() || !emailValid}
-          onToggle={() => setNotifyEmail((v) => !v)}
-        />
-      </div>
+      <p className="text-[13px] leading-relaxed text-muted-foreground">
+        Contact details are for your reference. To share the load in MamaHQ, invite them from
+        Household so they get their own account and real in-app notifications.
+      </p>
 
       <div className="flex gap-2 pt-1">
         {onCancel && (
@@ -209,7 +176,9 @@ function PartnerForm({
         )}
         <button
           onClick={() =>
-            canSave && onSave({ name, phone: phone || undefined, email: email || undefined, notifySms, notifyEmail })
+            // Delivery channels are not implied: notify flags are persisted as false
+            // (no SMS/email delivery exists). In-app notifications are the real channel.
+            canSave && onSave({ name, phone: phone || undefined, email: email || undefined, notifySms: false, notifyEmail: false })
           }
           disabled={!canSave}
           className="flex-1 rounded-full bg-primary py-3 text-[15px] font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
@@ -227,39 +196,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1.5 block px-1 text-[13px] font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
-  )
-}
-
-function Toggle({
-  label,
-  sub,
-  on,
-  disabled,
-  onToggle,
-}: {
-  label: string
-  sub: string
-  on: boolean
-  disabled?: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      onClick={() => !disabled && onToggle()}
-      disabled={disabled}
-      className="flex w-full items-center justify-between py-1.5 text-left disabled:opacity-40"
-    >
-      <span>
-        <span className="block text-[15px] font-medium text-foreground">{label}</span>
-        <span className="block text-[13px] text-muted-foreground">{sub}</span>
-      </span>
-      <span
-        role="switch"
-        aria-checked={on}
-        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${on && !disabled ? 'bg-primary' : 'bg-border'}`}
-      >
-        <span className={`absolute top-1 size-5 rounded-full bg-card shadow transition-all ${on && !disabled ? 'left-6' : 'left-1'}`} />
-      </span>
-    </button>
   )
 }
