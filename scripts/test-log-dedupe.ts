@@ -57,6 +57,15 @@ function diaper(createdAt: string, diaperType?: DedupeLog['diaperType']): Dedupe
   const recent = diaper(T0, 'wet')
   ok(isDuplicateAdd(recent, { kind: 'diaper', diaperType: 'wet' }, at(500)), 'identical diaper → duplicate')
   ok(!isDuplicateAdd(recent, { kind: 'diaper', diaperType: 'dirty' }, at(500)), 'different diaper type → kept')
+  ok(!isDuplicateAdd(recent, { kind: 'diaper', diaperType: 'mixed' }, at(500)), 'wet vs mixed → kept')
+}
+
+// ---- Nursing side is part of identity: same amount, different side is NOT a dup ----
+{
+  const recent: DedupeLog = { kind: 'feed', createdAt: T0, side: 'left' }
+  ok(isDuplicateAdd(recent, { kind: 'feed', side: 'left' }, at(400)), 'identical side → duplicate')
+  ok(!isDuplicateAdd(recent, { kind: 'feed', side: 'right' }, at(400)), 'left vs right side → kept')
+  ok(!isDuplicateAdd(recent, { kind: 'feed' }, at(400)), 'side vs no-side → kept')
 }
 
 // ---- Different kind is never a duplicate ----

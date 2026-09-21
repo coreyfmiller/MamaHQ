@@ -570,35 +570,40 @@ human because they exercise real React state, optimistic writes, and two devices
 5. **[HUMAN]** Signed in, online: log a feed → optimistic entry appears in Today's
    timeline; no error toast. (Cloud write succeeded.)
 6. **[HUMAN]** Simulate a sync failure (e.g. go offline / block the Supabase host) then
-   log a feed: the entry still appears locally AND a truthful toast shows "Saved on
-   this device, but couldn't sync your last feed to the cloud." Re-connect and log
-   again → a successful write clears the error (no lingering banner).
-7. **[HUMAN]** Editing (correct a sleep stop time) and deleting a log under a sync
-   failure surface the same truthful "couldn't sync … edit/delete" message — the UI
-   never silently claims success.
+   log a feed: the entry appears optimistically AND a truthful toast shows it "couldn't
+   sync your last feed to your household — it may be lost if you leave or refresh." The
+   copy must NOT claim it was "saved". Re-connect and log again → a successful write
+   clears the error (no lingering banner).
+7. **[HUMAN]** Confirm the wording matches the operation: a failed EDIT says it "may
+   revert", a failed DELETE says the entry "may reappear", a failed START/END sleep
+   says "may be lost"/"may revert". The UI never silently claims success.
+8. **[HUMAN]** Cross-family race: on a flaky connection, log something, then sign out (or
+   switch family) before it resolves. The stale failure/success must NOT surface a toast
+   or clear an error in the new session (session-generation guard).
 
 ### Duplicate-tap guard (§26)
-8. **[HUMAN]** Rapidly double-tap the same feed amount (e.g. "4 oz") or the same diaper
+9. **[HUMAN]** Rapidly double-tap the same feed amount (e.g. "4 oz") or the same diaper
    type: only ONE entry is logged (the second identical tap within ~4s is absorbed).
-9. **[HUMAN]** Log the same amount again a few minutes later: it IS logged as a second
-   entry (the guard only absorbs an immediate accidental repeat, never a real second
-   feed).
-10. **[HUMAN]** Start a sleep, then start another immediately: the single-active-sleep
+10. **[HUMAN]** Log the same amount again a few minutes later: it IS logged as a second
+    entry (the guard only absorbs an immediate accidental repeat, never a real second
+    feed). Also confirm a same-amount feed with a different nursing SIDE is kept (side
+    is part of identity).
+11. **[HUMAN]** Start a sleep, then start another immediately: the single-active-sleep
     guard still prevents a second running sleep (unchanged); sleep is never treated as
     a duplicate by the new guard.
 
 ### Two-device freshness (documents a known gap, not a pass)
-11. **[HUMAN]** On device B, log a feed; on device A it appears after the next load/
+12. **[HUMAN]** On device B, log a feed; on device A it appears after the next load/
     refetch, NOT instantly (logs are intentionally not realtime — see
     `docs/PRODUCT_LIMITATIONS.md` / `docs/TECHNICAL_DEBT.md`). This is expected
     behavior for the beta, recorded here so it isn't mistaken for a bug.
 
 ### No predictive / medical language
-12. **[HUMAN]** Across Baby (Timeline / Patterns), the care-handoff overlay, and
+13. **[HUMAN]** Across Baby (Timeline / Patterns), the care-handoff overlay, and
     quick-log: verify there is no next-feed prediction, no wake window, no schedule, no
     "hungry/overdue", no percentile, no normal/abnormal, no diagnosis, no score.
 
 ### Mobile
-13. **[HUMAN]** Review the Baby screen, quick-log sheet, and care-handoff overlay at
+14. **[HUMAN]** Review the Baby screen, quick-log sheet, and care-handoff overlay at
     320 / 375 / 390 / 430px: no horizontal overflow, reachable actions, long baby names
     wrap, safe-area CTAs.

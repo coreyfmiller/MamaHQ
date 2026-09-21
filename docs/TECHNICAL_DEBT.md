@@ -629,8 +629,17 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   cloud insert/update/delete vanished while the optimistic UI still said "logged". The
   logs provider now records the last cloud-sync failure as `syncError` and a
   `LogSyncBridge` (mounted in the app shell, reading both `useLogs` and `useNav`)
-  surfaces it as a transient toast: "Saved on this device, but couldn't sync your last
-  {op} to the cloud." It clears on the next successful write or a fresh load.
+  surfaces it as a transient toast. The copy is LITERALLY TRUE: when signed in the
+  optimistic entry is React-state-only (NOT mirrored to localStorage — that mirror is
+  the signed-out path), so the message never claims it was "saved on this device"; it
+  says the change couldn't sync to your household and may be lost / revert / reappear
+  if you leave or refresh (per-operation wording for add/edit/delete/sleep). It clears
+  on the next successful write or a fresh load.
+- **Cross-family/stale-write race (guarded):** each cloud write captures a monotonic
+  `sessionSeq` (bumped on family/status change) and may only touch `syncError` if still
+  in that generation — so a pending Family-A write that resolves after sign-out or a
+  switch to Family B cannot stamp or clear Family B's error (the same race class Phase 3
+  fixed on care/tasks/calendar).
 - **Deliberately NOT done:** no retry queue, no offline reconciliation, no blocking of
   the optimistic write (the entry stays on-device and syncs on the next successful
   operation/load). A durable mutation queue remains the pre-existing offline debt item.

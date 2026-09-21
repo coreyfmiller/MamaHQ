@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import * as db from '@/lib/supabase/data'
 import { isDuplicateAdd } from '@/lib/logs/dedupe'
@@ -42,13 +42,16 @@ interface LogsCtx {
   /** Stop a running sleep by id, stamping endedAt (defaults to now). */
   endSleep: (id: string, endedAt?: string) => void
   /**
-   * Truthfulness (Beta Phase 5 §24): logs are written optimistically so the UI feels
-   * instant AND keeps working offline. But when signed in, the write is also meant to
-   * reach the cloud — and previously a failed cloud write vanished into console.warn
-   * while the UI still claimed success. `syncError` surfaces the LAST cloud-sync
-   * failure so the shell can tell the truth ("Saved on this device, but couldn't sync
-   * to the cloud"). It's set only for signed-in cloud writes, and cleared the moment a
-   * later cloud write (or a fresh load) succeeds. It never blocks the optimistic write.
+   * Truthfulness (Beta Phase 5 §24): logs are applied OPTIMISTICALLY so the UI feels
+   * instant. When SIGNED IN, that optimistic entry lives ONLY in React state until the
+   * cloud write lands — it is NOT mirrored to localStorage (that mirror is the
+   * signed-OUT path only). So a failed cloud write means the change is in memory and
+   * WILL be lost on refresh/close. Previously that failure vanished into console.warn
+   * while the UI still implied success. `syncError` surfaces the LAST cloud-sync
+   * failure so the shell can tell the LITERAL truth ("Couldn't sync … it may be lost
+   * if you leave or refresh"). It's set only for signed-in cloud writes, cleared the
+   * moment a later write or a fresh load succeeds, and can NEVER be stamped by a stale
+   * write from a previous family/session (see the write-generation guard).
    */
   syncError: string | null
   /** Dismiss the current sync-error banner (e.g. after the shell has shown it). */
@@ -113,22 +116,43 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
-  // A single place to record the outcome of a cloud write. On failure we surface a
-  // truthful message (the optimistic local entry is untouched); on success we clear a
-  // stale error so the banner doesn't linger once syncing recovers.
-  const noteSync = (op: string) => ({
-    ok: () => setSyncError(null),
-    fail: (e: unknown) => {
-      console.warn(`log ${op} sync`, e)
-      setSyncError(`Saved on this device, but couldn't sync your last ${op} to the cloud.`)
-    },
-  })
+  // Monotonic session generation, bumped whenever the active family (or auth status)
+  // changes. A cloud write captures the generation it was issued under; when it
+  // resolves it may only touch syncError if we're STILL in that generation. This
+  // closes the cross-family/stale-request race (Phase 3 found the same class on
+  // care/tasks/calendar): a pending Family-A write that resolves after the user signed
+  // out or switched to Family B must NOT stamp or clear Family B's syncError.
+  const sessionSeq = useRef(0)
+  useEffect(() => {
+    sessionSeq.current++
+  }, [familyId, status])
+
+  // Truthful outcome of a cloud write, guarded by session generation. The optimistic
+  // local entry is untouched either way. On failure we surface a LITERALLY TRUE
+  // message: when signed in the entry is React-state-only (not persisted), so we say
+  // it may be lost on leave/refresh — we never claim it was "saved". On success we
+  // clear a stale error so the banner doesn't linger once syncing recovers.
+  const noteSync = (message: string) => {
+    const seq = sessionSeq.current
+    return {
+      ok: () => {
+        if (seq === sessionSeq.current) setSyncError(null)
+      },
+      fail: (e: unknown) => {
+        console.warn('log sync failed', e)
+        if (seq === sessionSeq.current) setSyncError(message)
+      },
+    }
+  }
   const clearSyncError = () => setSyncError(null)
 
   // Load from the right source when auth resolves: cloud (family) or local.
   useEffect(() => {
     let alive = true
     setHydrated(false)
+    // A family/session change starts fresh: any prior-session sync error is no longer
+    // relevant (and its originating write is neutralized by the generation guard).
+    setSyncError(null)
 
     if (familyId) {
       db.fetchLogs(familyId)
@@ -185,7 +209,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
     }
     setLogs((prev) => [full, ...prev]) // optimistic
     if (familyId) {
-      const s = noteSync(full.kind)
+      const s = noteSync(`Couldn't sync your last ${full.kind} to your household — it may be lost if you leave or refresh.`)
       db.insertLog(toDb(full, familyId)).then(s.ok, s.fail)
     }
     return full
@@ -202,7 +226,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
       if ('diaperType' in patch) dbPatch.diaper_type = patch.diaperType ?? null
       if ('note' in patch) dbPatch.note = patch.note ?? null
       if ('createdAt' in patch && patch.createdAt) dbPatch.created_at = patch.createdAt
-      const s = noteSync('edit')
+      const s = noteSync("Couldn't sync your last edit to your household — it may revert if you leave or refresh.")
       db.updateLog(id, dbPatch).then(s.ok, s.fail)
     }
   }
@@ -210,7 +234,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   const deleteLog = (id: string) => {
     setLogs((prev) => prev.filter((l) => l.id !== id))
     if (familyId) {
-      const s = noteSync('delete')
+      const s = noteSync("Couldn't remove that entry from your household — it may reappear if you leave or refresh.")
       db.deleteLog(id).then(s.ok, s.fail)
     }
   }
@@ -225,7 +249,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
     }
     setLogs((prev) => [full, ...prev])
     if (familyId) {
-      const s = noteSync('sleep')
+      const s = noteSync("Couldn't sync the sleep you started to your household — it may be lost if you leave or refresh.")
       db.insertLog(toDb(full, familyId)).then(s.ok, s.fail)
     }
     return full
@@ -235,7 +259,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
     const end = endedAt ?? new Date().toISOString()
     setLogs((prev) => prev.map((l) => (l.id === id ? { ...l, endedAt: end } : l)))
     if (familyId) {
-      const s = noteSync('sleep')
+      const s = noteSync("Couldn't sync the end of that sleep to your household — it may revert if you leave or refresh.")
       db.updateLog(id, { ended_at: end }).then(s.ok, s.fail)
     }
   }
