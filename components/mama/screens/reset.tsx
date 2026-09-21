@@ -23,7 +23,7 @@ import { TopBar } from '../ui'
  * There is no single-tap path to data loss.
  */
 export function ResetScreen() {
-  const { closeOverlay, setPhase, showToast } = useNav()
+  const { closeOverlay, showToast } = useNav()
   const { profile, clearProfile } = useProfile()
   const { clearLogs } = useLogs()
   const { clearMom } = useMom()
@@ -52,7 +52,11 @@ export function ResetScreen() {
     clearPartner()
     clearProfile()
     showToast('Everything was erased')
-    setPhase('onboarding')
+    // Note: this erases the baby profile + logs, not your household identity — so
+    // you return to the (now empty) app, where Today shows the first-run nudge. We
+    // no longer force the onboarding phase here: first-run routing is derived from
+    // authoritative identity (useHousehold().firstRun), and your identity still
+    // stands. Re-establishing a baby is done from the normal add-people flow.
     closeOverlay()
   }
 

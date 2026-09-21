@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { PrototypeProvider, useNav } from './context'
 import { AuthProvider, useAuth } from './auth'
 import { SignInScreen } from './screens/sign-in'
-import { ProfileProvider, useProfile } from './profile'
+import { ProfileProvider } from './profile'
+import { useHousehold } from './household'
 import { LogsProvider } from './logs'
 import { MomProvider } from './mom'
 import { MemoriesProvider } from './memories'
@@ -21,6 +22,7 @@ import { TellProvider } from './tell'
 import { InboxProvider } from './inbox/store'
 import { BottomSheet, FullOverlay, Toast } from './sheet'
 import { OnboardingScreen } from './screens/onboarding'
+import { PartnerJoinScreen } from './screens/partner-join'
 import { SettingsScreen } from './screens/settings'
 import { ResetScreen } from './screens/reset'
 import { ApptComposeScreen } from './screens/appt-compose'
@@ -84,20 +86,20 @@ function AuthGate({ children }: { children: ReactNode }) {
 }
 
 function Stage() {
-  const { phase, setPhase, overlay, closeOverlay, toast } = useNav()
-  const { profile, hydrated } = useProfile()
+  const { overlay, closeOverlay, toast, onboardingDismissed } = useNav()
+  const { firstRun, hydrated } = useHousehold()
 
-  // Once storage is read: if a profile already exists, skip straight into the app.
-  // Onboarding itself flips phase to 'app' when it finishes, so we only need to
-  // handle the returning-user case here.
-  useEffect(() => {
-    if (hydrated && profile && phase === 'onboarding') {
-      setPhase('app')
-    }
-  }, [hydrated, profile, phase, setPhase])
-
-  // Avoid flashing onboarding before we know whether a profile exists.
-  if (!hydrated) {
+  // Beta Phase 2 — first-run routing is driven by AUTHORITATIVE household identity
+  // (useHousehold().firstRun), not by device-local profile/baby presence. This is
+  // what makes the two journeys correct:
+  //   * A joining partner lands in a household that already has a baby row — the old
+  //     baby-presence check skipped onboarding entirely, so they never confirmed who
+  //     they are. Now firstRun === 'partner' routes them to the join experience.
+  //   * A returning, established user (real canonical name) is 'done' on ANY device,
+  //     and losing localStorage can't make them look new.
+  // firstRun is null until we've hydrated the household + resolved the current
+  // person; show a calm loading state rather than guessing (never flash onboarding).
+  if (!hydrated || firstRun === null) {
     return (
       <div className="grid h-full place-items-center bg-background text-muted-foreground">
         <span className="text-sm">Loading…</span>
@@ -105,9 +107,18 @@ function Stage() {
     )
   }
 
+  // A first-run flow, once entered, owns the screen until it explicitly hands off
+  // (onboardingDismissed). This prevents the mid-flow identity write — which flips
+  // firstRun to 'done' — from tearing the remaining optional steps away. A returning
+  // user is 'done' from the start and has never dismissed, so they go straight in.
+  if (!onboardingDismissed) {
+    if (firstRun === 'creator') return <OnboardingScreen />
+    if (firstRun === 'partner') return <PartnerJoinScreen />
+  }
+
   return (
     <>
-      {phase === 'onboarding' ? <OnboardingScreen /> : <ActiveTab />}
+      <ActiveTab />
 
       <BottomSheet open={overlay === 'capture'} onClose={closeOverlay}>
         <CaptureContent />

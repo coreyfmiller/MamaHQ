@@ -171,6 +171,9 @@ jobs:
       - name: Household Identity tests (Beta Phase 1)
         run: node scripts/test-identity.ts
 
+      - name: Onboarding & Partner tests (Beta Phase 2)
+        run: node scripts/test-onboarding-partner.ts
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop || true

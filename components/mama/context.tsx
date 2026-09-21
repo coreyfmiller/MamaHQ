@@ -32,6 +32,14 @@ export type Overlay =
 interface PrototypeCtx {
   phase: 'onboarding' | 'app'
   setPhase: (p: 'onboarding' | 'app') => void
+  /** Beta Phase 2 — set once the current onboarding/partner-join flow hands off to
+   *  the app. Onboarding routing is driven by authoritative household state
+   *  (useHousehold().firstRun), but once a first-run flow is actively underway it
+   *  owns the screen until it explicitly finishes — so a mid-flow identity write
+   *  (which flips firstRun to 'done') doesn't yank the remaining optional steps out
+   *  from under the user. Session-only; resets next load. */
+  onboardingDismissed: boolean
+  dismissOnboarding: () => void
   tab: Tab
   setTab: (t: Tab) => void
   overlay: Overlay
@@ -58,6 +66,8 @@ const noop = () => {}
 const defaultCtx: PrototypeCtx = {
   phase: 'app',
   setPhase: noop,
+  onboardingDismissed: false,
+  dismissOnboarding: noop,
   tab: 'today',
   setTab: noop,
   overlay: null,
@@ -90,6 +100,7 @@ export function PrototypeProvider({
   initialTab?: Tab
 }) {
   const [phase, setPhase] = useState<'onboarding' | 'app'>(initialPhase)
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false)
   const [tab, setTab] = useState<Tab>(initialTab)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [toast, setToast] = useState<string | null>(null)
@@ -123,6 +134,8 @@ export function PrototypeProvider({
       value={{
         phase,
         setPhase,
+        onboardingDismissed,
+        dismissOnboarding: () => setOnboardingDismissed(true),
         tab,
         setTab,
         overlay,

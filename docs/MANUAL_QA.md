@@ -356,3 +356,80 @@ Partner:
 11. **[HUMAN]** Open Partner → verify there are NO SMS/email delivery toggles or "will
     send" implications; contact details are clearly "for your reference," and the real
     channel is inviting them (in-app notifications).
+
+---
+
+## Beta Phase 2 — Onboarding & Partner Experience
+
+### What is AUTOMATED (no human needed)
+
+- **[AUTOMATED]** Creator identity is one connected owner person, real name is set +
+  idempotent, no duplicate person/membership, `ensure_family` doesn't create a second
+  household — `test:onboarding-partner` (in CI) + `test:identity`.
+- **[AUTOMATED]** Partner acceptance links the EXISTING person, exactly one membership,
+  no duplicate person, no second household; `Member` placeholder for the no-person
+  branch — `test:onboarding-partner` (in CI).
+- **[AUTOMATED]** Invitation truth: generated invite is `pending` (created ≠ sent ≠
+  accepted); revoked/expired cannot be accepted; same-user re-accept idempotent;
+  different-user rejected; cross-household join rejected; cross-family invite creation
+  rejected — `test:onboarding-partner` (in CI).
+- **[AUTOMATED]** Tell invariant unchanged (example only populates input; confirmation
+  mandatory) — `test:tell`.
+
+The automated suite proves the trusted server invariants the journeys rely on. It does
+NOT prove the two React journeys feel right on a device — those are below.
+
+### New household (creator) — end-to-end (all [HUMAN], OUTSTANDING)
+
+1. **[HUMAN]** New email signs in (email OTP) → after the code, you land in onboarding,
+   not the app.
+2. **[HUMAN]** Welcome explains MamaHQ briefly; "Get started" moves on.
+3. **[HUMAN]** "What should we call you?" → enter a name → Continue. Verify you cannot
+   advance with an empty name, and that a forced network failure surfaces a retryable
+   error and does NOT advance (the name step must not falsely complete).
+4. **[HUMAN]** Household step: add a partner, a child, and (optionally) a baby. Verify
+   they appear; verify you can Skip with nothing added.
+5. **[HUMAN]** Invite step: for the partner, tap "Create invite" → verify a private link
+   appears with "Copy this link and send it" — NEVER "invitation sent". Copy / share it.
+   Verify children/baby are not invitable.
+6. **[HUMAN]** Ready step: "Tell MamaHQ something" → verify you land on the real Tell tab.
+   Enter "we need milk" → Sort this out → confirm → verify a grocery item appears.
+7. **[HUMAN]** Reopen the app (refresh) → verify you are NOT re-onboarded (real name
+   exists → firstRun 'done').
+8. **[HUMAN]** Clear browser storage, reopen while signed in → verify you are still NOT
+   re-onboarded (identity is authoritative in the cloud, not a local flag).
+
+### Partner joining — end-to-end (all [HUMAN], OUTSTANDING)
+
+9. **[HUMAN]** On a SECOND browser/device, open the invite link.
+10. **[HUMAN]** Signed out → verify it routes to sign-in and, after authenticating,
+    completes the join automatically (lands in the SAME household, not a new one).
+11. **[HUMAN]** Partner join screen: "You've joined the household" → set your name
+    (blocks on real save) → see "You're in" + the people already in the household → Go
+    to MamaHQ.
+12. **[HUMAN]** Verify People shows both adults with no duplicates; the partner is
+    "Joined"; the creator sees the partner flip from "Invite pending" to "Joined".
+13. **[HUMAN]** Verify shared state is visible to the partner (e.g. the grocery item the
+    creator added in step 6).
+
+### Failure & edge cases — [HUMAN], OUTSTANDING
+
+14. **[HUMAN]** Expired invite → open the link → verify the calm "expired, ask for a new
+    link" message (not a crash, not a false success).
+15. **[HUMAN]** Revoked invite → verify it cannot be accepted and explains why.
+16. **[HUMAN]** Already-accepted invite opened by a DIFFERENT account → verify it's
+    refused with guidance.
+17. **[HUMAN]** An account already in another household opens an invite → verify the
+    "one household at a time" explanation; no silent switch.
+18. **[HUMAN]** Refresh mid-onboarding → verify entered-but-unsaved wizard fields may
+    reset, but any already-saved identity/people persist and you are not duplicated.
+19. **[HUMAN]** Network failure during name save / invite create → verify a retryable
+    error and NO false "saved"/"invited" state, no duplicate on retry.
+20. **[HUMAN]** Mobile: keyboard doesn't cover the input; the invite link row + share/copy
+    are reachable; back navigation works; CTAs sit above the safe area.
+
+### First-run empty state — [HUMAN], OUTSTANDING
+
+21. **[HUMAN]** Fresh household with nothing logged → Today shows the calm "Nothing needs
+    your attention yet" nudge pointing to Tell (not a broken/empty screen, no fake data).
+    Add one thing via Tell → verify the nudge disappears.

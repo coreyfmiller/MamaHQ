@@ -360,3 +360,107 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
 - **Why it matters:** the partner record still carries `notifySms`/`notifyEmail` columns,
   now always written `false` (the UI no longer exposes delivery toggles). They can be
   dropped when `partner_contacts` is folded into `household_people` (existing debt item).
+
+---
+
+## Beta Phase 2 debt (onboarding & partner experience)
+
+### Onboarding wizard position is not persisted (only the results are)
+- **Status:** deferred (by design; see `docs/IDENTITY_AND_CAPTURE.md`).
+- **Why it matters:** first-run routing is derived from authoritative household truth
+  (canonical identity + role), NOT a stored wizard step. So refreshing mid-onboarding
+  keeps everything already SAVED (identity, people) but resets unsaved in-progress
+  fields and returns you to the start of the remaining flow. This is intentional — we
+  deliberately did NOT add a workflow engine or a `0015` "remember wizard position"
+  migration (§29). Recovery is from real state, not a cursor.
+- **Suggested milestone:** only if user testing shows the reset is painful; even then a
+  lightweight local draft (not a migration) would suffice.
+
+### "Skip naming" leaves a placeholder identity and re-prompts next session
+- **Status:** advisory (intentional honesty).
+- **Why it matters:** a creator can enter the app without setting their name. We never
+  fabricate an identity, so their canonical person stays the `'Me'` placeholder and, on
+  the next load, `firstRun` is still `'creator'` → they see onboarding again. That is
+  honest (they never told us who they are) but could feel repetitive. Settings →
+  Account → Your name is the always-available correction path.
+- **Suggested milestone:** consider a lighter in-app "finish setting up" banner instead
+  of full onboarding re-entry, if it proves annoying in the beta.
+
+### Empty-vs-error affordance is not on every list surface
+- **Status:** partial (advisory).
+- **Why it matters:** §24 asks that "nothing here yet" never be confused with "failed
+  to load". Today has a real first-run empty nudge and the signed-in stores fall back
+  (rather than rendering empty) on a fetch error, so a failure is not silently shown as
+  emptiness. But People/Tasks/Calendar/Grocery/Notifications do not yet each render a
+  dedicated inline "couldn't load — retry" state distinct from their empty state.
+- **Suggested milestone:** a small cross-surface pass adding an explicit load-error
+  state + retry to each list (no schema change needed).
+
+### Partner contact card (partner.tsx) vs. Household people overlap
+- **Status:** advisory (pre-existing, reaffirmed).
+- **Why it matters:** the legacy "Partner" contact card (local `partner_contacts`) and a
+  `household_people` partner row represent the same human two ways. Beta Phase 2 steers
+  invites through Household (the canonical people model); the contact card remains for
+  reference only. Convergence is tracked under the `partner_contacts → household_people`
+  consolidation item above.
+
+### Expired invitation status is not persisted (cosmetic; rejection is correct)
+- **Status:** advisory (found while writing Beta Phase 2 tests; migration NOT changed).
+- **Why it matters:** `accept_household_invitation` (0009) does `update … set status =
+  'expired'` and then `raise exception 'invitation expired'` in the SAME transaction —
+  so the raise rolls back the status write. The invite is correctly REJECTED (the
+  security-critical behavior), but the row stays `'pending'` rather than flipping to
+  `'expired'`. This is cosmetic: every future accept re-checks `expires_at` and rejects
+  again, so an expired invite can never be redeemed regardless of the stored label.
+- **Fix (deferred, needs a migration so out of Beta Phase 2 scope):** persist expiry
+  out-of-band — e.g. mark it in a separate autonomous step, or lazily flip status in
+  `revoke`/a sweep — in a future `00NN` that touches the invitation RPCs. Do not fold
+  a status rewrite into an exception path.
+
+### A pre-named invited partner skips the "you joined" welcome screen
+- **Status:** advisory (known limitation; found in Beta Phase 2 final review).
+- **Why it matters:** `firstRun` treats a member as `'partner'` (→ show the join
+  welcome) only while their linked person still has the `'Member'` placeholder. In the
+  MOST COMMON flow the creator adds the partner BY NAME ("Alex") and then invites them,
+  so on acceptance the person is already named "Alex" (not a placeholder) → `firstRun`
+  is `'done'` → the partner lands straight in the app and never sees the "you joined
+  the household / who's here" screen. The invariant is still correct (right identity,
+  one membership, no duplicate, no new household); only the welcome context is missed.
+- **Why not "fixed" now:** reliably distinguishing "member who just joined and hasn't
+  seen the welcome" from "established returning member" needs new state (a
+  seen-welcome flag). A device-local flag is exactly the shared-device hazard Beta
+  Phase 1 removed, and a migration for a cosmetic welcome is not "genuinely required"
+  (§29). Keying the welcome on `role==='member'` alone would re-show it every session
+  for established members — worse.
+- **Suggested milestone:** if the welcome matters for the beta, add a minimal
+  authoritative "member_onboarded_at" (or reuse `family_members.joined_at` vs a
+  first-seen marker) in a future migration; until then the partner still gets the
+  correct household immediately.
+
+### A family member with no linked person no longer hangs (enters the app)
+- **Status:** RESOLVED defensively in Beta Phase 2 final review (client-side).
+- **Why it matters:** `firstRun` is derived from the caller's canonical person. If a
+  signed-in member has a family but no resolvable `me` — e.g. a transient
+  household-fetch failure (`loadHousehold` sets `hydrated=true` even when the people
+  fetch rejects), or the narrow "two pending invites for one person, second accepter"
+  DB edge in 0009 (the accept RPC links an already-linked person to zero rows and does
+  NOT fall to the create-person branch) — the old code returned `firstRun=null`
+  forever, trapping the user on the "Loading…" spinner.
+- **Fix:** once hydration has completed with a family but no `me`, `firstRun` now
+  returns `'done'` (enter the app; surfaces are individually resilient and Settings
+  lets them set a name) instead of hanging. The underlying 0009 two-invite edge is
+  itself gated by the People UI (only one invite per person), so it is not reachable
+  through normal use; a durable DB fix (block a second pending invite per person, or
+  handle the zero-row link) is deferred to a future migration.
+- **Suggested milestone:** a future `00NN` could add a partial unique index / guard so
+  at most one pending invitation exists per household person.
+
+### Onboarding journeys are React flows — automated coverage is at the invariant layer
+- **Status:** advisory (intentional).
+- **Why it matters:** the creator/partner journeys are thin client flows over trusted
+  server invariants. CI proves those invariants deterministically
+  (`test:onboarding-partner`, `test:identity`): identity idempotency, no duplicate
+  person/membership, no second household, invite lifecycle truth (generated ≠ sent ≠
+  accepted; revoked/expired/idempotent/wrong-account/cross-family). The React flow
+  itself (step transitions, copy, mobile feel) is covered by the `[HUMAN]` Beta Phase 2
+  section of `docs/MANUAL_QA.md`, which is OUTSTANDING.
