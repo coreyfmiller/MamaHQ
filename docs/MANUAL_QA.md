@@ -478,3 +478,65 @@ The projection is a pure deterministic function (`lib/today/model.ts`); the test
 ### Mobile (all [HUMAN], OUTSTANDING)
 
 22. **[HUMAN]** Review Today at 320 / 375 / 390 / 430px: first screenful is operational (attention/plan), attention action buttons reachable, long names wrap, multiple events scroll, empty + partial-error states, care handoff accept/decline, Tell CTA above the safe area, no horizontal overflow.
+
+---
+
+## Beta Phase 4 — First 90 Days & Mom
+
+### What is AUTOMATED (no human needed)
+
+- **[AUTOMATED]** First 90 Days day calculation + honest Day 90+ boundary —
+  `test:first90` (23 tests, in `verify` + CI Verify job): Day 1 = birth day; Day
+  2/30/89/90/91 boundaries; late-evening / just-after-midnight stability; missing /
+  invalid / future date clamps to Day 1; **timezone-safe** local parse of a
+  `YYYY-MM-DD` birth date (no UTC off-by-one); within-journey vs graduated;
+  `hasReadToday` true only for Days 1–90; `pickDailyRead(91)`/`(0)` fall back to Day 90
+  as a graceful lookup only.
+- **[AUTOMATED]** Today projection unchanged — `test:today` (70). Tell invariant —
+  `test:tell` (40).
+
+### First 90 Days (all [HUMAN], OUTSTANDING)
+
+1. **[HUMAN]** Day/stage: Today's read shows "Day N" for a baby with a birth date within
+   90 days; the read screen matches. Verify the day matches the baby's real age.
+2. **[HUMAN]** Navigation: Today → "Today's read" opens the full piece; back returns to
+   Today. Me → "After the first 90 days" opens the honest beyond-90 screen.
+3. **[HUMAN]** Day 90 transition: with a baby > 90 days old, Today shows NO "Today's
+   read" button, and opening the read area shows the honest "You've reached the end of
+   the First 90 Days" message (not a stale Day 90 article presented as today's).
+4. **[HUMAN]** Missing/odd date: a household with no baby (or an invalid date) never
+   shows a fabricated day; Today's read simply doesn't appear.
+
+### Content → action (all [HUMAN], OUTSTANDING)
+
+5. **[HUMAN]** Open a daily read → "Tell MamaHQ" → lands on the real Tell tab; nothing
+   is created until you type, sort, and confirm (Step 12 intact).
+6. **[HUMAN]** Open a daily read → "Save a question for my doctor" → a question appears
+   under Me → "Questions for my doctor"; it can be edited/removed there. Nothing is
+   auto-created without the explicit tap.
+
+### Appointment prep (all [HUMAN], OUTSTANDING)
+
+7. **[HUMAN]** Open an appointment → add a question → it persists and can be checked/
+   removed. Verify the disclaimer "MamaHQ … won't answer medical questions for you".
+8. **[HUMAN]** The "Remind me" toggle reads as a saved preference and says MamaHQ
+   can't send notifications yet — no implied delivery.
+9. **[HUMAN]** Verify NO medical interpretation anywhere: no symptom ranking, no
+   urgency, no "normal/abnormal", no diagnosis, no scores.
+
+### Mom (all [HUMAN], OUTSTANDING)
+
+10. **[HUMAN]** Mood check-in: tap a mood; tap again to change/clear. Lightweight and
+    nonclinical — no scores, no screening, no health interpretation.
+11. **[HUMAN]** Personal-content visibility: verify the honest note that check-in /
+    to-dos / questions are part of the shared household (not private) is shown, and that
+    a second household member can indeed see them (they are family-scoped).
+12. **[HUMAN]** Empty states: Me with nothing added reads sensibly; no fake sample data.
+13. **[HUMAN]** Reminders: confirm the old "Reminders · See a preview" entry and the
+    fake reminder cards are GONE (no controls implying notifications that don't happen).
+
+### Mobile (all [HUMAN], OUTSTANDING)
+
+14. **[HUMAN]** Review Me, the read screen, read-actions, appointment prep, and the
+    beyond-90 screen at 320 / 375 / 390 / 430px: no horizontal overflow, reachable
+    actions, wrapping long titles, safe-area CTAs.
