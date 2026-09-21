@@ -702,12 +702,27 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   `appointment_questions` tables (migration `0001`) and any historical beta rows are
   NOT deleted. Hiding the UI strands nothing destructively; the migration chain stays
   at `0014`. The rows remain queryable in the database but are no longer surfaced.
-- **Retained-but-dormant code:** `components/mama/appointments.tsx`
+- **Retained code (NOT fully inert — reads on load):** `components/mama/appointments.tsx`
   (`AppointmentsProvider` + `useAppointments`) is still mounted so the reset flow’s
-  `clearAppointments()` keeps working and so any future import path has the data layer
-  available. The dead Inbox capture→appointment path (`inbox/commit.ts`,
-  `screens/inbox.tsx`) is unchanged (already unreachable since Beta Phase 1) — it still
-  references the provider but is never rendered.
+  `clearAppointments()` keeps clearing the local copy. Being accurate rather than
+  claiming false "dormancy": on every SIGNED-IN load the provider’s hydrate effect still
+  fires two RLS-scoped reads (`fetchAppointments` + `fetchApptQuestions`) — but the
+  result is no longer rendered anywhere (Me reads the Calendar), so it is a wasted read,
+  not a leak and not a write. No UI surfaces the data; nothing writes it from a reachable
+  flow. The dead Inbox capture→appointment path (`inbox/commit.ts`, `screens/inbox.tsx`)
+  is unchanged (already unreachable since Beta Phase 1) — it still references the provider
+  but is never rendered.
+- **Reset already wipes cloud appointment rows:** the "Start over" flow calls
+  `clearFamilyData(familyId)`, which deletes `appointment_questions` + `appointments`
+  (among all family tables) — so a user who resets does NOT leave stranded cloud rows.
+  Non-resetting users keep their dormant rows until a future cleanup.
+- **Cheapest future cleanup:** replace `clearAppointments()` in reset with a direct
+  `localStorage.removeItem('mamahq.proto.appointments.v1')`, then drop
+  `AppointmentsProvider` + `appointments.tsx` entirely (removing the wasted load-time
+  reads), and — only if real rows must be migrated first — a migration to move/drop the
+  tables. Deliberately deferred: it’s not a beta-correctness issue (no user-visible
+  effect), and Phase 6 favors the smallest change that removes the user-facing
+  duplication.
 - **Suggested milestone:** a later cleanup could (a) drop the retained
   `AppointmentsProvider` + `appointments.tsx` once reset is re-pointed, and (b) migrate
   or drop the `appointments`/`appointment_questions` tables — the latter is the only

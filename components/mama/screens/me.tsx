@@ -160,8 +160,10 @@ export function MeScreen() {
   const { state, addTask, addQuestion, toggleTask, toggleQuestion, removeTask, removeQuestion } = useMom()
   // Beta Phase 6 — "Coming up" reads the CANONICAL shared Calendar (Step 10), not the
   // retired legacy Appointments store. One scheduling truth: if it happens at a date
-  // or time, it's a Calendar event.
-  const { upcoming } = useCalendar()
+  // or time, it's a Calendar event. We track hydrated/loadError so a still-loading or
+  // failed calendar is NEVER shown as "nothing coming up" (that would be a false empty
+  // truth — §Beta Phase 6 review).
+  const { upcoming, hydrated: calHydrated, loadError: calLoadError, available: calAvailable } = useCalendar()
   const nextEvent = upcoming[0] ?? null
   const { unreadCount } = useNotifications()
 
@@ -203,7 +205,9 @@ export function MeScreen() {
         </Card>
 
         {/* Coming up — the next event on the shared Calendar. Tapping opens the
-            canonical Calendar; adding routes to the Calendar composer. */}
+            canonical Calendar; adding routes to the Calendar composer. We never show
+            "nothing coming up" while the calendar is still loading or after it failed
+            to load — that would be a false empty truth. */}
         <div>
           <CardLabel className="mb-2 px-1 text-foreground">Coming up</CardLabel>
           {nextEvent ? (
@@ -215,6 +219,22 @@ export function MeScreen() {
               </div>
               <ChevronRight className="size-4 text-muted-foreground" />
             </Card>
+          ) : calAvailable && !calHydrated ? (
+            // Signed in, calendar still loading — don't claim it's empty yet.
+            <p className="rounded-3xl border border-dashed border-border bg-card/60 px-4 py-3.5 text-[14px] text-muted-foreground">
+              Loading your calendar…
+            </p>
+          ) : calLoadError ? (
+            // Load failed — say so truthfully; tapping opens the Calendar to retry.
+            <button
+              onClick={() => openOverlay('calendar')}
+              className="flex w-full items-center gap-3 rounded-3xl border border-dashed border-border bg-card/60 p-3.5 text-left text-muted-foreground transition-colors active:bg-muted"
+            >
+              <span className="flex size-9 items-center justify-center rounded-2xl bg-muted">
+                <ChevronRight className="size-[18px]" strokeWidth={1.75} />
+              </span>
+              <span className="text-[14px] font-medium">Couldn&apos;t load your calendar — tap to open it</span>
+            </button>
           ) : (
             <button
               onClick={() => composeEvent(null)}
