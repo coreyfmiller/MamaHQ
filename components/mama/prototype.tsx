@@ -25,7 +25,6 @@ import { OnboardingScreen } from './screens/onboarding'
 import { PartnerJoinScreen } from './screens/partner-join'
 import { SettingsScreen } from './screens/settings'
 import { ResetScreen } from './screens/reset'
-import { ApptComposeScreen } from './screens/appt-compose'
 import { CaptureContent } from './screens/capture'
 import { TodayScreen } from './screens/today'
 import { BabyScreen } from './screens/baby'
@@ -33,12 +32,17 @@ import { BabyScreen } from './screens/baby'
 // Tell MamaHQ is the single capture surface. The legacy rule-based Inbox code
 // (components/mama/screens/inbox.tsx + inbox/commit.ts + inbox/local-extractor.ts)
 // is retained but unreachable from primary navigation; see docs/TELL_MAMAHQ.md.
+//
+// Legacy Appointments screens (appointment.tsx, appt-compose.tsx, upcoming.tsx) are
+// likewise NO LONGER imported/rendered (Beta Phase 6 — Calendar & Appointments
+// Consolidation). The canonical Step 10 shared Calendar is the single scheduling
+// truth; the "Coming up" surface on Me now reads the Calendar. The legacy files +
+// AppointmentsProvider are retained (dormant, no data deleted) but unreachable;
+// see docs/PRODUCT_LIMITATIONS.md / docs/TECHNICAL_DEBT.md.
 import { MeScreen } from './screens/me'
 import { QuickLogContent } from './screens/quick-log'
-import { AppointmentScreen } from './screens/appointment'
 import { VoiceScreen } from './screens/voice'
 import { PhotoScreen } from './screens/photo'
-import { UpcomingScreen } from './screens/upcoming'
 import { MemoriesScreen } from './screens/memories'
 import { PartnerScreen } from './screens/partner'
 import { Beyond90Screen } from './screens/beyond90'
@@ -127,20 +131,11 @@ function Stage() {
         <QuickLogContent />
       </BottomSheet>
 
-      <FullOverlay open={overlay === 'appointment'}>
-        <AppointmentScreen />
-      </FullOverlay>
-      <FullOverlay open={overlay === 'apptCompose'}>
-        <ApptComposeScreen />
-      </FullOverlay>
       <FullOverlay open={overlay === 'voice'} dark>
         <VoiceScreen />
       </FullOverlay>
       <FullOverlay open={overlay === 'photo'} dark>
         <PhotoScreen />
-      </FullOverlay>
-      <FullOverlay open={overlay === 'upcoming'}>
-        <UpcomingScreen />
       </FullOverlay>
       <FullOverlay open={overlay === 'memories'}>
         <MemoriesScreen />

@@ -7,7 +7,7 @@ import { CategoryChip } from '../event-meta'
 import { BottomNav, Card, CardLabel, CheckBox, Screen, Scroll, StatusBar } from '../ui'
 import { LeafSprig } from '../decor'
 import { useMom, dayKey, type Mood, type MomItem } from '../mom'
-import { useAppointments, nextAppointment, relativeDay, shortTime } from '../appointments'
+import { useCalendar, type CalendarEvent } from '../calendar'
 import { useNotifications } from '../notifications'
 
 const moodOptions: { id: Mood; label: string; icon: 'moon' | 'sun' | 'smile' | 'star' }[] = [
@@ -131,11 +131,38 @@ function AddInline({ label, placeholder, onAdd }: { label: string; placeholder: 
   )
 }
 
+// Compact "when" label for the next Calendar event on the Me screen. Deterministic,
+// structured-data only (no fabrication): "Today · 2:00 PM", "Tomorrow · All day",
+// "Jul 4 · All day". Mirrors the Calendar screen's phrasing without importing its
+// private formatter (kept small + self-contained to avoid touching Step 10).
+function eventWhen(e: CalendarEvent): string {
+  const rel = (d: Date): string => {
+    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+    const diff = Math.round((startOfDay(d) - startOfDay(new Date())) / 86_400_000)
+    if (diff === 0) return 'Today'
+    if (diff === 1) return 'Tomorrow'
+    if (diff > 1 && diff < 7) return d.toLocaleDateString(undefined, { weekday: 'short' })
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+  const clock = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (e.allDay) {
+    if (!e.startDate) return 'All day'
+    const [y, m, d] = e.startDate.split('-').map(Number)
+    return `${rel(new Date(y, (m ?? 1) - 1, d ?? 1))} · All day`
+  }
+  if (!e.startsAt) return ''
+  const start = new Date(e.startsAt)
+  return `${rel(start)} · ${clock(start)}`
+}
+
 export function MeScreen() {
-  const { openOverlay, openAppointment, composeAppointment } = useNav()
+  const { openOverlay, composeEvent } = useNav()
   const { state, addTask, addQuestion, toggleTask, toggleQuestion, removeTask, removeQuestion } = useMom()
-  const { appointments } = useAppointments()
-  const nextAppt = nextAppointment(appointments)
+  // Beta Phase 6 — "Coming up" reads the CANONICAL shared Calendar (Step 10), not the
+  // retired legacy Appointments store. One scheduling truth: if it happens at a date
+  // or time, it's a Calendar event.
+  const { upcoming } = useCalendar()
+  const nextEvent = upcoming[0] ?? null
   const { unreadCount } = useNotifications()
 
   return (
@@ -175,29 +202,28 @@ export function MeScreen() {
           <AddInline label="Add a to-do" placeholder="e.g. Take medication" onAdd={addTask} />
         </Card>
 
-        {/* Coming up — the next real appointment. */}
+        {/* Coming up — the next event on the shared Calendar. Tapping opens the
+            canonical Calendar; adding routes to the Calendar composer. */}
         <div>
           <CardLabel className="mb-2 px-1 text-foreground">Coming up</CardLabel>
-          {nextAppt ? (
-            <Card onClick={() => openAppointment(nextAppt.id)} className="flex items-center gap-3.5">
+          {nextEvent ? (
+            <Card onClick={() => openOverlay('calendar')} className="flex items-center gap-3.5">
               <CategoryChip category="appointment" />
               <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-semibold">{nextAppt.title}</p>
-                <p className="text-[13px] text-muted-foreground">
-                  {relativeDay(nextAppt.whenISO)} · {shortTime(nextAppt.whenISO)}
-                </p>
+                <p className="truncate text-[15px] font-semibold">{nextEvent.title}</p>
+                <p className="text-[13px] text-muted-foreground">{eventWhen(nextEvent)}</p>
               </div>
               <ChevronRight className="size-4 text-muted-foreground" />
             </Card>
           ) : (
             <button
-              onClick={() => composeAppointment(null)}
+              onClick={() => composeEvent(null)}
               className="flex w-full items-center gap-3 rounded-3xl border border-dashed border-border bg-card/60 p-3.5 text-left text-muted-foreground transition-colors active:bg-muted"
             >
               <span className="flex size-9 items-center justify-center rounded-2xl bg-muted">
                 <Plus className="size-[18px]" strokeWidth={1.75} />
               </span>
-              <span className="text-[14px] font-medium">Add an appointment</span>
+              <span className="text-[14px] font-medium">Add to the calendar</span>
             </button>
           )}
         </div>

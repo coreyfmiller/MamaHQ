@@ -7,11 +7,8 @@ export type Tab = 'today' | 'baby' | 'tell' | 'me'
 export type Overlay =
   | 'capture'
   | 'quicklog'
-  | 'appointment'
-  | 'apptCompose'
   | 'voice'
   | 'photo'
-  | 'upcoming'
   | 'memories'
   | 'partner'
   | 'beyond90'
@@ -46,13 +43,6 @@ interface PrototypeCtx {
   closeOverlay: () => void
   toast: string | null
   showToast: (msg: string) => void
-  /** Which appointment the detail/compose screens act on (null = composing new). */
-  selectedApptId: string | null
-  setSelectedApptId: (id: string | null) => void
-  /** Convenience: open an appointment's detail. */
-  openAppointment: (id: string) => void
-  /** Convenience: open the composer to create (id null) or edit an appointment. */
-  composeAppointment: (id?: string | null) => void
   /** Which calendar event the compose screen edits (null = composing new). */
   selectedEventId: string | null
   setSelectedEventId: (id: string | null) => void
@@ -74,10 +64,6 @@ const defaultCtx: PrototypeCtx = {
   closeOverlay: noop,
   toast: null,
   showToast: noop,
-  selectedApptId: null,
-  setSelectedApptId: noop,
-  openAppointment: noop,
-  composeAppointment: noop,
   selectedEventId: null,
   setSelectedEventId: noop,
   composeEvent: noop,
@@ -103,17 +89,8 @@ export function PrototypeProvider({
   const [tab, setTab] = useState<Tab>(initialTab)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [selectedApptId, setSelectedApptId] = useState<string | null>(null)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
-  const openAppointment = (id: string) => {
-    setSelectedApptId(id)
-    setOverlay('appointment')
-  }
-  const composeAppointment = (id: string | null = null) => {
-    setSelectedApptId(id)
-    setOverlay('apptCompose')
-  }
   const composeEvent = (id: string | null = null) => {
     setSelectedEventId(id)
     setOverlay('calendarCompose')
@@ -142,10 +119,6 @@ export function PrototypeProvider({
         closeOverlay: () => setOverlay(null),
         toast,
         showToast,
-        selectedApptId,
-        setSelectedApptId,
-        openAppointment,
-        composeAppointment,
         selectedEventId,
         setSelectedEventId,
         composeEvent,
