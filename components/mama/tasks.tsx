@@ -63,6 +63,9 @@ interface TasksCtx {
   hydrated: boolean
   /** True only when signed in with a family (tasks are shared, not local). */
   available: boolean
+  /** True when the last load FAILED (so aggregators can show a truthful error, not
+   *  an empty list). Cleared on a successful (re)load. */
+  loadError: boolean
   /** Open tasks (status = open). */
   open: Task[]
   /** Completed tasks. */
@@ -92,6 +95,7 @@ const Ctx = createContext<TasksCtx>({
   tasks: [],
   hydrated: false,
   available: false,
+  loadError: false,
   open: [],
   completed: [],
   mine: [],
@@ -151,6 +155,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const { me } = useHousehold()
   const [tasks, setTasks] = useState<Task[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // Beta Phase 3 — surface a load failure so aggregators (Today) can distinguish
+  // "failed to load" from "genuinely empty" instead of silently showing zero tasks.
+  const [loadError, setLoadError] = useState(false)
 
   const reload = async (fid: string) => {
     const rows = await db.fetchTasks(fid)
@@ -162,8 +169,12 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     setHydrated(false)
 
     if (familyId) {
+      setLoadError(false)
       reload(familyId)
-        .catch((e) => console.warn('tasks sync', e))
+        .catch((e) => {
+          console.warn('tasks sync', e)
+          if (alive) setLoadError(true)
+        })
         .finally(() => {
           if (alive) setHydrated(true)
         })
@@ -176,6 +187,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     // an appropriate empty/sign-in state rather than a spinner.
     if (status !== 'loading') {
       setTasks([])
+      setLoadError(false)
       setHydrated(true)
     }
     return () => {
@@ -340,6 +352,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       tasks,
       hydrated,
       available: Boolean(familyId),
+      loadError,
       open,
       completed,
       mine,
@@ -353,7 +366,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       history,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, hydrated, familyId, open, completed, mine, me],
+    [tasks, hydrated, familyId, loadError, open, completed, mine, me],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

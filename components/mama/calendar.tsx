@@ -67,6 +67,8 @@ interface CalendarCtx {
   events: CalendarEvent[]
   hydrated: boolean
   available: boolean
+  /** True when the last load FAILED (so Today can show a truthful error, not empty). */
+  loadError: boolean
   /** The current user's linked HouseholdPerson id (for "Mine"). */
   mePersonId: string | null
   /** Upcoming events (now or later), soonest first. */
@@ -87,6 +89,7 @@ const Ctx = createContext<CalendarCtx>({
   events: [],
   hydrated: false,
   available: false,
+  loadError: false,
   mePersonId: null,
   upcoming: [],
   onDay: () => [],
@@ -173,6 +176,9 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const now = useNow(60_000)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // Beta Phase 3 — expose a load failure so Today can show a truthful calendar error
+  // instead of "nothing on the calendar" when the fetch actually failed.
+  const [loadError, setLoadError] = useState(false)
 
   const reload = async (fid: string) => {
     const rows = await db.fetchCalendarEvents(fid)
@@ -183,8 +189,12 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     let alive = true
     setHydrated(false)
     if (familyId) {
+      setLoadError(false)
       reload(familyId)
-        .catch((e) => console.warn('calendar sync', e))
+        .catch((e) => {
+          console.warn('calendar sync', e)
+          if (alive) setLoadError(true)
+        })
         .finally(() => {
           if (alive) setHydrated(true)
         })
@@ -194,6 +204,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     }
     if (status !== 'loading') {
       setEvents([])
+      setLoadError(false)
       setHydrated(true)
     }
     return () => {
@@ -305,6 +316,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       events,
       hydrated,
       available: Boolean(familyId),
+      loadError,
       mePersonId: me?.id ?? null,
       upcoming,
       onDay,
@@ -316,7 +328,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       refresh,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [events, hydrated, familyId, me, upcoming, today, mine],
+    [events, hydrated, familyId, loadError, me, upcoming, today, mine],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

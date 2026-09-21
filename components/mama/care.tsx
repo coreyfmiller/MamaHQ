@@ -44,6 +44,9 @@ export interface CareContext {
 interface CareCtx {
   hydrated: boolean
   available: boolean
+  /** True when the last load FAILED (holder/handoffs). Lets Today show a truthful
+   *  care error rather than implying there is no care state. */
+  loadError: boolean
   /** Current care holder (HouseholdPerson id), or null if not yet established. */
   holderPersonId: string | null
   /** The single pending handoff, if any. */
@@ -65,6 +68,7 @@ interface CareCtx {
 const Ctx = createContext<CareCtx>({
   hydrated: false,
   available: false,
+  loadError: false,
   holderPersonId: null,
   pending: null,
   buildContext: () => ({}),
@@ -146,6 +150,9 @@ export function CareProvider({ children }: { children: ReactNode }) {
   const [holderPersonId, setHolderPersonId] = useState<string | null>(null)
   const [handoffs, setHandoffs] = useState<CareHandoff[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // Beta Phase 3 — surface a load failure so Today distinguishes "care failed to
+  // load" from "no care state". True if EITHER core fetch (holder/handoffs) rejects.
+  const [loadError, setLoadError] = useState(false)
 
   const load = async (fid: string) => {
     // Ensure the responsibility row exists (first caller becomes initial holder),
@@ -161,6 +168,8 @@ export function CareProvider({ children }: { children: ReactNode }) {
     ])
     if (resp.status === 'fulfilled') setHolderPersonId(resp.value?.holder_person_id ?? null)
     if (hs.status === 'fulfilled') setHandoffs(hs.value.map(fromHandoffRow))
+    // A rejected holder/handoff fetch means we can't trust the care projection.
+    setLoadError(resp.status === 'rejected' || hs.status === 'rejected')
   }
 
   useEffect(() => {
@@ -179,6 +188,7 @@ export function CareProvider({ children }: { children: ReactNode }) {
     if (status !== 'loading') {
       setHolderPersonId(null)
       setHandoffs([])
+      setLoadError(false)
       setHydrated(true)
     }
     return () => {
@@ -230,6 +240,7 @@ export function CareProvider({ children }: { children: ReactNode }) {
     () => ({
       hydrated,
       available: Boolean(familyId),
+      loadError,
       holderPersonId,
       pending,
       buildContext,
@@ -240,7 +251,7 @@ export function CareProvider({ children }: { children: ReactNode }) {
       refresh,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hydrated, familyId, holderPersonId, pending, logs, me],
+    [hydrated, familyId, loadError, holderPersonId, pending, logs, me],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
