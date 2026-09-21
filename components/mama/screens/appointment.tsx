@@ -84,16 +84,20 @@ export function AppointmentScreen() {
         </Card>
 
         <Card className="flex items-center justify-between">
-          <div>
-            <p className="text-[15px] font-semibold">Reminders</p>
-            <p className="text-[13px] text-muted-foreground">A day before · an hour before</p>
+          <div className="pr-3">
+            <p className="text-[15px] font-semibold">Remind me</p>
+            {/* Beta Phase 4 — HONEST: MamaHQ has no push/SMS/email delivery yet, so
+                this only saves a preference; it does not send a notification. Say so. */}
+            <p className="text-[13px] text-muted-foreground">
+              Saves your preference. MamaHQ can&apos;t send notifications yet.
+            </p>
           </div>
           <button
             onClick={() => updateAppointment(appt.id, { remindersOn: !appt.remindersOn })}
             role="switch"
             aria-checked={appt.remindersOn}
-            aria-label="Reminders"
-            className={`relative h-7 w-12 rounded-full transition-colors ${appt.remindersOn ? 'bg-primary' : 'bg-border'}`}
+            aria-label="Remind me about this appointment"
+            className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${appt.remindersOn ? 'bg-primary' : 'bg-border'}`}
           >
             <span
               className={`absolute top-1 size-5 rounded-full bg-card shadow transition-all ${appt.remindersOn ? 'left-6' : 'left-1'}`}
