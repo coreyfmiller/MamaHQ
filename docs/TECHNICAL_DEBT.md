@@ -404,6 +404,19 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   reference only. Convergence is tracked under the `partner_contacts → household_people`
   consolidation item above.
 
+### Expired invitation status is not persisted (cosmetic; rejection is correct)
+- **Status:** advisory (found while writing Beta Phase 2 tests; migration NOT changed).
+- **Why it matters:** `accept_household_invitation` (0009) does `update … set status =
+  'expired'` and then `raise exception 'invitation expired'` in the SAME transaction —
+  so the raise rolls back the status write. The invite is correctly REJECTED (the
+  security-critical behavior), but the row stays `'pending'` rather than flipping to
+  `'expired'`. This is cosmetic: every future accept re-checks `expires_at` and rejects
+  again, so an expired invite can never be redeemed regardless of the stored label.
+- **Fix (deferred, needs a migration so out of Beta Phase 2 scope):** persist expiry
+  out-of-band — e.g. mark it in a separate autonomous step, or lazily flip status in
+  `revoke`/a sweep — in a future `00NN` that touches the invitation RPCs. Do not fold
+  a status rewrite into an exception path.
+
 ### Onboarding journeys are React flows — automated coverage is at the invariant layer
 - **Status:** advisory (intentional).
 - **Why it matters:** the creator/partner journeys are thin client flows over trusted

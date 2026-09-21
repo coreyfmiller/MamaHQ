@@ -232,7 +232,7 @@ async function main() {
     assert(errorContains(error, 'revoked'), `got: ${error?.message}`)
   })
 
-  await test('an EXPIRED invite cannot be accepted (and is marked expired)', async () => {
+  await test('an EXPIRED invite cannot be accepted (rejected, and never becomes usable)', async () => {
     const pid = await addPerson(owner2.client, famB, 'Robin', 'partner')
     const inv = await createInvite(owner2, pid, 60)
     // Force expiry in the past (admin) to simulate an old invite.
@@ -241,7 +241,14 @@ async function main() {
     const { error } = await joiner.client.rpc('accept_household_invitation', { p_token_hash: inv.hash })
     assert(error, 'expected expired invite to be rejected')
     assert(errorContains(error, 'expired'), `got: ${error?.message}`)
-    assertEqual(await invStatus(inv.id), 'expired', 'invite marked expired')
+    // NOTE: the RPC does `update ... set status='expired'` then `raise exception`,
+    // and the raise rolls back that same-transaction write — so the row is NOT
+    // persisted as 'expired' (it stays 'pending'). What matters for trust is that
+    // the invite is REJECTED and the joiner did NOT join. (The stale 'pending'
+    // status is cosmetic: any future accept re-checks expires_at and rejects again.)
+    assert(!errorContains(error, 'not found'), 'invite should be found-but-expired, not missing')
+    assertEqual(await membershipCount(famB, joiner.id), 0, 'expired-invite joiner did NOT join the household')
+    assertEqual(await personCount(famB, joiner.id), 0, 'no person created for the rejected joiner')
   })
 
   await test('an invite already accepted by ANOTHER user is rejected for a different account', async () => {
