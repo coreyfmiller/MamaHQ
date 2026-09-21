@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useGrocery } from './grocery'
@@ -111,9 +111,36 @@ export function TellProvider({ children }: { children: ReactNode }) {
   const [results, setResults] = useState<TellResultLine[]>([])
   const [interpretError, setInterpretError] = useState<string | null>(null)
 
+  // Monotonic request id: only the latest interpret() call may apply its result, so
+  // an earlier slow response can never overwrite a newer one (§ async race). Also the
+  // family this session belongs to, so a response that resolves AFTER a household
+  // change is discarded rather than shown/executed in the new household.
+  const reqSeq = useRef(0)
+  const sessionFamily = useRef<string | null>(familyId)
+
+  // Reset the whole Tell session whenever the active family changes (login, logout,
+  // household switch). Proposals interpreted for Family A must NEVER linger — or be
+  // executable — after switching to Family B, and a signed-out state must clear
+  // everything. This is the trust boundary between "what I said in one household" and
+  // another. Keyed on the family identity only.
+  useEffect(() => {
+    sessionFamily.current = familyId
+    reqSeq.current += 1 // invalidate any in-flight interpretation from the old family
+    setPhase('idle')
+    setDraft('')
+    setSummary(null)
+    setProposals([])
+    setUnsupported([])
+    setResults([])
+    setInterpretError(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyId])
+
   const interpret = async () => {
     const text = draft.trim()
     if (!text || phase === 'interpreting') return
+    const seq = ++reqSeq.current
+    const originFamily = sessionFamily.current
     setPhase('interpreting')
     setInterpretError(null)
     setResults([])
@@ -123,6 +150,9 @@ export function TellProvider({ children }: { children: ReactNode }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text }),
       })
+      // Discard if a newer interpret ran, or the active family changed while we waited
+      // (a stale response must never populate the current — possibly different — UI).
+      if (seq !== reqSeq.current || sessionFamily.current !== originFamily) return
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { message?: string }
         setInterpretError(data.message ?? 'I couldn’t sort that out right now. Your note is still here — try again.')
@@ -130,11 +160,13 @@ export function TellProvider({ children }: { children: ReactNode }) {
         return
       }
       const data = (await res.json()) as TellInterpretation
+      if (seq !== reqSeq.current || sessionFamily.current !== originFamily) return
       setSummary(data.summary)
       setProposals(data.proposals.filter((p) => p.status !== 'removed'))
       setUnsupported(data.unsupported ?? [])
       setPhase('reviewing')
     } catch {
+      if (seq !== reqSeq.current || sessionFamily.current !== originFamily) return
       // Network/parse failure — the draft is preserved so nothing is lost.
       setInterpretError('I couldn’t reach the network. Your note is still here — try again.')
       setPhase('interpret_failed')
@@ -193,6 +225,9 @@ export function TellProvider({ children }: { children: ReactNode }) {
 
   const confirmAll = async () => {
     if (!familyId || phase === 'executing') return
+    // Never execute proposals against a different household than the one they were
+    // interpreted for (the family-change effect also clears them, but guard anyway).
+    if (sessionFamily.current !== familyId) return
     const ready = proposals.filter((p) => p.issues.length === 0 && p.status !== 'succeeded')
     if (ready.length === 0) return
     setPhase('executing')

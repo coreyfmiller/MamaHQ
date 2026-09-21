@@ -41,54 +41,71 @@ const personRefSchema = z.string().trim().min(1).max(80)
 // deterministic layer (which knows the user's local now) does the actual math and
 // the confirmation UI can show exactly what will happen. All optional so the model
 // can express "Thursday, time unknown" without inventing precision.
-export const proposedWhenSchema = z.object({
-  // ISO date 'YYYY-MM-DD' the model resolved from the phrase (relative to the
-  // provided local "today"). Absent = no date stated.
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  // 'HH:MM' 24h local time. Absent = no time stated.
-  time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  // The model's judgment that this is an all-day/date-based event ("birthday").
-  allDay: z.boolean().optional(),
-})
+export const proposedWhenSchema = z
+  .object({
+    // ISO date 'YYYY-MM-DD' the model resolved from the phrase (relative to the
+    // provided local "today"). Absent = no date stated.
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    // 'HH:MM' 24h local time. Absent = no time stated.
+    time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    // The model's judgment that this is an all-day/date-based event ("birthday").
+    allDay: z.boolean().optional(),
+  })
+  .strict()
 export type ProposedWhen = z.infer<typeof proposedWhenSchema>
 
 // ---------------------------------------------------------------------------
 // RAW proposal union (what the model emits) — people are personRef strings.
 // ---------------------------------------------------------------------------
 
-const rawGroceryAddSchema = z.object({
-  type: z.literal('GROCERY_ADD'),
-  // The grocery phrase to hand to the deterministic Grocery resolver, e.g.
-  // "2% milk", "bananas". The model does NOT resolve products — the catalog does.
-  phrase: shortText,
-})
+// NOTE: every raw object is `.strict()`. A model that hallucinates an EXTRA field —
+// e.g. a `responsiblePersonId` uuid, a `familyId`, `accepted: true`, an `rpc` name —
+// is REJECTED outright rather than having the field silently stripped. This makes
+// "the model cannot smuggle a trusted field" an enforced guarantee, not a reliance
+// on downstream code happening to ignore unknown keys. (Defense in depth: the
+// resolver also only ever reads the allow-listed fields below.)
 
-const rawTaskCreateSchema = z.object({
-  type: z.literal('TASK_CREATE'),
-  title: shortText,
-  // Who is responsible (a name token or "me"). Absent = unassigned.
-  assigneeRef: personRefSchema.optional(),
-  when: proposedWhenSchema.optional(), // due date/time
-  notes: optionalText,
-})
+const rawGroceryAddSchema = z
+  .object({
+    type: z.literal('GROCERY_ADD'),
+    // The grocery phrase to hand to the deterministic Grocery resolver, e.g.
+    // "2% milk", "bananas". The model does NOT resolve products — the catalog does.
+    phrase: shortText,
+  })
+  .strict()
 
-const rawCalendarCreateSchema = z.object({
-  type: z.literal('CALENDAR_CREATE'),
-  title: shortText,
-  when: proposedWhenSchema.optional(),
-  // Who the event is ABOUT (participants) — distinct from who is responsible.
-  participantRefs: z.array(personRefSchema).max(20).optional(),
-  // Who is designated to handle it (a designation, NEVER an acceptance).
-  responsibleRef: personRefSchema.optional(),
-  location: z.string().trim().max(200).optional(),
-  notes: optionalText,
-})
+const rawTaskCreateSchema = z
+  .object({
+    type: z.literal('TASK_CREATE'),
+    title: shortText,
+    // Who is responsible (a name token or "me"). Absent = unassigned.
+    assigneeRef: personRefSchema.optional(),
+    when: proposedWhenSchema.optional(), // due date/time
+    notes: optionalText,
+  })
+  .strict()
 
-const rawCareHandoffSchema = z.object({
-  type: z.literal('CARE_HANDOFF_PROPOSE'),
-  // Who to hand the baby to. Must resolve to a CONNECTED account downstream.
-  toRef: personRefSchema,
-})
+const rawCalendarCreateSchema = z
+  .object({
+    type: z.literal('CALENDAR_CREATE'),
+    title: shortText,
+    when: proposedWhenSchema.optional(),
+    // Who the event is ABOUT (participants) — distinct from who is responsible.
+    participantRefs: z.array(personRefSchema).max(20).optional(),
+    // Who is designated to handle it (a designation, NEVER an acceptance).
+    responsibleRef: personRefSchema.optional(),
+    location: z.string().trim().max(200).optional(),
+    notes: optionalText,
+  })
+  .strict()
+
+const rawCareHandoffSchema = z
+  .object({
+    type: z.literal('CARE_HANDOFF_PROPOSE'),
+    // Who to hand the baby to. Must resolve to a CONNECTED account downstream.
+    toRef: personRefSchema,
+  })
+  .strict()
 
 export const rawProposalSchema = z.discriminatedUnion('type', [
   rawGroceryAddSchema,
@@ -99,23 +116,27 @@ export const rawProposalSchema = z.discriminatedUnion('type', [
 export type RawProposal = z.infer<typeof rawProposalSchema>
 
 // The whole untrusted interpreter payload.
-export const rawInterpretationSchema = z.object({
-  version: z.literal(TELL_SCHEMA_VERSION),
-  // A one-line human summary of what was understood (shown, never executed).
-  summary: z.string().trim().max(400).optional(),
-  proposals: z.array(rawProposalSchema).max(20),
-  // Things the model recognized but cannot express as a supported action, e.g.
-  // "buy a stroller from Amazon". Surfaced to the user; never turned into an action.
-  unsupported: z
-    .array(
-      z.object({
-        text: z.string().trim().max(300),
-        reason: z.string().trim().max(200).optional(),
-      }),
-    )
-    .max(20)
-    .optional(),
-})
+export const rawInterpretationSchema = z
+  .object({
+    version: z.literal(TELL_SCHEMA_VERSION),
+    // A one-line human summary of what was understood (shown, never executed).
+    summary: z.string().trim().max(400).optional(),
+    proposals: z.array(rawProposalSchema).max(20),
+    // Things the model recognized but cannot express as a supported action, e.g.
+    // "buy a stroller from Amazon". Surfaced to the user; never turned into an action.
+    unsupported: z
+      .array(
+        z
+          .object({
+            text: z.string().trim().max(300),
+            reason: z.string().trim().max(200).optional(),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+  })
+  .strict()
 export type RawInterpretation = z.infer<typeof rawInterpretationSchema>
 
 // ---------------------------------------------------------------------------

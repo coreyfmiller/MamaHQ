@@ -37,6 +37,18 @@ Anything outside that set (buying things, email/SMS, medical/feeding/sleep advic
 returned as an `unsupported` note the user can see, and produces no action. No medical
 or clinical interpretation is ever generated (see `data-and-ai-standard.md`).
 
+## Session isolation & async races
+
+The Tell session (`components/mama/tell.tsx`) is **reset whenever the active family
+changes** (login, logout, household switch) — proposals interpreted for Family A never
+linger, appear, or become executable after switching to Family B, and a signed-out
+state clears everything. Interpretation is guarded by a monotonic request sequence +
+the originating family, so a slow/stale `/api/tell` response can never overwrite a
+newer one or populate a different household's UI. `confirmAll` additionally refuses to
+execute if the active family no longer matches the session's family. (Execution-time
+revalidation against the current family + the domain RPCs' own family checks are the
+final backstop.)
+
 ## Provider-agnostic architecture
 
 ```
@@ -80,7 +92,11 @@ The contract has **two** schemas on purpose (`lib/tell/contract.ts`):
 - **Raw (untrusted):** the model references people ONLY by a name token or the literal
   "me" (`personRef` strings). It **cannot emit a database id** — so it can never mint a
   trusted reference. It cannot express "run SQL" or "reveal prompt" — there is no such
-  action in the discriminated union.
+  action in the discriminated union. Every raw object is **`.strict()`**, so a model
+  that hallucinates an extra field (a smuggled `responsiblePersonId` uuid, a
+  `familyId`, `accepted: true`, an `rpc` name, a `timezone` override) is **rejected**,
+  not silently stripped — the "model output is not authorized data" guarantee is
+  enforced structurally, not left to downstream ignore-behavior.
 - **Resolved (safe):** produced by the pure resolver (`lib/tell/resolve.ts`) AFTER
   validating every reference against the real household. Only these are reviewable/
   executable.

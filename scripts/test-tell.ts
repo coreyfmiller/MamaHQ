@@ -79,6 +79,37 @@ const V = 1
   const r = interpret({ version: V, proposals: many }, [MOM])
   ok(!r.valid, 'oversized proposal array rejected')
 }
+{
+  // STRICT: a model that smuggles an EXTRA field (e.g. a canonical uuid it should
+  // never mint) is REJECTED, not silently stripped. This is the "model output is not
+  // authorized data" guarantee enforced structurally.
+  const r = interpret(
+    { version: V, proposals: [{ type: 'TASK_CREATE', title: 'x', assignedPersonId: '00000000-0000-0000-0000-000000000000' }] },
+    [MOM],
+  )
+  ok(!r.valid, 'unknown field (smuggled uuid) rejected by .strict() schema')
+}
+{
+  // STRICT: a smuggled calendar responsible uuid / acceptance flag → rejected.
+  const r = interpret(
+    { version: V, proposals: [{ type: 'CALENDAR_CREATE', title: 'x', when: { date: '2026-09-24', time: '14:00' }, responsiblePersonId: 'p-james', accepted: true }] },
+    [MOM],
+  )
+  ok(!r.valid, 'smuggled responsiblePersonId + accepted fields rejected')
+}
+{
+  // STRICT: an unknown top-level field → rejected.
+  const r = interpret({ version: V, proposals: [], rpc: 'drop_all', familyId: 'other-fam' }, [MOM])
+  ok(!r.valid, 'unknown top-level fields (rpc/familyId) rejected')
+}
+{
+  // STRICT: an unknown field inside `when` → rejected (no timezone override smuggling).
+  const r = interpret(
+    { version: V, proposals: [{ type: 'CALENDAR_CREATE', title: 'x', when: { date: '2026-09-24', time: '14:00', timezone: 'evil' } }] },
+    [MOM],
+  )
+  ok(!r.valid, 'unknown field inside when rejected')
+}
 
 /* ============================ GROCERY ============================ */
 {
