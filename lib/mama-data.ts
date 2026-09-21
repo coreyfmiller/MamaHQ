@@ -174,17 +174,3 @@ export const stages = [
   { id: 's6', name: 'Teen', range: '12+', icon: 'headphones' as const },
 ]
 
-export const reminders = [
-  {
-    id: 'r1',
-    title: 'Emma\u2019s doctor appointment is tomorrow at 11 AM.',
-    body: 'You saved 3 questions to ask.',
-    primary: 'View appointment',
-  },
-  {
-    id: 'r2',
-    title: 'You wanted to remember to pick up formula today.',
-    body: '',
-    primary: 'Mark done',
-  },
-]

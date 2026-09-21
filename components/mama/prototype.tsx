@@ -51,7 +51,6 @@ import { CalendarScreen } from './screens/calendar'
 import { CalendarComposeScreen } from './screens/calendar-compose'
 import { NotificationsScreen } from './screens/notifications'
 import { TellScreen } from './screens/tell'
-import { ReminderScreen } from './screens/reminder'
 
 function ActiveTab() {
   const { tab } = useNav()
@@ -185,11 +184,6 @@ function Stage() {
       <FullOverlay open={overlay === 'reset'}>
         <ResetScreen />
       </FullOverlay>
-      {overlay === 'reminder' && (
-        <div className="absolute inset-0 z-40">
-          <ReminderScreen />
-        </div>
-      )}
 
       <Toast message={toast} />
     </>

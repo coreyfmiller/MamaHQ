@@ -15,7 +15,6 @@ export type Overlay =
   | 'memories'
   | 'partner'
   | 'beyond90'
-  | 'reminder'
   | 'settings'
   | 'reset'
   | 'read'
