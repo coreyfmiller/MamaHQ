@@ -464,3 +464,74 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   accepted; revoked/expired/idempotent/wrong-account/cross-family). The React flow
   itself (step transitions, copy, mobile feel) is covered by the `[HUMAN]` Beta Phase 2
   section of `docs/MANUAL_QA.md`, which is OUTSTANDING.
+
+---
+
+## Today & core daily loop debt (Beta Phase 3)
+
+### Today prioritization + overdue rules (documented, deterministic)
+- **Status:** advisory (this is the spec, not a defect — recorded so the rules are auditable).
+- **Attention ordering** (transparent, fixed ranks in `lib/today/model.ts`, lowest = most urgent):
+  1. incoming care handoff waiting on me, 2. task assigned to me awaiting acceptance,
+  3. overdue task (mine), 4. task due today (mine), 5. commitment today where I'm
+  responsible (not yet ended). Within a rank: earlier anchored time first, nulls last,
+  then stable by entity id. No numeric priority score, no AI.
+- **Overdue rule:** a task is overdue when it is `open`, assigned to my linked
+  HouseholdPerson, has a `dueAt`, and `dueAt < now`. `dueAt` is a full timestamp
+  (migration 0010) so there is NO date-only ambiguity — a dated-and-timed task is not
+  overdue until its stored time passes; a task with no `dueAt` is never overdue.
+- **"Mine" semantics:** tasks = `assignedToPersonId === my person`; calendar = I'm the
+  responsible person and/or a participant (kept DISTINCT: responsible vs attending);
+  care = I currently hold care or a handoff is waiting on me. A relationship label
+  ("partner"/"Mom") never implies responsibility.
+
+### Today partial-failure relies on new provider `loadError` flags (race-guarded)
+- **Status:** RESOLVED for the domains Today reads; PARTIAL elsewhere.
+- **Why it matters:** §22/§23 require Today to distinguish "failed to load" from
+  "empty". The tasks/calendar/care providers previously swallowed fetch errors
+  silently (fell back to empty). Beta Phase 3 adds an additive `loadError: boolean` to
+  each so Today shows a restrained per-domain error+retry instead of a false "nothing
+  here". Grocery is treated as non-core (count only) and does not surface a distinct
+  error on Today. The other list OVERLAYS (People/Tasks/Calendar/Grocery screens) still
+  fall back rather than showing an inline retry — a future small cross-surface pass.
+- **Stale-request race (fixed in final review):** every reload goes through a
+  monotonic `reloadSeq`/`loadSeq` ref, so only the LATEST reload may set rows or
+  `loadError`. This prevents a slow earlier request that rejects from stamping
+  `loadError=true` on top of a newer successful reload (initial-load vs realtime vs
+  mutation-triggered reload), and prevents a stale success/failure from clobbering
+  newer state. Sign-out/family-change bumps the sequence so an in-flight reload from a
+  previous family cannot apply afterward.
+
+### Baby-care logs are not wired to the realtime coordinator
+- **Status:** advisory (pre-existing; reaffirmed by Beta Phase 3).
+- **Why it matters:** the Step 11 `RealtimeProvider` invalidates grocery/tasks/care/
+  calendar, so Today reflects those live across devices. The baby-care `logs.tsx`
+  domain has no `useRealtimeInvalidation`, so another device's new feed/diaper/sleep
+  appears on the next load/refetch, not instantly. Today's "Recent care detail" and the
+  care context therefore may be momentarily stale on a second device. Low risk for a
+  single-caregiver-at-a-time pattern; a future step can add the logs table to the
+  publication + a listener.
+
+### Today is a projection — no `today_*` table (by design)
+- **Status:** advisory (intentional; NO migration in Beta Phase 3).
+- **Why it matters:** Today computes everything from existing domain state through a
+  pure selector. There is deliberately no `today_items`/`daily_feed` duplication and no
+  `0015` migration — the migration chain still ends at `0014`. If a derived projection
+  ever needs persistence (it does not today), it must stay derived + deterministic.
+
+### Today React wiring is covered by manual QA, not automated UI tests
+- **Status:** advisory (intentional).
+- **Why it matters:** `test:today` proves the pure `buildTodayModel` deterministically
+  (attention/exclusions/semantics/ordering/date-time/empty/partial-failure). It does
+  NOT exercise the React components, the realtime refetch, or the real accept/complete/
+  handoff mutations — those are `[HUMAN]` in the Beta Phase 3 section of
+  `docs/MANUAL_QA.md` (OUTSTANDING). The Today actions call the same trusted RPCs the
+  DB security suites already cover; Phase 3 adds no new mutation implementation.
+
+### Today greeting still falls back to local profile momName
+- **Status:** advisory.
+- **Why it matters:** the Today header greets by the canonical HouseholdPerson name
+  (`me.displayName`) when resolved, falling back to the device-local `profile.momName`
+  only if identity isn't resolved yet. The fallback is display-only (never written as
+  identity), consistent with the Beta Phase 1/2 rule that identity is canonical; it can
+  be dropped when the local profile momName is fully retired.

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useNow } from './logs'
@@ -67,6 +67,8 @@ interface CalendarCtx {
   events: CalendarEvent[]
   hydrated: boolean
   available: boolean
+  /** True when the last load FAILED (so Today can show a truthful error, not empty). */
+  loadError: boolean
   /** The current user's linked HouseholdPerson id (for "Mine"). */
   mePersonId: string | null
   /** Upcoming events (now or later), soonest first. */
@@ -87,6 +89,7 @@ const Ctx = createContext<CalendarCtx>({
   events: [],
   hydrated: false,
   available: false,
+  loadError: false,
   mePersonId: null,
   upcoming: [],
   onDay: () => [],
@@ -173,10 +176,28 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const now = useNow(60_000)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // Beta Phase 3 — expose a load failure so Today can show a truthful calendar error
+  // instead of "nothing on the calendar" when the fetch actually failed.
+  const [loadError, setLoadError] = useState(false)
+
+  // Monotonic reload sequence: only the LATEST reload may drive events/loadError, so
+  // a slow earlier request that rejects can't stamp loadError=true over a newer
+  // successful reload (initial vs realtime vs mutation race).
+  const reloadSeq = useRef(0)
 
   const reload = async (fid: string) => {
-    const rows = await db.fetchCalendarEvents(fid)
-    setEvents(sortEvents(rows.map(fromRow)))
+    const seq = ++reloadSeq.current
+    try {
+      const rows = await db.fetchCalendarEvents(fid)
+      if (seq !== reloadSeq.current) return
+      setEvents(sortEvents(rows.map(fromRow)))
+      setLoadError(false)
+    } catch (e) {
+      if (seq !== reloadSeq.current) return
+      console.warn('calendar sync', e)
+      setLoadError(true)
+      throw e
+    }
   }
 
   useEffect(() => {
@@ -184,7 +205,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     setHydrated(false)
     if (familyId) {
       reload(familyId)
-        .catch((e) => console.warn('calendar sync', e))
+        .catch(() => {})
         .finally(() => {
           if (alive) setHydrated(true)
         })
@@ -193,7 +214,9 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       }
     }
     if (status !== 'loading') {
+      reloadSeq.current++
       setEvents([])
+      setLoadError(false)
       setHydrated(true)
     }
     return () => {
@@ -305,6 +328,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       events,
       hydrated,
       available: Boolean(familyId),
+      loadError,
       mePersonId: me?.id ?? null,
       upcoming,
       onDay,
@@ -316,7 +340,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       refresh,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [events, hydrated, familyId, me, upcoming, today, mine],
+    [events, hydrated, familyId, loadError, me, upcoming, today, mine],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

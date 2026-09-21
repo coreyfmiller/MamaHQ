@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useRealtimeInvalidation } from './realtime'
@@ -63,6 +63,9 @@ interface TasksCtx {
   hydrated: boolean
   /** True only when signed in with a family (tasks are shared, not local). */
   available: boolean
+  /** True when the last load FAILED (so aggregators can show a truthful error, not
+   *  an empty list). Cleared on a successful (re)load. */
+  loadError: boolean
   /** Open tasks (status = open). */
   open: Task[]
   /** Completed tasks. */
@@ -92,6 +95,7 @@ const Ctx = createContext<TasksCtx>({
   tasks: [],
   hydrated: false,
   available: false,
+  loadError: false,
   open: [],
   completed: [],
   mine: [],
@@ -151,10 +155,29 @@ export function TasksProvider({ children }: { children: ReactNode }) {
   const { me } = useHousehold()
   const [tasks, setTasks] = useState<Task[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // Beta Phase 3 — surface a load failure so aggregators (Today) can distinguish
+  // "failed to load" from "genuinely empty" instead of silently showing zero tasks.
+  const [loadError, setLoadError] = useState(false)
+
+  // Monotonic reload sequence: only the LATEST reload may drive tasks/loadError, so a
+  // slow earlier request that rejects can never stamp loadError=true (or overwrite
+  // rows) on top of a newer successful reload (initial-load vs realtime vs mutation
+  // race). Every reload path goes through this guard.
+  const reloadSeq = useRef(0)
 
   const reload = async (fid: string) => {
-    const rows = await db.fetchTasks(fid)
-    setTasks(sortTasks(rows.map(fromRow)))
+    const seq = ++reloadSeq.current
+    try {
+      const rows = await db.fetchTasks(fid)
+      if (seq !== reloadSeq.current) return // a newer reload superseded us — discard
+      setTasks(sortTasks(rows.map(fromRow)))
+      setLoadError(false)
+    } catch (e) {
+      if (seq !== reloadSeq.current) return // stale failure — a newer reload owns state
+      console.warn('tasks sync', e)
+      setLoadError(true)
+      throw e
+    }
   }
 
   useEffect(() => {
@@ -163,7 +186,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
     if (familyId) {
       reload(familyId)
-        .catch((e) => console.warn('tasks sync', e))
+        .catch(() => {})
         .finally(() => {
           if (alive) setHydrated(true)
         })
@@ -173,9 +196,12 @@ export function TasksProvider({ children }: { children: ReactNode }) {
     }
 
     // Signed out: no shared family → no tasks. Mark hydrated so the UI can render
-    // an appropriate empty/sign-in state rather than a spinner.
+    // an appropriate empty/sign-in state rather than a spinner. Bump the sequence so
+    // any in-flight reload from a previous family can't apply after sign-out.
     if (status !== 'loading') {
+      reloadSeq.current++
       setTasks([])
+      setLoadError(false)
       setHydrated(true)
     }
     return () => {
@@ -185,7 +211,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
 
   // Realtime: another session changed tasks/task_events for this family → refetch
   // canonical task state. Idempotent, so it's safe even when it echoes our own
-  // optimistic mutation.
+  // optimistic mutation. Goes through the same race-guarded reload.
   useRealtimeInvalidation('tasks', () => {
     if (familyId) void reload(familyId).catch(() => {})
   })
@@ -340,6 +366,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       tasks,
       hydrated,
       available: Boolean(familyId),
+      loadError,
       open,
       completed,
       mine,
@@ -353,7 +380,7 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       history,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, hydrated, familyId, open, completed, mine, me],
+    [tasks, hydrated, familyId, loadError, open, completed, mine, me],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
