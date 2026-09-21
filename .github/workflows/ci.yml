@@ -71,6 +71,9 @@ jobs:
       - name: Today projection tests (Beta Phase 3)
         run: pnpm run test:today
 
+      - name: First 90 Days tests (Beta Phase 4)
+        run: pnpm run test:first90
+
       - name: TypeScript
         run: pnpm run typecheck
 
