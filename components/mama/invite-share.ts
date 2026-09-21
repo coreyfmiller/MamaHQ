@@ -17,11 +17,15 @@ export type ShareResult = 'shared' | 'copied' | 'failed'
  * Try to hand the invite link to the user for THEM to send:
  *   1. Native share sheet when available (they pick Messages/WhatsApp/etc.).
  *   2. Otherwise copy to clipboard.
- * Returns what actually happened so the caller can show honest feedback. Never
- * throws; never logs the URL/token. A user-cancelled share is reported as 'copied'
- * only if we then fell back — a bare cancel returns 'shared' semantics handled by
- * the caller via the thrown AbortError being swallowed to 'failed'? We keep it
- * simple: cancel is treated as no-op ('shared' path completed without copy).
+ * Never throws; never logs the URL/token. Returns what actually happened so the
+ * caller can show HONEST feedback:
+ *   'shared' — the OS share sheet was opened (or dismissed). We deliberately do NOT
+ *              claim delivery here: opening a share sheet — or the user cancelling
+ *              it (AbortError) — is not proof anything was sent, so callers show no
+ *              "sent"/"copied" confirmation for this result.
+ *   'copied' — no native share; the link was placed on the clipboard.
+ *   'failed' — no native share and the clipboard write failed (caller should show
+ *              the link for manual selection, never a false success).
  */
 export async function shareInvite(url: string, personName?: string): Promise<ShareResult> {
   const title = 'Join our household on MamaHQ'

@@ -326,7 +326,19 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   // placeholder is 'partner'; the owner ('owner'/undefined) with a 'Me' placeholder
   // is 'creator'; any real name is 'done'.
   const firstRun = useMemo<HouseholdCtx['firstRun']>(() => {
-    if (!familyId || !hydrated || !me) return null
+    // Not yet knowable: signed out, or the household hasn't finished hydrating. The
+    // caller shows a calm loading state; we never guess.
+    if (!familyId || !hydrated) return null
+    // Hydrated with a family but no resolvable canonical person for me. This is an
+    // ABNORMAL state — e.g. a transient household-fetch failure (loadHousehold sets
+    // hydrated=true even on a rejected people fetch), or the rare person-less member
+    // edge. Since hydration has ALREADY completed, waiting longer cannot resolve `me`,
+    // so we must NOT hang on the loading spinner forever. Enter the app ('done'): the
+    // individual surfaces are resilient with their own empty/loading states, and
+    // Settings → Account still lets the user set their name. Routing into onboarding
+    // here would be wrong (we can't know their identity/role), and hanging is worse
+    // than entering a usable — if slightly degraded — app.
+    if (!me) return 'done'
     if (!isPlaceholderName(me.displayName)) return 'done'
     return me.role === 'member' ? 'partner' : 'creator'
   }, [familyId, hydrated, me])

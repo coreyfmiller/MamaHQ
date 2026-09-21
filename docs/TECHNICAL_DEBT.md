@@ -417,6 +417,44 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   `revoke`/a sweep — in a future `00NN` that touches the invitation RPCs. Do not fold
   a status rewrite into an exception path.
 
+### A pre-named invited partner skips the "you joined" welcome screen
+- **Status:** advisory (known limitation; found in Beta Phase 2 final review).
+- **Why it matters:** `firstRun` treats a member as `'partner'` (→ show the join
+  welcome) only while their linked person still has the `'Member'` placeholder. In the
+  MOST COMMON flow the creator adds the partner BY NAME ("Alex") and then invites them,
+  so on acceptance the person is already named "Alex" (not a placeholder) → `firstRun`
+  is `'done'` → the partner lands straight in the app and never sees the "you joined
+  the household / who's here" screen. The invariant is still correct (right identity,
+  one membership, no duplicate, no new household); only the welcome context is missed.
+- **Why not "fixed" now:** reliably distinguishing "member who just joined and hasn't
+  seen the welcome" from "established returning member" needs new state (a
+  seen-welcome flag). A device-local flag is exactly the shared-device hazard Beta
+  Phase 1 removed, and a migration for a cosmetic welcome is not "genuinely required"
+  (§29). Keying the welcome on `role==='member'` alone would re-show it every session
+  for established members — worse.
+- **Suggested milestone:** if the welcome matters for the beta, add a minimal
+  authoritative "member_onboarded_at" (or reuse `family_members.joined_at` vs a
+  first-seen marker) in a future migration; until then the partner still gets the
+  correct household immediately.
+
+### A family member with no linked person no longer hangs (enters the app)
+- **Status:** RESOLVED defensively in Beta Phase 2 final review (client-side).
+- **Why it matters:** `firstRun` is derived from the caller's canonical person. If a
+  signed-in member has a family but no resolvable `me` — e.g. a transient
+  household-fetch failure (`loadHousehold` sets `hydrated=true` even when the people
+  fetch rejects), or the narrow "two pending invites for one person, second accepter"
+  DB edge in 0009 (the accept RPC links an already-linked person to zero rows and does
+  NOT fall to the create-person branch) — the old code returned `firstRun=null`
+  forever, trapping the user on the "Loading…" spinner.
+- **Fix:** once hydration has completed with a family but no `me`, `firstRun` now
+  returns `'done'` (enter the app; surfaces are individually resilient and Settings
+  lets them set a name) instead of hanging. The underlying 0009 two-invite edge is
+  itself gated by the People UI (only one invite per person), so it is not reachable
+  through normal use; a durable DB fix (block a second pending invite per person, or
+  handle the zero-row link) is deferred to a future migration.
+- **Suggested milestone:** a future `00NN` could add a partial unique index / guard so
+  at most one pending invitation exists per household person.
+
 ### Onboarding journeys are React flows — automated coverage is at the invariant layer
 - **Status:** advisory (intentional).
 - **Why it matters:** the creator/partner journeys are thin client flows over trusted

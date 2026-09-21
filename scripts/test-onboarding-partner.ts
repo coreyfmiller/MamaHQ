@@ -277,16 +277,36 @@ async function main() {
     assertEqual(await membershipCount(famA, owner2.id), 0, 'never joined famA')
   })
 
-  await test('creating an invitation for a person in a family you do NOT belong to is rejected', async () => {
+  await test('creating an invitation for a person in a family you do NOT belong to is rejected (authorization, not linkage)', async () => {
     const outsider = await createUser(A, 'ob-outsider')
     await ensureFamily(outsider)
+    // Use an ACCOUNT-LESS person in famA so the rejection can ONLY be the cross-family
+    // authorization guard (is_family_member) — not the "already connected" linkage
+    // check. This proves the intended security property unambiguously.
+    const unlinkedPid = await addPerson(creator.client, famA, 'Grandma', 'other')
     const { hash } = tokenPair()
-    // outsider tries to invite for creator's family person.
     const { error } = await outsider.client.rpc('create_household_invitation', {
-      p_person_id: creatorPid, p_token_hash: hash, p_email: null, p_ttl_seconds: 604800,
+      p_person_id: unlinkedPid, p_token_hash: hash, p_email: null, p_ttl_seconds: 604800,
     })
     assert(error, 'expected cross-family invite creation to be rejected')
-    assert(errorContains(error, 'not authorized') || errorContains(error, 'already connected'), `got: ${error?.message}`)
+    assert(errorContains(error, 'not authorized'), `got: ${error?.message}`)
+    // And no invitation row was created for that person.
+    const { count } = await A.from('household_invitations').select('*', { count: 'exact', head: true }).eq('household_person_id', unlinkedPid)
+    assertEqual(count, 0, 'no invitation created by the unauthorized caller')
+  })
+
+  await test('a random / malformed token reveals no household and creates nothing', async () => {
+    const stranger = await createUser(A, 'ob-stranger')
+    await ensureFamily(stranger)
+    // A random token hash that matches no invitation.
+    const { hash } = tokenPair()
+    const { error } = await stranger.client.rpc('accept_household_invitation', { p_token_hash: hash })
+    assert(error, 'expected a random token to be rejected')
+    assert(errorContains(error, 'not found'), `got: ${error?.message}`)
+    // A too-short/garbage token likewise fails safely (no throw beyond a clean error).
+    const { error: e2 } = await stranger.client.rpc('accept_household_invitation', { p_token_hash: 'x' })
+    assert(e2, 'expected a malformed token to be rejected')
+    assert(errorContains(e2, 'not found'), `got: ${e2?.message}`)
   })
 
   await cleanupUsers(A)
