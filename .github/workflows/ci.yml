@@ -168,6 +168,9 @@ jobs:
       - name: Tell MamaHQ execution-security tests (Step 12)
         run: node scripts/test-tell-security.ts
 
+      - name: Household Identity tests (Beta Phase 1)
+        run: node scripts/test-identity.ts
+
       - name: Stop local Supabase
         if: always()
         run: supabase stop || true

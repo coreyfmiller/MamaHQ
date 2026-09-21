@@ -64,9 +64,10 @@ function main(): void {
   const calendar = run('scripts/test-calendar.ts')
   const notifications = run('scripts/test-notifications.ts')
   const tellSecurity = run('scripts/test-tell-security.ts')
+  const identity = run('scripts/test-identity.ts')
 
-  if (completion !== 0 || security !== 0 || household !== 0 || membership !== 0 || tasks !== 0 || handoff !== 0 || calendar !== 0 || notifications !== 0 || tellSecurity !== 0) {
-    console.error(`\n✗ Database tests failed (completion=${completion}, security=${security}, household=${household}, membership=${membership}, tasks=${tasks}, handoff=${handoff}, calendar=${calendar}, notifications=${notifications}, tellSecurity=${tellSecurity}).`)
+  if (completion !== 0 || security !== 0 || household !== 0 || membership !== 0 || tasks !== 0 || handoff !== 0 || calendar !== 0 || notifications !== 0 || tellSecurity !== 0 || identity !== 0) {
+    console.error(`\n✗ Database tests failed (completion=${completion}, security=${security}, household=${household}, membership=${membership}, tasks=${tasks}, handoff=${handoff}, calendar=${calendar}, notifications=${notifications}, tellSecurity=${tellSecurity}, identity=${identity}).`)
     process.exit(1)
   }
   console.log('\n✓ All database-dependent suites passed.')

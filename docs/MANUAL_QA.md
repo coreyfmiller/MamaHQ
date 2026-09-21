@@ -316,3 +316,43 @@ same as Partner Mode (which does not exist; see `docs/PRODUCT_LIMITATIONS.md`).
 When a human runs these, record date, build/commit, device, and pass/fail per item.
 Until then, the honest status of this checklist is: **CREATED; human execution STILL
 REQUIRED.**
+
+## Beta Phase 1 — Identity, Single Capture, Trust (all [HUMAN], OUTSTANDING)
+
+Deterministic `test:identity` proves the identity RPC security/behavior in CI. The
+following need a HUMAN on a real deploy (real OpenAI for the Tell step). **Do NOT mark
+passed unless a human runs them.**
+
+Identity:
+1. **[HUMAN]** Fresh account: sign in (OTP) → enter your name in onboarding → finish →
+   open Me → Household (People) → your exact name is shown (not "Me").
+2. **[HUMAN]** Create a task assigned to yourself and a calendar event you're
+   responsible for → your name is consistent everywhere.
+3. **[HUMAN]** Settings → Account → Your name → change it → verify it updates in People
+   and on those task/event surfaces.
+4. **[HUMAN]** Refresh → name persists. Sign in from a second browser → same identity.
+5. **[HUMAN]** Existing user with a placeholder ("Me"): sign in on a device that has a
+   profile name → verify one-time reconciliation adopts the real name (and does NOT
+   overwrite a name you had intentionally set).
+
+Single capture:
+6. **[HUMAN]** Verify there is ONE obvious brain-dump experience: the "Tell" tab and the
+   Capture button both lead to Tell MamaHQ. The old Inbox tab is gone.
+7. **[HUMAN]** Open Tell → tap an example prompt → verify it only fills the input (no
+   interpretation/execution) → press "Sort this out" → review → nothing is written until
+   you confirm → confirm → verify the domain state.
+
+Auth:
+8. **[HUMAN]** Sign out → verify you land on sign-in, NOT a local-data version of the app.
+
+Error / monitoring:
+9. **[HUMAN/DEV]** Force a render error in a non-production build → verify the calm error
+   boundary (retry + back to MamaHQ), no raw stack trace, no "saved" claim. If a Sentry
+   DSN is configured, verify the captured event contains NO household content
+   (no names/prompts/tokens/emails/phones).
+10. **[HUMAN]** Visit a bad URL → verify the on-brand not-found page.
+
+Partner:
+11. **[HUMAN]** Open Partner → verify there are NO SMS/email delivery toggles or "will
+    send" implications; contact details are clearly "for your reference," and the real
+    channel is inviting them (in-app notifications).

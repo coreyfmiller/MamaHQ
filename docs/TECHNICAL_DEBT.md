@@ -308,3 +308,39 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   client holds them until the user acts. If durable Tell provenance/analytics is ever
   needed, a minimal `0014_tell_mamahq.sql` (family-scoped, RLS, minimal retention)
   would be the smallest addition — deliberately not built now.
+---
+
+## Beta Phase 1 debt (identity, single capture, error visibility)
+
+### Legacy Inbox is dead code (retained, unreachable)
+- **Status:** deferred cleanup (intentional for beta safety).
+- **Why it matters:** `components/mama/screens/inbox.tsx`, `components/mama/inbox/commit.ts`,
+  and `components/mama/inbox/local-extractor.ts` remain in the tree but are no longer
+  routed from primary navigation (Tell MamaHQ is the single capture path). The legacy
+  voice/photo capture screens (`screens/voice.tsx`, `screens/photo.tsx`) still call the
+  legacy `addCapture` engine but are no longer opened from the capture sheet.
+- **Suggested milestone:** delete the legacy Inbox/commit/local-extractor + voice/photo
+  code (and the `captures` read path) in a later phase, once beta confidence is
+  established. Existing `captures` data is preserved; no destructive migration was run.
+
+### Monitoring requires an optional dependency + DSN
+- **Status:** advisory.
+- **Why it matters:** `lib/monitoring.ts` only actually sends when `NEXT_PUBLIC_SENTRY_DSN`
+  is set AND `@sentry/nextjs` is installed. Absent either, it's a safe no-op (dev logs a
+  warning). To turn on beta monitoring: `npm install @sentry/nextjs` + set the DSN.
+- **Suggested milestone:** enable before inviting families if crash visibility is desired.
+
+### Signed-in read fallback to localStorage on fetch error
+- **Status:** advisory (not a false-shared-truth write path).
+- **Why it matters:** when signed in, a provider fetch error falls back to a localStorage
+  read-cache so the app still renders. Writes still go to the cloud (RLS-scoped), and the
+  signed-OUT app is auth-gated (no local prototype masquerade). The residual is read
+  staleness on a transient fetch error, which self-heals on the next successful fetch.
+- **Suggested milestone:** a deliberate offline/reconnect pass (already tracked under
+  the offline debt entry); no auth rewrite was in scope for Beta Phase 1.
+
+### partner_contacts notify flags are vestigial
+- **Status:** advisory.
+- **Why it matters:** the partner record still carries `notifySms`/`notifyEmail` columns,
+  now always written `false` (the UI no longer exposes delivery toggles). They can be
+  dropped when `partner_contacts` is folded into `household_people` (existing debt item).

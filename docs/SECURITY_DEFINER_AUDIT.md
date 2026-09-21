@@ -412,3 +412,32 @@ resolved reference is re-validated by the domain RPC at execution time. Behavior
 verified by `scripts/test-tell-security.ts` (execution passes through domain authz;
 cross-family/tampered/invented-uuid references rejected; no forged acceptance; no
 forged notification; direct table writes blocked) in CI.
+
+
+---
+
+## Beta Phase 1 addendum — Household Identity
+
+Migration `0014_owner_identity.sql` adds ONE SECURITY DEFINER function.
+
+| Function | search_path | Authorization | Notes |
+|---|---|---|---|
+| `set_my_display_name(family, name)` | `public` ✓ | `auth.uid()` not null; `is_family_member(family)`; person derived from `user_id = auth.uid()` (never caller-supplied) | renames ONLY the caller's own person; bootstraps a missing link (owner→`ensure_owner_person`, member→`0009` link flag); validates/normalizes name (1..80, whitespace-collapsed, Unicode-safe); idempotent; the final UPDATE is `where id = pid and family_id = family and user_id = uid` (defense in depth) |
+
+### Criterion findings (Beta Phase 1)
+- **Authorization — PASS.** Family gated by `is_family_member`. The person acted on is
+  resolved from the authenticated account, so a client cannot rename another person or
+  another family's person by passing ids (proven by `scripts/test-identity.ts`:
+  cross-family rejected; a member renaming themselves never touches another member).
+- **search_path — PASS.** Pinned `set search_path = public`.
+- **Input validation — PASS.** Empty/whitespace rejected; >80 rejected; internal
+  whitespace collapsed + trimmed; no culturally narrow character rules (Unicode /
+  apostrophes / hyphens accepted).
+- **Identity handling — PASS.** Only `display_name` changes; the account link
+  (`user_id`) and membership are preserved. No duplicate person is ever created
+  (idempotent; `on conflict do nothing` on the bootstrap insert).
+- **EXECUTE — PASS.** `grant execute … to authenticated`; no `to public`.
+
+**Conclusion:** no vulnerability found. The canonical household identity can be set by
+its owner and only its owner, safely and idempotently. Verified by
+`scripts/test-identity.ts` in CI.

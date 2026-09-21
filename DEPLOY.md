@@ -1,86 +1,114 @@
-# Mama HQ — Deploy to Vercel
+# MamaHQ — Deploy to Vercel
 
-Getting Mama HQ live on a real URL (and your phone). The app is deploy-ready: production build is
-clean, secrets are gitignored, and it reads exactly four environment variables.
+Getting MamaHQ live on a real URL for the closed beta. The app is deploy-ready: the
+production build is clean, secrets are gitignored, and it reads a small set of
+environment variables.
 
-> Deploying changes only **where** the app runs, not **who can see what** — RLS still isolates
-> every family. It does not activate Partner sharing (that still needs the two-user isolation test
-> before Step 11).
+> Deploying changes only **where** the app runs, not **who can see what** — Supabase
+> Row-Level Security (RLS) isolates every family regardless of deployment.
 
 ---
 
-## 0. Prerequisites
+## 0. What MamaHQ actually is (current reality)
 
-- The repo is committed locally on `main`. It has **no git remote yet** — step 1 fixes that.
-- Migrations run in Supabase so prod behaves like dev: `0001`–`0003` (auth/membership) are run.
-  Run `0004_onboarding.sql` and `0005_mom_checkins.sql` too so onboarding + Mom check-in work in
-  prod (they graceful-degrade if not, but you want them on).
+- **Framework:** Next.js (App Router) + React + Tailwind v4, deployed on Vercel.
+- **Auth:** **email OTP (6-digit code)** — no passwords, no Google/Apple OAuth, no
+  magic-link redirect. Sign-up and sign-in are the same flow (first-time emails are
+  auto-created). There is nothing to configure in Google Cloud.
+- **Data:** Supabase (Postgres + RLS). The browser uses the anon key; a server route
+  (`/api/tell`) uses a cookie-session server client. RLS is the security boundary.
+- **AI:** Tell MamaHQ interprets natural-language brain-dumps **server-side** via
+  OpenAI (`/api/tell`). AI only proposes; the user confirms; trusted domain RPCs
+  execute. The `OPENAI_API_KEY` is server-only and never reaches the browser.
+- **Migrations:** `supabase/migrations/0001` … `0014` are the authoritative schema.
 
-## 1. Push the code to GitHub
+---
 
-Create an empty **private** repo on GitHub named `mama-hq` (no README/license), then locally:
+## 1. Environment variables
 
-```bash
-git remote add origin https://github.com/<your-username>/mama-hq.git
-git push -u origin main
-```
+Set these in Vercel (Production + Preview). Copy the exact values from your local
+`.env.local` (which is gitignored and must never be committed).
 
-(If you use the GitHub CLI: `gh repo create mama-hq --private --source=. --push`.)
+| Name | Required | Exposure | Purpose |
+|---|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | public (safe) | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | public (safe; RLS protects data) | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | **secret — server only** | used by scripts/CI + any server-only admin path; never sent to the client |
+| `OPENAI_API_KEY` | yes | **secret — server only** | powers `/api/tell` interpretation |
+| `TELL_MAMAHQ_MODEL` | optional | server only | override the interpreter model (default `gpt-4o-mini`) |
+| `NEXT_PUBLIC_SENTRY_DSN` | optional | public DSN | error monitoring; leave blank to disable |
 
-Confirm `.env.local` did NOT get pushed — it's gitignored, so it won't, but verify on GitHub that
-no `.env*` file is present.
+The production build must succeed with the two secrets absent at build time — any
+`NEXT_PUBLIC_*` reads resolve to placeholders (CI passes harmless placeholder Supabase
+values). Real values are only needed at runtime.
 
-## 2. Create the Vercel project
+---
 
-1. vercel.com → **Add New… → Project** → import the `mama-hq` GitHub repo.
-2. Framework preset: **Next.js** (auto-detected). Build command / output: defaults are correct.
-3. Before the first deploy, add the **Environment Variables** (Production + Preview):
+## 2. Provision the database (migrations)
 
-| Name | Value | Notes |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://sccrnjhnfmtusvyzmngs.supabase.co` | safe to expose |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | your Supabase **publishable/anon** key | safe to expose (RLS protects data) |
-| `SUPABASE_SERVICE_ROLE_KEY` | your Supabase **service_role** secret | **secret** — server only |
-| `OPENAI_API_KEY` | your OpenAI key (`sk-...`) | **secret** — server only |
+The `supabase/migrations/` folder is the script-of-record. On a fresh Supabase project
+apply `0001` → `0014` in order (either via the Supabase CLI `supabase db push`/`reset`
+against the linked project, or by running each file in the SQL editor in order).
 
-   (Copy the exact values from your local `.env.local`.)
-4. Click **Deploy**. Vercel builds and gives you a URL like `https://mama-hq-xxxx.vercel.app`
-   (or your custom domain if you add one).
+> Production migration history is currently applied by hand (there is no CLI-tracked
+> `schema_migrations` on prod yet — see `docs/HUMAN_ACTIONS.md`). Apply new migrations
+> (like `0014_owner_identity.sql`) to prod at deploy time. CI proves a clean provision
+> `0001 → 0014` from an empty database on every run.
 
-## 3. Point Google OAuth at the prod URL
+---
 
-Google must allow the new origin, and Supabase must accept the prod redirect.
+## 3. Create the Vercel project
 
-**Google Cloud Console → APIs & Services → Credentials → your OAuth Web client:**
-- **Authorized JavaScript origins:** add `https://<your-vercel-domain>`
-- **Authorized redirect URIs:** the redirect target is still Supabase's callback (unchanged):
-  `https://sccrnjhnfmtusvyzmngs.supabase.co/auth/v1/callback`
-  (This should already be there from local setup — no change needed unless you rotated the client.)
+1. vercel.com → **Add New… → Project** → import the GitHub repo.
+2. Framework preset: **Next.js** (auto-detected). Build/output defaults are correct.
+3. Add the Environment Variables from §1 before the first deploy.
+4. **Deploy.** Vercel builds and gives you a URL (or your custom domain).
 
-## 4. Point Supabase URL config at the prod URL
+---
+
+## 4. Point Supabase auth at the prod URL
 
 **Supabase → Authentication → URL Configuration:**
-- **Site URL:** set to `https://<your-vercel-domain>` (or keep localhost and add prod as a
-  redirect — but Site URL should be the prod domain for prod).
-- **Redirect URLs:** add `https://<your-vercel-domain>/auth/callback`
-  (keep `http://localhost:3000/auth/callback` too so local dev still works).
+- **Site URL:** your production domain.
+- **Redirect URLs:** add `https://<your-domain>/auth/callback` (keep
+  `http://localhost:3000/auth/callback` for local dev).
 
-Save. Without this, prod sign-in bounces with `OAuth state parameter missing` (same symptom we saw
-locally before the redirect URL was allow-listed).
+Email OTP itself needs no OAuth provider config. The `/auth/callback` route only
+matters for any magic-link-shaped flow; the shipped UX is code entry.
 
-## 5. Post-deploy smoke test (on your phone)
+---
 
-1. Open `https://<your-vercel-domain>` → the marketing landing loads.
-2. Tap **Get started / Continue with Google** → sign in → you land in the app at `/app`.
-3. Log a feed → hard-refresh → it persists (proves prod → Supabase → RLS round-trip).
-4. Inbox: brain-dump a line → proposals appear → commit → shows in Plan.
-5. Sign out → returns to the landing.
+## 5. Optional: error monitoring
 
-If sign-in fails with a redirect error, re-check steps 3–4 (exact domain, no trailing slash).
+For the closed beta you may enable privacy-first error monitoring:
+1. `npm install @sentry/nextjs` (optional dependency).
+2. Set `NEXT_PUBLIC_SENTRY_DSN` in Vercel.
+
+MamaHQ reports only uncaught error type/message/stack + release/env. It never sends
+household content, prompts, tokens, emails, or phone numbers (see `lib/monitoring.ts`).
+With the DSN blank or the package absent, monitoring is a safe no-op and the app is
+unaffected.
+
+---
+
+## 6. Post-deploy smoke test (on a phone)
+
+1. Open `https://<your-domain>` → the marketing landing loads.
+2. **Get started** → enter email → enter the 6-digit code → land in the app at `/app`.
+3. Finish onboarding (enter your name) → open **Me → Household (People)** → your name
+   is shown correctly (canonical identity).
+4. **Tell MamaHQ** (bottom nav "Tell" or the center Capture button) → type
+   "add milk and remind me to call the pediatrician tomorrow" → review → confirm →
+   verify Grocery + Tasks updated.
+5. Log a feed → hard-refresh → it persists (prod → Supabase → RLS round-trip).
+6. Sign out → returns to the landing / sign-in.
+
+---
 
 ## Notes
 
-- `images.unoptimized: true` remains (ROADMAP Step 16 revisit) — fine for launch.
-- Vercel Analytics renders only in production (already wired in `app/layout.tsx`).
-- Future custom domain: add it in Vercel, then repeat steps 3–4 with the custom domain.
-- To deploy updates later: just `git push` — Vercel auto-deploys `main`.
+- `images.unoptimized: true` remains — fine for launch.
+- Vercel Analytics renders only in production (wired in `app/layout.tsx`).
+- To deploy updates: `git push` — Vercel auto-deploys `main` (apply any new migration
+  to prod as part of the release).
+- The closed beta is **free and invite-only** — there is no billing.
