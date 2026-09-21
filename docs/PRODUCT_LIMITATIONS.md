@@ -55,7 +55,18 @@ knowledge until it actually ships.
 | **Authoritative first-run routing** | IMPLEMENTED (Beta Phase 2) | Onboarding vs app is decided from the current user's canonical HouseholdPerson (owner+placeholder → creator; member+placeholder → partner; real name → done), so a joining partner is no longer skipped past identity and a returning user is never re-onboarded after clearing storage. |
 | **Invite sharing (native share / copy link)** | IMPLEMENTED (Beta Phase 2) | The Web Share API is used when available, otherwise clipboard copy, with honest feedback. MamaHQ generates the link; the human sends it. |
 | **Invitation delivery (MamaHQ sends it)** | NOT IMPLEMENTED (by design) | MamaHQ never sends an invite by SMS/email/push. It generates a private link for the user to share; the UI never says "invitation sent". (Consistent with the deferred push/email/SMS delivery.) |
-| **Empty vs. failed-to-load, all surfaces** | PARTIAL | Today has a first-run empty nudge (points to Tell, no fake data); People shows "No people yet". The signed-in providers fall back on fetch error rather than showing empty (so a load failure is not silently disguised as emptiness), but a dedicated inline "couldn't load — retry" affordance is not yet on every list surface. Tracked in `docs/TECHNICAL_DEBT.md`. |
+| **Empty vs. failed-to-load, all surfaces** | PARTIAL | Today now distinguishes loading / empty / partial-failure explicitly (tasks/calendar/care expose a `loadError` flag and Today shows a restrained per-domain "couldn't load — Open" instead of a false "nothing here"). Other overlay list surfaces (People/Tasks/Calendar/Grocery) still fall back rather than showing an inline retry. Tracked in `docs/TECHNICAL_DEBT.md`. |
+
+## Beta Phase 3 (Today & core daily loop)
+
+| Capability | Status | Reality today |
+|---|---|---|
+| **Today operational view** | IMPLEMENTED (Beta Phase 3) | Today is a deterministic PROJECTION of trusted domains (tasks, calendar, care, grocery) via a pure `buildTodayModel` (`lib/today/model.ts`) — no new table, no LLM, no invented urgency/ownership. Sections: Needs-your-attention, Today's plan, You're-handling, Others-are-handling, Baby care, Grocery count, Tell CTA. See `docs/TECHNICAL_DEBT.md` for the prioritization + overdue rules. |
+| **Today attention model** | IMPLEMENTED (Beta Phase 3) | Transparent rule-based ordering: incoming care handoff → task awaiting acceptance → overdue (mine) → due-today (mine) → responsible commitment today. No numeric priority score, no priority AI. |
+| **Today lightweight actions** | IMPLEMENTED (Beta Phase 3) | Accept/complete a task and accept/decline a care handoff directly from Today — all through the EXISTING trusted domain RPCs (no second task/care implementation). Failures surface a toast and preserve truthful state; no optimistic "done"/"accepted" lie. |
+| **Today loading / empty / partial-failure** | IMPLEMENTED (Beta Phase 3) | Distinct states: a skeleton while all core domains load; a calm empty state when everything loaded with nothing relevant; a restrained per-domain error+retry when one domain fails while others render. Errors are never disguised as emptiness. |
+| **Cross-device baby-log realtime on Today** | NOT IMPLEMENTED (known gap) | Tasks/calendar/care/grocery refresh via the Step 11 realtime coordinator, so Today reflects those live. Baby-care LOGS (`logs.tsx`) are not wired to the coordinator, so another device's new feed/diaper/sleep appears on reload, not instantly. See `docs/TECHNICAL_DEBT.md`. |
+| **Legacy Appointments on Today** | REMOVED from Today (Beta Phase 3) | The old "Coming up" card read the prototype `appointments` domain (separate from the canonical Step 10 Calendar). It was removed from Today to avoid two competing "upcoming" surfaces; the canonical Calendar is the single source. The legacy Appointments domain/overlay itself is untouched (consolidation is out of scope). |
 
 ## Related known gaps (see TECHNICAL_DEBT.md)
 

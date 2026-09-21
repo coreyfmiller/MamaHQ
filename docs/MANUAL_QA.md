@@ -433,3 +433,48 @@ NOT prove the two React journeys feel right on a device — those are below.
 21. **[HUMAN]** Fresh household with nothing logged → Today shows the calm "Nothing needs
     your attention yet" nudge pointing to Tell (not a broken/empty screen, no fake data).
     Add one thing via Tell → verify the nudge disappears.
+
+---
+
+## Beta Phase 3 — Today & Core Daily Loop
+
+### What is AUTOMATED (no human needed)
+
+- **[AUTOMATED]** Today projection correctness — `test:today` (58 tests, in `verify` + CI Verify job): attention inclusions (overdue-mine, due-today-mine, awaiting-acceptance, incoming care handoff, upcoming responsible commitment), exclusions (completed, future, partner-only, declined/cancelled handoff, past-today event), responsibility semantics (assigned≠accepted, participant≠responsible, account-less owner, current care holder, truthful outgoing handoff), transparent ordering, local-day date/time boundaries (midnight, late-evening overdue, multi-day, cross-midnight), and loading/empty/partial-failure model states.
+- **[AUTOMATED]** Tell invariant unchanged — `test:tell` (40).
+
+The projection is a pure deterministic function (`lib/today/model.ts`); the tests feed it a fixed clock and fixed domain snapshots. They do NOT exercise the React wiring, realtime, or real mutations — those are `[HUMAN]` below.
+
+### Today — owner (all [HUMAN], OUTSTANDING)
+
+1. **[HUMAN]** New household, nothing added → Today shows the calm empty state ("Nothing needs your attention right now" + "What's on your mind?" + Add task/event/Grocery shortcuts). No fabricated tasks/events/care.
+2. **[HUMAN]** Populated household → within a few seconds you can read: what needs attention, today's plan, what you're handling, what others are handling, baby care context, grocery count, Tell CTA.
+3. **[HUMAN]** Overdue task assigned to you → appears under "Needs your attention" as Overdue with a Done action; completing it removes it.
+4. **[HUMAN]** Task due later today assigned to you → appears as "Due today · <time>".
+5. **[HUMAN]** Task assigned to you but not accepted → appears as "assigned to you — accept it" with an "I've got it" action; accepting moves it to "You're handling" as "You've got it".
+6. **[HUMAN]** Calendar event today where you're responsible → attention "You're responsible · <time>"; in Today's plan it reads "You're responsible".
+7. **[HUMAN]** Calendar event today where you're only a participant (someone else responsible) → reads "<name> is responsible · You're attending" (never "You're responsible").
+8. **[HUMAN]** Incoming care handoff → attention "<name> wants to hand off care to you" with "I've got it" / Decline; accepting makes you the holder; declining leaves the holder unchanged.
+9. **[HUMAN]** Tell capture from Today → tap the Tell CTA, enter "we need milk", confirm → grocery count on Today reflects it after realtime/refetch.
+10. **[HUMAN]** Realtime: on a second device the owner assigns you a task → your Today surfaces it without a manual reload (within the coalesced window).
+
+### Today — partner (second browser/device, all [HUMAN], OUTSTANDING)
+
+11. **[HUMAN]** Owner assigns a task to the partner → partner's Today shows it as "assigned to you", awaiting acceptance.
+12. **[HUMAN]** Partner accepts → both Today views reflect accepted ("You've got it" / "<partner> has it").
+13. **[HUMAN]** Partner completes → both Today views stop showing it as outstanding.
+14. **[HUMAN]** Owner creates an event with partner as participant, owner responsible → each Today view shows the correct role for that account.
+15. **[HUMAN]** Owner proposes a care handoff to the partner → partner sees the incoming request; owner's Today shows "Waiting for <partner> to accept the handoff" and STILL "You have <baby>" until acceptance.
+
+### Failure (all [HUMAN], OUTSTANDING)
+
+16. **[HUMAN]** Tasks fail to load (e.g. offline the tasks fetch) → Today shows a restrained "Couldn't load your tasks" with an Open action, NOT "You're handling nothing"; calendar/care still render.
+17. **[HUMAN]** Calendar fails to load → "Couldn't load today's calendar" retry, other sections intact.
+18. **[HUMAN]** Care fails to load → "Couldn't load care status" retry, other sections intact.
+19. **[HUMAN]** A mutation fails (accept/complete/handoff) → a toast reports the failure and the item's truthful state is preserved (no false "done"/"accepted").
+20. **[HUMAN]** Refresh during a mutation → no duplicate, no false success; canonical state on reload.
+21. **[HUMAN]** Realtime reconnect → Today reflects changes made while disconnected after the coordinator's reconnect invalidation.
+
+### Mobile (all [HUMAN], OUTSTANDING)
+
+22. **[HUMAN]** Review Today at 320 / 375 / 390 / 430px: first screenful is operational (attention/plan), attention action buttons reachable, long names wrap, multiple events scroll, empty + partial-error states, care handoff accept/decline, Tell CTA above the safe area, no horizontal overflow.
