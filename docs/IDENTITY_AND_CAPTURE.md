@@ -77,6 +77,57 @@ confirm → trusted domain execution). For beta there is now exactly one:
   details are clearly "for your reference"; the real, live channel is **in-app
   notifications** for partners who have their own account (invite them from Household).
 
+## First-run routing is authoritative (Beta Phase 2)
+
+Which experience a signed-in user sees on entry is decided by **cloud household
+truth**, never a device-local "onboarding complete" flag. `useHousehold().firstRun`
+derives it from the current user's canonical HouseholdPerson:
+
+- `'creator'` — I'm the household **owner** and my canonical name is still the `'Me'`
+  bootstrap placeholder → I just created this household and haven't said who I am →
+  show the creator onboarding (welcome → your name → optional people → optional
+  partner invite → first Tell).
+- `'partner'` — I'm a joined **member** and my name is still the `'Member'`
+  placeholder → I accepted an invite → show the shorter partner-join experience
+  (confirm my name → the household I joined + who's here → into the app).
+- `'done'` — my canonical person has a real (non-placeholder) name → I've been
+  established → straight into the product, **on any device**, even if localStorage
+  was cleared.
+
+Why this matters: the previous gate keyed off the local **baby row**, which meant a
+joining partner (landing in a household that already had a baby) skipped onboarding
+entirely and never confirmed their identity, while a returning user could be
+re-onboarded after clearing storage. Keying off authoritative identity fixes both.
+
+Once a first-run flow is actively underway it owns the screen until it explicitly
+hands off (`dismissOnboarding`), so the mid-flow identity write — which flips
+`firstRun` to `'done'` — doesn't tear the remaining optional steps away.
+
+### The name step cannot falsely complete
+
+Both journeys set the canonical name through the trusted `renameMe` RPC and **only
+advance when it actually succeeds**. A failed identity write shows a retryable error
+and keeps you on the step — the household is never left showing a placeholder while
+the UI pretends the name was saved. Skipping naming entirely does not fabricate an
+identity: the placeholder remains (and you're nudged in Settings), and because
+`firstRun` is derived from the real name, you'll be invited to finish next time.
+
+### Partner joining reuses Step 7 — no duplication
+
+The invited partner's account is linked to their **existing** HouseholdPerson by the
+Step 7 `accept_household_invitation` RPC (run at sign-in via the invitation-aware auth
+bootstrap). The join experience creates **no** household, **no** new person, and
+**no** duplicate membership — it only sets the name and shows what already exists.
+
+### Invitations: generated, not delivered
+
+MamaHQ never sends an invite. The People screen and the onboarding invite step
+generate a private link (`/join/<token>`, the token is a credential) and offer
+native share / copy so the human sends it themselves. Copy says "copied", the OS
+share sheet is used when available, and the UI says **"copy this link and send it"** —
+never "invitation sent". Invite links/tokens are never logged or sent to monitoring.
+States shown are the real ones: **Not invited → Invite ready / pending → Joined.**
+
 ## Auth ≠ local prototype
 
 The `/app` shell is auth-gated (`AuthGate`): a signed-out user sees the sign-in screen,

@@ -360,3 +360,56 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
 - **Why it matters:** the partner record still carries `notifySms`/`notifyEmail` columns,
   now always written `false` (the UI no longer exposes delivery toggles). They can be
   dropped when `partner_contacts` is folded into `household_people` (existing debt item).
+
+---
+
+## Beta Phase 2 debt (onboarding & partner experience)
+
+### Onboarding wizard position is not persisted (only the results are)
+- **Status:** deferred (by design; see `docs/IDENTITY_AND_CAPTURE.md`).
+- **Why it matters:** first-run routing is derived from authoritative household truth
+  (canonical identity + role), NOT a stored wizard step. So refreshing mid-onboarding
+  keeps everything already SAVED (identity, people) but resets unsaved in-progress
+  fields and returns you to the start of the remaining flow. This is intentional — we
+  deliberately did NOT add a workflow engine or a `0015` "remember wizard position"
+  migration (§29). Recovery is from real state, not a cursor.
+- **Suggested milestone:** only if user testing shows the reset is painful; even then a
+  lightweight local draft (not a migration) would suffice.
+
+### "Skip naming" leaves a placeholder identity and re-prompts next session
+- **Status:** advisory (intentional honesty).
+- **Why it matters:** a creator can enter the app without setting their name. We never
+  fabricate an identity, so their canonical person stays the `'Me'` placeholder and, on
+  the next load, `firstRun` is still `'creator'` → they see onboarding again. That is
+  honest (they never told us who they are) but could feel repetitive. Settings →
+  Account → Your name is the always-available correction path.
+- **Suggested milestone:** consider a lighter in-app "finish setting up" banner instead
+  of full onboarding re-entry, if it proves annoying in the beta.
+
+### Empty-vs-error affordance is not on every list surface
+- **Status:** partial (advisory).
+- **Why it matters:** §24 asks that "nothing here yet" never be confused with "failed
+  to load". Today has a real first-run empty nudge and the signed-in stores fall back
+  (rather than rendering empty) on a fetch error, so a failure is not silently shown as
+  emptiness. But People/Tasks/Calendar/Grocery/Notifications do not yet each render a
+  dedicated inline "couldn't load — retry" state distinct from their empty state.
+- **Suggested milestone:** a small cross-surface pass adding an explicit load-error
+  state + retry to each list (no schema change needed).
+
+### Partner contact card (partner.tsx) vs. Household people overlap
+- **Status:** advisory (pre-existing, reaffirmed).
+- **Why it matters:** the legacy "Partner" contact card (local `partner_contacts`) and a
+  `household_people` partner row represent the same human two ways. Beta Phase 2 steers
+  invites through Household (the canonical people model); the contact card remains for
+  reference only. Convergence is tracked under the `partner_contacts → household_people`
+  consolidation item above.
+
+### Onboarding journeys are React flows — automated coverage is at the invariant layer
+- **Status:** advisory (intentional).
+- **Why it matters:** the creator/partner journeys are thin client flows over trusted
+  server invariants. CI proves those invariants deterministically
+  (`test:onboarding-partner`, `test:identity`): identity idempotency, no duplicate
+  person/membership, no second household, invite lifecycle truth (generated ≠ sent ≠
+  accepted; revoked/expired/idempotent/wrong-account/cross-family). The React flow
+  itself (step transitions, copy, mobile feel) is covered by the `[HUMAN]` Beta Phase 2
+  section of `docs/MANUAL_QA.md`, which is OUTSTANDING.

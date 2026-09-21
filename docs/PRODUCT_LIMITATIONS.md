@@ -46,6 +46,17 @@ knowledge until it actually ships.
 | **Partner SMS/email delivery controls** | REMOVED (Beta Phase 1) | The partner screen no longer shows SMS/email toggles (there is no such delivery). In-app notifications are the real channel for partners who accept an invite. |
 | **Voice / photo capture** | NOT IMPLEMENTED (deferred) | The legacy on-device voice/OCR capture fed the retired rule-based engine and is not part of the single Tell path for beta. A later phase may feed speech-to-text into the same Tell interpretation pipeline. |
 
+## Beta Phase 2 (onboarding & partner experience)
+
+| Capability | Status | Reality today |
+|---|---|---|
+| **Creator onboarding journey** | IMPLEMENTED (Beta Phase 2) | Welcome → your name (canonical identity via the trusted RPC; blocks on real success) → optional household people (partner/child/baby) → optional partner invite (generate + copy/share a private link) → first Tell handoff. Short and fully skippable except identity. Routing is driven by authoritative household state, not a local flag. See `docs/IDENTITY_AND_CAPTURE.md`. |
+| **Partner (invited) join journey** | IMPLEMENTED (Beta Phase 2) | A member who accepted an invite gets a shorter flow: confirm their name → "you joined the household" + who's already here → into the app. No new household/person/membership is created (reuses the Step 7 acceptance). |
+| **Authoritative first-run routing** | IMPLEMENTED (Beta Phase 2) | Onboarding vs app is decided from the current user's canonical HouseholdPerson (owner+placeholder → creator; member+placeholder → partner; real name → done), so a joining partner is no longer skipped past identity and a returning user is never re-onboarded after clearing storage. |
+| **Invite sharing (native share / copy link)** | IMPLEMENTED (Beta Phase 2) | The Web Share API is used when available, otherwise clipboard copy, with honest feedback. MamaHQ generates the link; the human sends it. |
+| **Invitation delivery (MamaHQ sends it)** | NOT IMPLEMENTED (by design) | MamaHQ never sends an invite by SMS/email/push. It generates a private link for the user to share; the UI never says "invitation sent". (Consistent with the deferred push/email/SMS delivery.) |
+| **Empty vs. failed-to-load, all surfaces** | PARTIAL | Today has a first-run empty nudge (points to Tell, no fake data); People shows "No people yet". The signed-in providers fall back on fetch error rather than showing empty (so a load failure is not silently disguised as emptiness), but a dedicated inline "couldn't load — retry" affordance is not yet on every list surface. Tracked in `docs/TECHNICAL_DEBT.md`. |
+
 ## Related known gaps (see TECHNICAL_DEBT.md)
 
 - **PurchaseEvent snapshot** now captures `canonical_item_id`, `resolved_attributes`,
