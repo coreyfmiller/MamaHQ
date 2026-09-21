@@ -565,14 +565,28 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   is dead (no delivery exists; not reachable from the Me UI). Remove it when the
   personal-todo/Tasks convergence happens.
 
-### Day calculation was timezone-unsafe (fixed in Beta Phase 4)
+### Day calculation was timezone-unsafe (fixed in Beta Phase 4 + final review)
 - **Status:** RESOLVED.
-- **Why it matters:** `dayNumber` did `new Date('YYYY-MM-DD')` which parses as UTC
-  midnight; in a negative-offset timezone `.getDate()` read back the PREVIOUS local day,
-  shifting every First-90 day number (and affirmations / age labels / Today's read) by
-  one. Fixed by centralizing day math in `lib/first90.ts` `journeyDay`, which parses a
-  date-only birth string as a LOCAL calendar day; `dayNumber` now delegates to it, so
-  the fix applies everywhere and both stay in lockstep. Covered by `test:first90`.
+- **Why it mattered (two distinct bugs):**
+  1. **UTC parse of a date-only string:** `dayNumber` did `new Date('YYYY-MM-DD')`
+     (UTC midnight); in a negative-offset timezone `.getDate()` read back the PREVIOUS
+     local day, shifting every First-90 day number by one. Fixed by treating a
+     `YYYY-MM-DD` birth date as a LOCAL calendar day.
+  2. **DST off-by-one (caught in final review):** the interim fix still computed
+     `floor((localMidnightNow − localMidnightBirth) / 86,400,000) + 1`. Across a DST
+     transition two local midnights are 23h or 25h apart, so a span containing a
+     spring-forward day read one fewer day (e.g. `America/New_York` birth Mar 1 → now
+     Mar 9 returned Day 8 instead of Day 9). Fixed by switching to CALENDAR-DAY
+     arithmetic: map each local `(y, m, d)` to a stable UTC-based day index
+     (`Date.UTC(...) / 86,400,000`, DST-free) and diff the indices. No division of
+     local-midnight timestamps anywhere.
+- **Single truth:** all journey-day math lives in `lib/first90.ts` `journeyDay`;
+  `dayNumber` (profile.tsx) delegates to it, so affirmations / age labels / Today's read
+  all share the DST-safe calc. Covered by `test:first90` incl. hand-counted calendar
+  boundaries AND child-process DST tests forced into `America/New_York` and
+  `Europe/Berlin`. (Note: Phase 3 calendar/appointment relative-day labels still use
+  `Math.round` over local-midnight ms — tolerant for ±1-day labels; not the journey
+  calc; out of scope.)
 
 ### Legacy Appointments "Remind me" toggle stores a preference only
 - **Status:** advisory (honest label applied).
