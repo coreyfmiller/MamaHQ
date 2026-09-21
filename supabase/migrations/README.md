@@ -232,3 +232,42 @@ Authoritative apply order for a clean environment is now `0001 → … → 0011`
 
 Authoritative apply order for a clean environment is now `0001 → … → 0012`. See
 `docs/CALENDAR.md` and the Step 10 addendum in `docs/SECURITY_DEFINER_AUDIT.md`.
+## Step 11 — 0013_realtime_notifications.sql
+
+`0013_realtime_notifications.sql` (additive, after `0012`) adds the **Realtime &
+Notifications** foundation. It does NOT modify `0001`–`0012`.
+
+- `notifications` — a durable, **recipient-scoped** attention record: `family_id`,
+  `recipient_user_id` (→ `auth.users`, the privacy boundary — an auth account, not a
+  HouseholdPerson), `actor_user_id`, a closed `type` vocabulary
+  (`task_assigned`/`task_accepted`/`care_handoff_proposed`/`care_handoff_accepted`/
+  `calendar_responsibility_assigned`), `domain` (`task`/`care`/`calendar`),
+  `entity_id` (not an FK), a server-computed human `title`, structured `metadata`, a
+  UNIQUE `dedupe_key`, authoritative `created_at`, and `read_at`.
+- RLS is **recipient-scoped** (stricter than family-scoped): select/update require
+  `recipient_user_id = auth.uid()`; client INSERT is blocked (`with check (false)`);
+  no client DELETE policy. A same-family member cannot read another member's
+  notifications.
+- **Trusted generation:** an internal SECURITY DEFINER helper `emit_notification`
+  (NOT granted to any client role) is called from inside the domain RPCs, in the SAME
+  transaction as the state change. It self-suppresses (actor == recipient), re-verifies
+  the recipient is an active family member, and dedupes on the UNIQUE key. A companion
+  helper `notif_account_for_person` resolves a HouseholdPerson's account only if the
+  person is in the expected family (cross-family / account-less → null → no
+  notification).
+- **Read-state RPCs:** `mark_notification_read` (one, recipient-scoped, idempotent)
+  and `mark_all_notifications_read` (all mine).
+- **Redefined domain RPCs (idempotent create-or-replace; semantics unchanged, emit
+  added):** `create_task`, `assign_task`, `accept_task`, `propose_care_handoff`,
+  `accept_care_handoff`, `create_calendar_event`, `update_calendar_event`. GRANT
+  argument-type lists exactly match each signature (clean-provision requirement).
+- **Realtime publication:** idempotently ensures `supabase_realtime` exists and adds
+  ONLY `grocery_items`, `tasks`, `task_events`, `care_responsibility`, `care_handoffs`,
+  `calendar_events`, `calendar_event_participants`, and `notifications`. DEFAULT
+  replica identity is sufficient (providers refetch canonical state; RLS uses the new
+  row). Since production migrations are applied by hand (see `docs/DATABASE_WORKFLOW.md`),
+  the publication change must be applied to prod alongside this file.
+
+Authoritative apply order for a clean environment is now `0001 → … → 0013`. See
+`docs/REALTIME.md`, `docs/NOTIFICATIONS.md`, and the Step 11 addendum in
+`docs/SECURITY_DEFINER_AUDIT.md`.

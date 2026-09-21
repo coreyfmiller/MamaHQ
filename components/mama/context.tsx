@@ -25,6 +25,7 @@ export type Overlay =
   | 'careHandoff'
   | 'calendar'
   | 'calendarCompose'
+  | 'notifications'
   | null
 
 interface PrototypeCtx {

@@ -11,6 +11,8 @@ import { MemoriesProvider } from './memories'
 import { AppointmentsProvider } from './appointments'
 import { PartnerProvider } from './partner'
 import { HouseholdProvider } from './household'
+import { RealtimeProvider } from './realtime'
+import { NotificationsProvider } from './notifications'
 import { GroceryProvider } from './grocery'
 import { TasksProvider } from './tasks'
 import { CareProvider } from './care'
@@ -41,6 +43,7 @@ import { TasksScreen } from './screens/tasks'
 import { CareHandoffScreen } from './screens/care-handoff'
 import { CalendarScreen } from './screens/calendar'
 import { CalendarComposeScreen } from './screens/calendar-compose'
+import { NotificationsScreen } from './screens/notifications'
 import { ReminderScreen } from './screens/reminder'
 
 function ActiveTab() {
@@ -152,6 +155,9 @@ function Stage() {
       <FullOverlay open={overlay === 'calendarCompose'}>
         <CalendarComposeScreen />
       </FullOverlay>
+      <FullOverlay open={overlay === 'notifications'}>
+        <NotificationsScreen />
+      </FullOverlay>
       <FullOverlay open={overlay === 'settings'}>
         <SettingsScreen />
       </FullOverlay>
@@ -169,6 +175,19 @@ function Stage() {
   )
 }
 
+// Bridges live notification arrival to the in-app toast. Sits inside PrototypeProvider
+// (so it can read showToast) and wraps the app in NotificationsProvider, so the bell
+// badge + list are available everywhere while a newly-arrived notification also
+// surfaces a transient toast.
+function NotificationsBridge({ children }: { children: ReactNode }) {
+  const { showToast } = useNav()
+  return (
+    <NotificationsProvider onArrive={(n) => showToast(n.title)}>
+      {children}
+    </NotificationsProvider>
+  )
+}
+
 export function Prototype() {
   return (
     <main className="flex min-h-[100dvh] w-full items-center justify-center bg-[oklch(0.93_0.018_82)] sm:p-6">
@@ -177,6 +196,7 @@ export function Prototype() {
           <ProfileProvider>
             <LogsProvider>
               <HouseholdProvider>
+              <RealtimeProvider>
               <GroceryProvider>
               <TasksProvider>
               <CareProvider>
@@ -187,9 +207,11 @@ export function Prototype() {
                     <AppointmentsProvider>
                       <InboxProvider>
                         <PrototypeProvider initialPhase="onboarding" initialTab="today">
-                          <AuthGate>
-                            <Stage />
-                          </AuthGate>
+                          <NotificationsBridge>
+                            <AuthGate>
+                              <Stage />
+                            </AuthGate>
+                          </NotificationsBridge>
                         </PrototypeProvider>
                       </InboxProvider>
                     </AppointmentsProvider>
@@ -200,6 +222,7 @@ export function Prototype() {
               </CareProvider>
               </TasksProvider>
               </GroceryProvider>
+              </RealtimeProvider>
               </HouseholdProvider>
             </LogsProvider>
           </ProfileProvider>

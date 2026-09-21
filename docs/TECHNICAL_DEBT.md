@@ -241,3 +241,36 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   used transiently in the UI but not stored on the row. Minor; would help future
   analytics on "how sure were we at add time."
 - **Suggested milestone:** opportunistic, if/when analytics need it.
+---
+
+## Realtime & Notifications debt (Step 11)
+
+### Notification delivery is in-app only (push/email/SMS deferred)
+- **Status:** intentional deferral (see `docs/NOTIFICATIONS.md`).
+- **Why it matters:** notifications are durable + shown in-app + live via realtime,
+  but there is no browser/mobile push (no service worker/PWA push), no email, no SMS.
+  The model separates the notification *record* from *delivery*, so adapters slot in
+  later without touching domain logic (`lib/notify.ts` is the outbound seam).
+- **Suggested milestone:** a dedicated push sub-step after an architecture review; then
+  email/SMS adapters; then a preference center.
+
+### Websocket realtime QA is manual-only
+- **Status:** advisory (see `docs/MANUAL_QA.md` Step 11 section).
+- **Why it matters:** CI proves the trusted notification foundation deterministically,
+  but two-browser websocket delivery/self-echo/reconnect behavior cannot be asserted in
+  CI and stays OUTSTANDING until a human runs it. We do not claim it passed.
+
+### `notifications` is not wiped by `clearFamilyData` ("Start over")
+- **Status:** advisory (consistent with tasks/care/calendar).
+- **Why it matters:** `notifications` has no client DELETE policy (recipient-owned,
+  trusted-write). Like the other RPC-only tables, a client `delete().eq(family_id)` is
+  RLS-filtered to zero rows (harmless no-op). Rows are removed by the `family_id`
+  ON DELETE CASCADE if a family is ever hard-deleted. A dedicated trusted reset path
+  would be needed for an explicit in-app wipe.
+- **Suggested milestone:** whenever a hard-reset RPC is built for tasks/care/calendar.
+
+### HouseholdPeople / membership changes are not realtime-synced
+- **Status:** intentional deferral (see `docs/REALTIME.md`).
+- **Why it matters:** identity is comparatively static within a session and the
+  coordinator's `household` domain slot is unused in Step 11. A future step can opt in
+  with a one-line change (add the tables to the publication + wire a listener).
