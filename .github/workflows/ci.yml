@@ -65,6 +65,9 @@ jobs:
       - name: Grocery Action tests
         run: pnpm run test:grocery-actions
 
+      - name: Tell MamaHQ interpreter/validation/resolution tests (Step 12)
+        run: pnpm run test:tell
+
       - name: TypeScript
         run: pnpm run typecheck
 
@@ -161,6 +164,9 @@ jobs:
 
       - name: Realtime / Notifications tests (Step 11)
         run: node scripts/test-notifications.ts
+
+      - name: Tell MamaHQ execution-security tests (Step 12)
+        run: node scripts/test-tell-security.ts
 
       - name: Stop local Supabase
         if: always()

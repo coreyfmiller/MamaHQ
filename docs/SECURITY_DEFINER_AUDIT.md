@@ -388,3 +388,27 @@ transition. GRANT argument-type lists **exactly** match each signature in order
 another household, impersonated, or read/marked by a non-recipient (recipient-scoped
 RLS). Generation is trusted and transactional. Behaviorally verified by
 `scripts/test-notifications.ts` in CI.
+
+
+---
+
+## Step 12 addendum — Tell MamaHQ
+
+Step 12 adds **NO new SECURITY DEFINER functions and no new migration.** Tell MamaHQ
+is an interpretation + orchestration layer: it executes ONLY by calling the existing
+trusted domain RPCs audited above (`create_task`, `assign_task`, `create_calendar_event`,
+`propose_care_handoff`, plus the grocery insert/increment paths). Those RPCs remain the
+single trusted mutation boundary; their authorization, family-derivation, cross-family
+integrity, idempotency, and assignment≠acceptance guarantees are unchanged and continue
+to hold when the caller is Tell MamaHQ.
+
+The Tell MamaHQ server route (`app/api/tell/route.ts`) is a Node route handler, not a
+DB function. It uses the anon-key cookie-session server client (`supabaseServer()`) so
+RLS applies exactly as for the browser client; it authenticates via `auth.getUser()`
+and derives the family via `ensure_family` (never a client-supplied family id). It
+never uses a service-role key and never bypasses RLS. Model output cannot mint a
+trusted id (people are referenced by name, resolved deterministically), and every
+resolved reference is re-validated by the domain RPC at execution time. Behaviorally
+verified by `scripts/test-tell-security.ts` (execution passes through domain authz;
+cross-family/tampered/invented-uuid references rejected; no forged acceptance; no
+forged notification; direct table writes blocked) in CI.
