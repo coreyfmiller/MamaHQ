@@ -47,6 +47,11 @@ interface HouseholdCtx {
   invitePerson: (personId: string, email?: string) => Promise<{ ok: boolean; url?: string; error?: string }>
   /** Revoke a pending invitation, making its token unusable. */
   revokeInvite: (invitationId: string) => Promise<void>
+  /** Beta Phase 1 — set MY canonical household display name (the person linked to
+   *  my account). The single trusted writer of the current user's identity name;
+   *  goes through the SECURITY DEFINER `set_my_display_name` RPC so it can only ever
+   *  rename my own person. Returns ok/error. */
+  renameMe: (displayName: string) => Promise<{ ok: boolean; error?: string }>
 }
 
 const Ctx = createContext<HouseholdCtx>({
@@ -58,6 +63,7 @@ const Ctx = createContext<HouseholdCtx>({
   clearHousehold: () => {},
   invitePerson: async () => ({ ok: false }),
   revokeInvite: async () => {},
+  renameMe: async () => ({ ok: false }),
 })
 
 export function useHousehold() {
@@ -258,6 +264,23 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Beta Phase 1 — the single trusted writer of MY canonical household name. Goes
+  // through the SECURITY DEFINER RPC (renames only my own person), then refetches so
+  // People / task ownership / calendar responsibility / notifications all read the
+  // corrected identity.
+  const renameMe: HouseholdCtx['renameMe'] = async (displayName) => {
+    if (!familyId) return { ok: false, error: 'not signed in' }
+    const name = displayName.trim()
+    if (!name) return { ok: false, error: 'name is required' }
+    try {
+      await db.setMyDisplayNameRpc(familyId, name)
+      await loadHousehold(familyId)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'could not save your name' }
+    }
+  }
+
   const clearHousehold = () => {
     setLocalPeople([])
     writeLocal([])
@@ -268,8 +291,20 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     [people, user],
   )
 
+  // NOTE (Beta Phase 1 final review): there is deliberately NO automatic identity
+  // reconciliation here. An earlier version read this device's local profile momName
+  // and, if the caller's linked person still had a bootstrap placeholder ('Me'/
+  // 'Member'), silently adopted it as the canonical household name. That is unsafe on a
+  // shared device: after user A onboards (profile momName='Alice') and signs out, a
+  // freshly-joined user B (person still 'Member') would have their OWN cloud identity
+  // silently renamed to 'Alice' — device-local state is not tied to the current auth
+  // user. The RPC renames the correct row, but with the WRONG name. Identity is only
+  // ever set EXPLICITLY: by the current user in onboarding (renameMe), or corrected in
+  // Settings → Account → Your name. A placeholder is left visible (and editable) rather
+  // than guessed.
+
   const value = useMemo(
-    () => ({ people, hydrated, me, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite }),
+    () => ({ people, hydrated, me, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [people, hydrated, me, familyId],
   )

@@ -35,6 +35,17 @@ knowledge until it actually ships.
 | **Contextual Assistant** | NOT IMPLEMENTED | No assistant; depends on LLM + cross-person awareness that don't exist. |
 | **Household Grocery Memory (Step 6)** | PARTIAL (infra implemented) | Step 6 added `household_items` (variants), an observation ledger, conservative learning + thresholds, explicit "Make this my usual", enrichment that fills blanks without overriding explicit input, and restore-reversal — all family-scoped with RLS. Not yet surfaced as a "Usually Buy" screen; brand/store enrichment deferred. See `docs/HOUSEHOLD_GROCERY_MEMORY.md`. |
 
+## Beta Phase 1 (identity, single capture, error visibility)
+
+| Capability | Status | Reality today |
+|---|---|---|
+| **Canonical household identity** | IMPLEMENTED (Beta Phase 1) | The onboarding/Settings name updates the authenticated user's linked HouseholdPerson via the trusted `set_my_display_name` RPC (migration 0014). Editable in Settings → Account. Identity is only ever set **explicitly** (onboarding or Settings); there is deliberately no automatic reconciliation from the device-local profile name (unsafe on a shared device — it would rename the wrong signed-in user). Existing users with a placeholder ('Me'/'Member') correct it in Settings. See `docs/IDENTITY_AND_CAPTURE.md`. |
+| **Single capture surface** | IMPLEMENTED (Beta Phase 1) | Tell MamaHQ is the one brain-dump path (primary "Tell" tab + Capture button). The legacy rule-based Inbox is no longer routed from navigation (code/data retained, unreachable). Legacy Speak/Photo capture options retired for beta. |
+| **App error boundaries** | IMPLEMENTED (Beta Phase 1) | `app/error.tsx` / `global-error.tsx` / `not-found.tsx` (calm, retry, no raw errors, no false save claim). No blank screens / raw stacks. |
+| **Out-of-app crash monitoring** | NOT ACTIVE (deferred) | `lib/monitoring.ts` is a privacy-first seam (error type/message/stack only; no household content; no session replay) but it is a **no-op today**: `@sentry/nextjs` is not installed and no DSN is set, so it cannot send. Enabling it correctly under Next 16 (Turbopack) needs instrumentation wiring — a small focused task. Deferred blocker if crash visibility is a launch requirement. See `docs/TECHNICAL_DEBT.md`. |
+| **Partner SMS/email delivery controls** | REMOVED (Beta Phase 1) | The partner screen no longer shows SMS/email toggles (there is no such delivery). In-app notifications are the real channel for partners who accept an invite. |
+| **Voice / photo capture** | NOT IMPLEMENTED (deferred) | The legacy on-device voice/OCR capture fed the retired rule-based engine and is not part of the single Tell path for beta. A later phase may feed speech-to-text into the same Tell interpretation pipeline. |
+
 ## Related known gaps (see TECHNICAL_DEBT.md)
 
 - **PurchaseEvent snapshot** now captures `canonical_item_id`, `resolved_attributes`,

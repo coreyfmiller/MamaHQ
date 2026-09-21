@@ -16,7 +16,7 @@ import {
 import { useNav } from '../context'
 import { useTell } from '../tell'
 import type { ResolvedProposal, ProposalIssue } from '@/lib/tell/contract'
-import { Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
+import { BottomNav, Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
 
 // Step 12 — the Tell MamaHQ surface. One calm input: get it out of your head.
 // MamaHQ shows what it understood; the user approves; trusted domains execute.
@@ -36,14 +36,19 @@ const KIND_LABEL: Record<ResolvedProposal['kind'], string> = {
   CARE_HANDOFF_PROPOSE: 'Ask to take over care',
 }
 
-export function TellScreen() {
+export function TellScreen({ asTab = false }: { asTab?: boolean }) {
   const { closeOverlay } = useNav()
   const tell = useTell()
 
   return (
     <Screen>
       <StatusBar />
-      <TopBar variant="close" title="Tell MamaHQ" onBack={closeOverlay} />
+      {/* As a primary tab there's no "close"; as an overlay it keeps the close bar. */}
+      {asTab ? (
+        <div className="px-4 py-2" />
+      ) : (
+        <TopBar variant="close" title="Tell MamaHQ" onBack={closeOverlay} />
+      )}
       <Scroll className="space-y-4 px-6 pb-8">
         <header className="pt-1">
           <h1 className="flex items-center gap-2 font-serif text-[24px] font-semibold tracking-tight">
@@ -78,13 +83,25 @@ export function TellScreen() {
           </>
         )}
       </Scroll>
+      {asTab && <BottomNav active="tell" />}
     </Screen>
   )
 }
 
+// A few example brain-dumps shown before the user has typed. EDUCATIONAL ONLY:
+// tapping one populates the input; it never interprets or executes automatically —
+// the user still presses "Sort this out" and then confirms (Step 12 invariant).
+const EXAMPLE_PROMPTS = [
+  'Add milk and diapers.',
+  'Remind me to call the dentist tomorrow.',
+  'James is taking Madelyn to soccer Thursday at 6.',
+  'Add bananas and remind me to book the baby’s appointment.',
+]
+
 function Composer() {
   const tell = useTell()
   const busy = tell.phase === 'interpreting'
+  const showExamples = tell.draft.trim().length === 0 && tell.phase !== 'reviewing' && tell.phase !== 'done'
   return (
     <div className="space-y-2">
       <label htmlFor="tell-input" className="sr-only">
@@ -99,6 +116,23 @@ function Composer() {
         placeholder="Need diapers, we're low on milk, James has soccer pickup Thursday at 6…"
         className="w-full resize-none rounded-2xl border border-border bg-card px-4 py-3 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
       />
+      {showExamples && (
+        <div className="space-y-1.5">
+          <p className="px-1 text-[12px] font-medium text-muted-foreground">Try something like</p>
+          <div className="flex flex-wrap gap-1.5">
+            {EXAMPLE_PROMPTS.map((ex) => (
+              <button
+                key={ex}
+                // Populate the input only — never auto-interpret or execute.
+                onClick={() => tell.setDraft(ex)}
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-left text-[13px] text-foreground transition-transform active:scale-[0.98]"
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <button
         onClick={() => void tell.interpret()}
         disabled={busy || tell.draft.trim().length === 0}

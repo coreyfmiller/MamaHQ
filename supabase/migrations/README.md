@@ -271,3 +271,25 @@ Notifications** foundation. It does NOT modify `0001`–`0012`.
 Authoritative apply order for a clean environment is now `0001 → … → 0013`. See
 `docs/REALTIME.md`, `docs/NOTIFICATIONS.md`, and the Step 11 addendum in
 `docs/SECURITY_DEFINER_AUDIT.md`.
+## Beta Phase 1 — 0014_owner_identity.sql
+
+`0014_owner_identity.sql` (additive, after `0013`) fixes the household-identity P0
+from the closed-beta audit: the name entered during onboarding never reliably became
+the authenticated user's canonical HouseholdPerson display name (the owner person is
+bootstrapped as "Me" in `0009`), so People / task ownership / calendar responsibility /
+care / notifications could show a placeholder.
+
+- Adds ONE SECURITY DEFINER function: `set_my_display_name(p_family_id, p_display_name)`.
+  It sets the CALLER'S OWN canonical HouseholdPerson name (resolved from the
+  authenticated account via `my_person_in_family`, never a caller-supplied id), so it
+  can only ever rename the caller's own person and only within a family they're a
+  member of. It bootstraps a missing linked person safely (owner → `ensure_owner_person`;
+  member → the authorized link flag from `0009`), validates + normalizes the name
+  (trim, collapse internal whitespace, 1..80 chars; Unicode/apostrophes/hyphens
+  allowed), and is idempotent. Granted to `authenticated`.
+- No schema/table change, no new RLS policy (client `display_name` edits were already
+  permitted by `0009`; this RPC is the trusted, account-derived writer the app uses).
+
+Authoritative apply order for a clean environment is now `0001 → … → 0014`. See
+`docs/IDENTITY_AND_CAPTURE.md` and `docs/SECURITY_DEFINER_AUDIT.md` (Beta Phase 1
+addendum).

@@ -3,7 +3,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { Camera, Check, ChevronLeft, Mic, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Baby, House, Inbox as InboxIcon, User } from 'lucide-react'
+import { Baby, House, Sparkles, User } from 'lucide-react'
 import { useNav, type Tab } from './context'
 
 /* ---------------- Status bar ---------------- */
@@ -269,7 +269,7 @@ const leftNav: { tab: Tab; label: string; Icon: typeof House }[] = [
   { tab: 'baby', label: 'Baby', Icon: Baby },
 ]
 const rightNav: { tab: Tab; label: string; Icon: typeof House }[] = [
-  { tab: 'inbox', label: 'Inbox', Icon: InboxIcon },
+  { tab: 'tell', label: 'Tell', Icon: Sparkles },
   { tab: 'me', label: 'Me', Icon: User },
 ]
 

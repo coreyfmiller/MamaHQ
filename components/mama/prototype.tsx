@@ -27,7 +27,10 @@ import { ApptComposeScreen } from './screens/appt-compose'
 import { CaptureContent } from './screens/capture'
 import { TodayScreen } from './screens/today'
 import { BabyScreen } from './screens/baby'
-import { InboxScreen } from './screens/inbox'
+// Legacy InboxScreen intentionally no longer imported/rendered (Beta Phase 1):
+// Tell MamaHQ is the single capture surface. The legacy rule-based Inbox code
+// (components/mama/screens/inbox.tsx + inbox/commit.ts + inbox/local-extractor.ts)
+// is retained but unreachable from primary navigation; see docs/TELL_MAMAHQ.md.
 import { MeScreen } from './screens/me'
 import { QuickLogContent } from './screens/quick-log'
 import { AppointmentScreen } from './screens/appointment'
@@ -53,8 +56,10 @@ function ActiveTab() {
   switch (tab) {
     case 'baby':
       return <BabyScreen />
-    case 'inbox':
-      return <InboxScreen />
+    case 'tell':
+      // Beta Phase 1: Tell MamaHQ is the single canonical capture surface, promoted
+      // to a primary tab (replacing the legacy rule-based Inbox tab).
+      return <TellScreen asTab />
     case 'me':
       return <MeScreen />
     default:

@@ -308,3 +308,55 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   client holds them until the user acts. If durable Tell provenance/analytics is ever
   needed, a minimal `0014_tell_mamahq.sql` (family-scoped, RLS, minimal retention)
   would be the smallest addition — deliberately not built now.
+---
+
+## Beta Phase 1 debt (identity, single capture, error visibility)
+
+### Legacy Inbox is dead code (retained, unreachable)
+- **Status:** deferred cleanup (intentional for beta safety).
+- **Why it matters:** `components/mama/screens/inbox.tsx`, `components/mama/inbox/commit.ts`,
+  and `components/mama/inbox/local-extractor.ts` remain in the tree but are no longer
+  routed from primary navigation (Tell MamaHQ is the single capture path). The legacy
+  voice/photo capture screens (`screens/voice.tsx`, `screens/photo.tsx`) still call the
+  legacy `addCapture` engine but are no longer opened from the capture sheet.
+- **Suggested milestone:** delete the legacy Inbox/commit/local-extractor + voice/photo
+  code (and the `captures` read path) in a later phase, once beta confidence is
+  established. Existing `captures` data is preserved; no destructive migration was run.
+
+### Error monitoring is a NO-OP today — DEFERRED BLOCKER if crash visibility is required
+- **Status:** deferred (explicit blocker for the "crash visibility" beta goal).
+- **Why it matters:** `lib/monitoring.ts` is a privacy-safe seam that only actually sends
+  when `NEXT_PUBLIC_SENTRY_DSN` is set AND `@sentry/nextjs` is installed. **Neither is
+  true today** (the package is not a dependency and no DSN is configured), so in the
+  current build it can never send a production event — it is a no-op (dev logs a warning).
+  The error boundaries (`app/error.tsx` etc.) still work and never show raw errors; what
+  is missing is out-of-app crash *reporting*.
+- **Why it was NOT wired up in Beta Phase 1:** a *correct* `@sentry/nextjs` install under
+  Next.js 16 (Turbopack default) is not a one-line add — it needs `Sentry.init()` in
+  `instrumentation.ts` / `instrumentation-client.ts` (+ server/edge configs) and build
+  wiring, which the current direct-`captureException` seam does not do. That is a focused
+  change with build-config blast radius, not a safe bolt-on during a review, so it was
+  deliberately deferred rather than half-installed (a package present but never
+  initialized would still send nothing while adding weight — worse than an honest no-op).
+- **To actually enable (own small task):** add `@sentry/nextjs`, create the instrumentation
+  files with `Sentry.init({ dsn, tracesSampleRate: 0, replaysSessionSampleRate: 0,
+  replaysOnErrorSampleRate: 0 })` (NO session replay — privacy), set `NEXT_PUBLIC_SENTRY_DSN`,
+  and route `reportError` through the initialized client. Verify a test error appears.
+- **Suggested milestone:** do this before inviting families **if** crash visibility is a
+  launch requirement; otherwise the beta ships with in-app error boundaries only and this
+  stays a known, documented gap.
+
+### Signed-in read fallback to localStorage on fetch error
+- **Status:** advisory (not a false-shared-truth write path).
+- **Why it matters:** when signed in, a provider fetch error falls back to a localStorage
+  read-cache so the app still renders. Writes still go to the cloud (RLS-scoped), and the
+  signed-OUT app is auth-gated (no local prototype masquerade). The residual is read
+  staleness on a transient fetch error, which self-heals on the next successful fetch.
+- **Suggested milestone:** a deliberate offline/reconnect pass (already tracked under
+  the offline debt entry); no auth rewrite was in scope for Beta Phase 1.
+
+### partner_contacts notify flags are vestigial
+- **Status:** advisory.
+- **Why it matters:** the partner record still carries `notifySms`/`notifyEmail` columns,
+  now always written `false` (the UI no longer exposes delivery toggles). They can be
+  dropped when `partner_contacts` is folded into `household_people` (existing debt item).
