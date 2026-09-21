@@ -33,11 +33,35 @@ export interface HouseholdPerson {
 
 const STORAGE_KEY = 'mamahq.proto.household.v1'
 
+// The bootstrap placeholder names the server gives a freshly-created connected
+// person before the human sets their real name: the owner starts as 'Me'
+// (ensure_owner_person, 0009) and an invited member starts as 'Member'
+// (accept_household_invitation, 0009). These are NOT real identities — they are the
+// signal that this user still needs to establish who they are in the household. A
+// name equal to one of these means "identity not yet set". (Beta Phase 2.)
+export const PLACEHOLDER_NAMES = new Set(['Me', 'Member'])
+
+/** True when a display name is still a bootstrap placeholder (identity not set). */
+export function isPlaceholderName(name: string | undefined | null): boolean {
+  return !!name && PLACEHOLDER_NAMES.has(name.trim())
+}
+
 interface HouseholdCtx {
   people: HouseholdPerson[]
   hydrated: boolean
   /** The current user's connected person (owner-person), if resolved. */
   me: HouseholdPerson | null
+  /** Beta Phase 2 — authoritative first-run signal, derived from cloud household
+   *  truth (NOT a device-local flag). null while we don't yet know (signed out, or
+   *  not hydrated). When known:
+   *    'creator' — I'm the household owner and my canonical name is still the 'Me'
+   *                placeholder → I created this household and haven't set who I am.
+   *    'partner' — I'm a joined member whose canonical name is still the 'Member'
+   *                placeholder → I accepted an invite and haven't set who I am.
+   *    'done'    — my canonical person has a real (non-placeholder) name → I've been
+   *                established; never show onboarding again.
+   *  A returning user is 'done' regardless of any lost device-local wizard state. */
+  firstRun: 'creator' | 'partner' | 'done' | null
   /** Add or update an account-less household person (helper/relative/etc.). */
   savePerson: (p: Omit<HouseholdPerson, 'id'> & { id?: string }) => void
   removePerson: (id: string) => void
@@ -58,6 +82,7 @@ const Ctx = createContext<HouseholdCtx>({
   people: [],
   hydrated: false,
   me: null,
+  firstRun: null,
   savePerson: () => {},
   removePerson: () => {},
   clearHousehold: () => {},
@@ -291,6 +316,21 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     [people, user],
   )
 
+  // Beta Phase 2 — the authoritative first-run signal, derived ONLY from cloud
+  // household truth (my canonical person's role + whether its name is still a
+  // placeholder). We must have a family AND finished hydrating AND resolved `me`
+  // before we can decide; until then it's null (caller shows a loading state, never
+  // guesses). Because this reads the cloud person — not a device-local flag — a
+  // returning user is 'done' on any device, and losing localStorage cannot make an
+  // established user look new. A joined partner (role 'member') with a 'Member'
+  // placeholder is 'partner'; the owner ('owner'/undefined) with a 'Me' placeholder
+  // is 'creator'; any real name is 'done'.
+  const firstRun = useMemo<HouseholdCtx['firstRun']>(() => {
+    if (!familyId || !hydrated || !me) return null
+    if (!isPlaceholderName(me.displayName)) return 'done'
+    return me.role === 'member' ? 'partner' : 'creator'
+  }, [familyId, hydrated, me])
+
   // NOTE (Beta Phase 1 final review): there is deliberately NO automatic identity
   // reconciliation here. An earlier version read this device's local profile momName
   // and, if the caller's linked person still had a bootstrap placeholder ('Me'/
@@ -304,9 +344,9 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   // than guessed.
 
   const value = useMemo(
-    () => ({ people, hydrated, me, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe }),
+    () => ({ people, hydrated, me, firstRun, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [people, hydrated, me, familyId],
+    [people, hydrated, me, firstRun, familyId],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
