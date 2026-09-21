@@ -540,3 +540,70 @@ The projection is a pure deterministic function (`lib/today/model.ts`); the test
 14. **[HUMAN]** Review Me, the read screen, read-actions, appointment prep, and the
     beyond-90 screen at 320 / 375 / 390 / 430px: no horizontal overflow, reachable
     actions, wrapping long titles, safe-area CTAs.
+
+---
+
+## Beta Phase 5 — Baby & Care polish (all [HUMAN], OUTSTANDING)
+
+Scope: UX truthfulness + reliability of the existing Baby + Care experience. No new
+architecture, no migration (chain still ends at `0014`). CI proves the deterministic
+core: the pure `test:log-dedupe` suite (duplicate-tap guard) and the existing Step 9
+`test:handoff` DB suite (care-holder truth, proposed ≠ transferred, decline/cancel/
+stale, cross-family, forge-resistance, deterministic context). The items below need a
+human because they exercise real React state, optimistic writes, and two devices.
+
+### Baby header truthfulness
+1. **[HUMAN]** Fresh install / signed out (or before onboarding fills a profile): the
+   Baby header shows "Baby" with NO age line and NO "Emma" — never the demo fixture.
+2. **[HUMAN]** After onboarding sets the baby's name + birth date: the header shows the
+   real name and a real age label; refreshing keeps them.
+
+### Quick-log is logging-only (no fake handoff)
+3. **[HUMAN]** Open Baby → "Log something": the sheet offers ONLY Feed / Sleep / Diaper
+   / Pumping / Medication. There is NO "Hand off to {partner}" entry and NO copy about
+   text/email delivery.
+4. **[HUMAN]** The ONLY care handoff is Baby → "Care right now" card → care-handoff
+   overlay (Step 9). Confirm proposing does not move the holder; only the recipient
+   accepting does; and the preview says "nothing predicted".
+
+### Log save truthfulness (§24)
+5. **[HUMAN]** Signed in, online: log a feed → optimistic entry appears in Today's
+   timeline; no error toast. (Cloud write succeeded.)
+6. **[HUMAN]** Simulate a sync failure (e.g. go offline / block the Supabase host) then
+   log a feed: the entry appears optimistically AND a truthful toast shows it "couldn't
+   sync your last feed to your household — it may be lost if you leave or refresh." The
+   copy must NOT claim it was "saved". Re-connect and log again → a successful write
+   clears the error (no lingering banner).
+7. **[HUMAN]** Confirm the wording matches the operation: a failed EDIT says it "may
+   revert", a failed DELETE says the entry "may reappear", a failed START/END sleep
+   says "may be lost"/"may revert". The UI never silently claims success.
+8. **[HUMAN]** Cross-family race: on a flaky connection, log something, then sign out (or
+   switch family) before it resolves. The stale failure/success must NOT surface a toast
+   or clear an error in the new session (session-generation guard).
+
+### Duplicate-tap guard (§26)
+9. **[HUMAN]** Rapidly double-tap the same feed amount (e.g. "4 oz") or the same diaper
+   type: only ONE entry is logged (the second identical tap within ~4s is absorbed).
+10. **[HUMAN]** Log the same amount again a few minutes later: it IS logged as a second
+    entry (the guard only absorbs an immediate accidental repeat, never a real second
+    feed). Also confirm a same-amount feed with a different nursing SIDE is kept (side
+    is part of identity).
+11. **[HUMAN]** Start a sleep, then start another immediately: the single-active-sleep
+    guard still prevents a second running sleep (unchanged); sleep is never treated as
+    a duplicate by the new guard.
+
+### Two-device freshness (documents a known gap, not a pass)
+12. **[HUMAN]** On device B, log a feed; on device A it appears after the next load/
+    refetch, NOT instantly (logs are intentionally not realtime — see
+    `docs/PRODUCT_LIMITATIONS.md` / `docs/TECHNICAL_DEBT.md`). This is expected
+    behavior for the beta, recorded here so it isn't mistaken for a bug.
+
+### No predictive / medical language
+13. **[HUMAN]** Across Baby (Timeline / Patterns), the care-handoff overlay, and
+    quick-log: verify there is no next-feed prediction, no wake window, no schedule, no
+    "hungry/overdue", no percentile, no normal/abnormal, no diagnosis, no score.
+
+### Mobile
+14. **[HUMAN]** Review the Baby screen, quick-log sheet, and care-handoff overlay at
+    320 / 375 / 390 / 430px: no horizontal overflow, reachable actions, long baby names
+    wrap, safe-area CTAs.

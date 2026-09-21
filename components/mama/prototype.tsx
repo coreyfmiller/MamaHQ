@@ -1,12 +1,12 @@
 'use client'
 
-import { type ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { PrototypeProvider, useNav } from './context'
 import { AuthProvider, useAuth } from './auth'
 import { SignInScreen } from './screens/sign-in'
 import { ProfileProvider } from './profile'
 import { useHousehold } from './household'
-import { LogsProvider } from './logs'
+import { LogsProvider, useLogs } from './logs'
 import { MomProvider } from './mom'
 import { MemoriesProvider } from './memories'
 import { AppointmentsProvider } from './appointments'
@@ -185,9 +185,28 @@ function Stage() {
         <ResetScreen />
       </FullOverlay>
 
+      <LogSyncBridge />
       <Toast message={toast} />
     </>
   )
+}
+
+// Truthfulness bridge (Beta Phase 5 §24): logs write optimistically, so a failed
+// cloud sync used to disappear into console.warn while the UI still said "logged".
+// This surfaces the logs provider's last sync failure as a transient toast so Mom is
+// told the truth — her entry is safe on-device, but it didn't reach the cloud — then
+// clears it so the banner doesn't linger once syncing recovers.
+function LogSyncBridge() {
+  const { syncError, clearSyncError } = useLogs()
+  const { showToast } = useNav()
+  useEffect(() => {
+    if (!syncError) return
+    showToast(syncError)
+    clearSyncError()
+    // showToast/clearSyncError identities are stable enough; re-run only on a new error.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncError])
+  return null
 }
 
 // Bridges live notification arrival to the in-app toast. Sits inside PrototypeProvider

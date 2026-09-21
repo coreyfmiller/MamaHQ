@@ -74,6 +74,9 @@ jobs:
       - name: First 90 Days tests (Beta Phase 4)
         run: pnpm run test:first90
 
+      - name: Log duplicate-submission guard tests (Beta Phase 5)
+        run: pnpm run test:log-dedupe
+
       - name: TypeScript
         run: pnpm run typecheck
 
