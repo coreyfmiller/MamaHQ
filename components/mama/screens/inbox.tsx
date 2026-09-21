@@ -188,7 +188,9 @@ export function InboxScreen() {
           ))}
       </Scroll>
 
-      <BottomNav active="inbox" />
+      {/* Beta Phase 1: this legacy Inbox screen is retained but no longer routed
+          from primary navigation (Tell MamaHQ is the single capture surface). */}
+      <BottomNav active="tell" />
     </Screen>
   )
 }

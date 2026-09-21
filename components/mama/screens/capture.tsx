@@ -1,6 +1,6 @@
 'use client'
 
-import { Mic, Camera, PenLine, ListPlus, type LucideIcon } from 'lucide-react'
+import { PenLine, ListPlus, type LucideIcon } from 'lucide-react'
 import { useNav } from '../context'
 
 type Choice = {
@@ -20,25 +20,13 @@ type Choice = {
 export function CaptureContent() {
   const { openOverlay, closeOverlay } = useNav()
 
+  // Beta Phase 1: one brain-dump path. Tell MamaHQ is the single capture surface
+  // (the legacy Speak/Photo options fed the old rule-based Inbox engine and are
+  // retired for beta — voice/photo capture is a documented later phase). Quick log
+  // remains: it's tap-based baby logging, not a brain-dump into the legacy engine.
   const choices: Choice[] = [
     {
-      key: 'speak',
-      Icon: Mic,
-      title: 'Speak',
-      sub: 'Say it out loud, MamaHQ sorts it',
-      tone: 'bg-sage-soft text-sage',
-      onPick: () => openOverlay('voice'),
-    },
-    {
-      key: 'photo',
-      Icon: Camera,
-      title: 'Photo',
-      sub: 'Snap a note, label or schedule',
-      tone: 'bg-blue-soft text-blue',
-      onPick: () => openOverlay('photo'),
-    },
-    {
-      key: 'type',
+      key: 'tell',
       Icon: PenLine,
       title: 'Tell MamaHQ',
       sub: 'Brain-dump — it sorts groceries, tasks & calendar',

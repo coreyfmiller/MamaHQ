@@ -58,8 +58,8 @@ export function VoiceScreen() {
     if (!t) return
     await addCapture(t, 'voice')
     closeOverlay()
-    setTab('inbox')
-    showToast('Added to your Inbox to review')
+    setTab('tell')
+    showToast('Saved to review')
   }
 
   /* ---------------- Review / edit the transcript ---------------- */

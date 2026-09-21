@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
-export type Tab = 'today' | 'baby' | 'inbox' | 'me'
+export type Tab = 'today' | 'baby' | 'tell' | 'me'
 
 export type Overlay =
   | 'capture'

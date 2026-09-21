@@ -50,8 +50,8 @@ export function PhotoScreen() {
     if (!t) return
     await addCapture(t, 'photo')
     closeOverlay()
-    setTab('inbox')
-    showToast('Added to your Inbox to review')
+    setTab('tell')
+    showToast('Saved to review')
   }
 
   /* ---------------- Review / edit extracted text ---------------- */
