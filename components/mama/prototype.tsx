@@ -17,6 +17,7 @@ import { GroceryProvider } from './grocery'
 import { TasksProvider } from './tasks'
 import { CareProvider } from './care'
 import { CalendarProvider } from './calendar'
+import { TellProvider } from './tell'
 import { InboxProvider } from './inbox/store'
 import { BottomSheet, FullOverlay, Toast } from './sheet'
 import { OnboardingScreen } from './screens/onboarding'
@@ -44,6 +45,7 @@ import { CareHandoffScreen } from './screens/care-handoff'
 import { CalendarScreen } from './screens/calendar'
 import { CalendarComposeScreen } from './screens/calendar-compose'
 import { NotificationsScreen } from './screens/notifications'
+import { TellScreen } from './screens/tell'
 import { ReminderScreen } from './screens/reminder'
 
 function ActiveTab() {
@@ -158,6 +160,9 @@ function Stage() {
       <FullOverlay open={overlay === 'notifications'}>
         <NotificationsScreen />
       </FullOverlay>
+      <FullOverlay open={overlay === 'tell'}>
+        <TellScreen />
+      </FullOverlay>
       <FullOverlay open={overlay === 'settings'}>
         <SettingsScreen />
       </FullOverlay>
@@ -201,6 +206,7 @@ export function Prototype() {
               <TasksProvider>
               <CareProvider>
               <CalendarProvider>
+              <TellProvider>
               <PartnerProvider>
                 <MomProvider>
                   <MemoriesProvider>
@@ -218,6 +224,7 @@ export function Prototype() {
                   </MemoriesProvider>
                 </MomProvider>
               </PartnerProvider>
+              </TellProvider>
               </CalendarProvider>
               </CareProvider>
               </TasksProvider>

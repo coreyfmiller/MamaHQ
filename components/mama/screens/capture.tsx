@@ -18,7 +18,7 @@ type Choice = {
  * that already exists — this sheet is just the calm front door to capture.
  */
 export function CaptureContent() {
-  const { openOverlay, setTab, closeOverlay } = useNav()
+  const { openOverlay, closeOverlay } = useNav()
 
   const choices: Choice[] = [
     {
@@ -40,13 +40,10 @@ export function CaptureContent() {
     {
       key: 'type',
       Icon: PenLine,
-      title: 'Type',
-      sub: 'Write a quick brain dump',
+      title: 'Tell MamaHQ',
+      sub: 'Brain-dump — it sorts groceries, tasks & calendar',
       tone: 'bg-peach-soft text-peach',
-      onPick: () => {
-        closeOverlay()
-        setTab('inbox')
-      },
+      onPick: () => openOverlay('tell'),
     },
     {
       key: 'quicklog',
