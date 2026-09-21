@@ -82,6 +82,18 @@ knowledge until it actually ships.
 | **Reminder preview** | REMOVED (Beta Phase 4) | The hardcoded fake reminder cards (referencing a demo baby "Emma", implying notifications) and the Me "Reminders · See a preview" entry were removed. The appointment "Remind me" toggle now honestly says it only saves a preference — MamaHQ has no push/SMS/email delivery. |
 | **Mom personal to-dos vs Tasks** | RETAINED as-is (Beta Phase 4) | The Me "My to-dos" list (`mom_items`) is a lightweight personal list, kept as-is for beta (no data migration). It is distinct from canonical household **Tasks** (Step 8); actionable household items should go through Tell/Tasks. Consolidation is deferred. |
 
+## Beta Phase 5 (Baby & Care polish)
+
+| Capability | Status | Reality today |
+|---|---|---|
+| **Baby name/age before setup** | HONEST (Beta Phase 5) | The Baby screen header no longer falls back to the demo fixture baby ("Emma" + a fabricated age). Until the real profile resolves it shows a plain "Baby" with no invented age. The demo `baby` fixture is not imported by the product app (it only backs the separate marketing landing site). |
+| **Care handoff (who has the baby)** | IMPLEMENTED (Step 9, unchanged) | The ONE truthful handoff: Baby → "Care right now" card → care-handoff overlay. Proposing does NOT transfer; responsibility moves only when the recipient explicitly accepts. Recipients must have a connected account; the deterministic context shows only what's been logged — nothing predicted. |
+| **Quick-log "hand off to partner"** | REMOVED (Beta Phase 5) | The Baby quick-log's old "Hand off to {partner}" created a **task** and fired a **no-op** SMS/email seam with copy implying delivery. It conflated Tasks with the care-holder concept and implied a channel that doesn't exist. Removed — quick-log is now purely for logging. (The Inbox "handoffs" tab remains a separate Tasks-domain hand-off with its own honest "delivery isn't on yet" framing.) |
+| **Log save truthfulness** | IMPLEMENTED (Beta Phase 5) | Logs write optimistically (instant + offline-friendly). When signed in, a failed cloud sync now surfaces a truthful toast ("Saved on this device, but couldn't sync … to the cloud") instead of silently swallowing the error while the UI claims success. It clears on the next successful write/load. |
+| **Duplicate-tap protection** | IMPLEMENTED (client heuristic) | An accidental double-tap that would log the identical feed/diaper/pumping/medication within 4 seconds is collapsed to a single entry. It is a client-side guard, not a database constraint — two *devices* logging the identical thing at once are not de-duplicated (single-caregiver beta assumption). Sleep is never de-duplicated (it has its own single-active guard). |
+| **Baby-care logs live across devices** | NOT REALTIME (honest) | Logs are NOT wired to the Step 11 realtime coordinator, so a partner's new log appears on the next load/refetch, not instantly. Deliberately not fixed in Phase 5: it requires a publication migration (logs are intentionally excluded in `0013`) plus a provider reorder — an architecture change, not polish. See `docs/TECHNICAL_DEBT.md`. |
+| **Predictive / medical baby insight** | NOT IMPLEMENTED (by design) | No next-feed prediction, no wake windows, no schedule, no "hungry/overdue", no percentiles, no normal/abnormal, no diagnosis. Baby "Patterns" is "just the facts you've recorded. Nothing to score." Care context is a deterministic snapshot of logged events only. |
+
 ## Related known gaps (see TECHNICAL_DEBT.md)
 
 - **PurchaseEvent snapshot** now captures `canonical_item_id`, `resolved_attributes`,

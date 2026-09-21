@@ -595,3 +595,80 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   relabeled the toggle to say it only saves a preference and MamaHQ can't send
   notifications yet, rather than implying "a day before · an hour before" delivery.
   Real delivery + the legacy-Appointments/Calendar consolidation remain deferred.
+
+---
+
+## Baby & Care polish debt (Beta Phase 5)
+
+### Baby-care logs are STILL not wired to the realtime coordinator (reaffirmed)
+- **Status:** deferred (evaluated in Beta Phase 5; deliberately NOT wired).
+- **Why it matters:** the same gap noted in Beta Phase 3 — another device's new
+  feed/diaper/sleep (and therefore the care handoff context built from logs) appears on
+  the next load/refetch, not instantly.
+- **Why Phase 5 did not fix it (scope + migration boundary):** wiring logs into the
+  Step 11 coordinator is NOT a client-only polish change. It requires all three of:
+  (1) adding `logs` to the `supabase_realtime` publication — `0013` INTENTIONALLY
+  excludes it ("NOT exposed: … logs …"), so this is a new migration (`0015`), which
+  §30 keeps out of Phase 5 without explicit approval; (2) adding a `'logs'` domain to
+  `RealtimeProvider`'s `RealtimeDomain` + `TABLE_TO_DOMAIN`; and (3) reordering the
+  provider tree so `LogsProvider` sits INSIDE `RealtimeProvider` (today it is an
+  ancestor, so `useLogs` cannot call `useRealtimeInvalidation`). That is an
+  architecture change with cross-provider blast radius, not truthfulness/UX polish.
+- **Beta impact:** low for the single-caregiver-at-a-time pattern (the holder logs on
+  their own device); the care handoff context is snapshotted deterministically at
+  propose time server-side, so an accepted handoff always carries the truth as of
+  propose, regardless of the recipient's live log freshness.
+- **Suggested milestone:** a dedicated realtime-for-logs step (migration + domain +
+  provider reorder + a two-device regression), bundled with any future household
+  realtime expansion.
+
+### Optimistic log writes now surface a truthful cloud-sync failure (was silent)
+- **Status:** RESOLVED (Beta Phase 5, client-only; §24).
+- **What changed:** `addLog`/`patchLog`/`deleteLog`/`startSleep`/`endSleep` previously
+  sent their cloud write with `.catch(console.warn)` — so when signed in, a failed
+  cloud insert/update/delete vanished while the optimistic UI still said "logged". The
+  logs provider now records the last cloud-sync failure as `syncError` and a
+  `LogSyncBridge` (mounted in the app shell, reading both `useLogs` and `useNav`)
+  surfaces it as a transient toast: "Saved on this device, but couldn't sync your last
+  {op} to the cloud." It clears on the next successful write or a fresh load.
+- **Deliberately NOT done:** no retry queue, no offline reconciliation, no blocking of
+  the optimistic write (the entry stays on-device and syncs on the next successful
+  operation/load). A durable mutation queue remains the pre-existing offline debt item.
+
+### Log duplicate-submission guard is a client-side heuristic (no DB uniqueness)
+- **Status:** advisory (Beta Phase 5; §26).
+- **What it is:** `lib/logs/dedupe.ts` `isDuplicateAdd` collapses an add that exactly
+  matches the newest-of-kind entry (same distinguishing fields) within a 4s window back
+  to that entry, but ONLY for "now" adds (no explicit `createdAt`) and NEVER for sleep.
+  This stops an accidental double-tap from double-logging.
+- **Limitation:** it is a client heuristic, not a database constraint — two DEVICES
+  double-logging the identical thing within 4s would not be de-duplicated (no server
+  uniqueness on logs, and logs are not realtime-synced per the item above). Acceptable
+  for the single-caregiver beta; a server-side idempotency key (like grocery's
+  `client_action_id`) would be the durable fix if multi-device concurrent logging
+  becomes real. Covered by `test:log-dedupe` (deterministic, pure).
+
+### Legacy quick-log "Hand off to partner" (task + no-op SMS/email) removed
+- **Status:** RESOLVED (Beta Phase 5; §13/§16/§22).
+- **What changed:** the Baby quick-log sheet previously offered "Hand off to {partner}"
+  that created a Tasks-domain item via `useMom().addTaskAssigned` and fired the no-op
+  `lib/notify` SMS/email seam with framing implying delivery ("Sent to …", "Text/email
+  delivery turns on once notifications are live"). That conflated Tasks with the Step 9
+  care-holder concept AND implied a delivery channel that does not exist. It is removed;
+  quick-log is now purely for logging. The ONE truthful care handoff is the canonical
+  Step 9 flow (Baby → "Care right now" card → care-handoff overlay), which only moves
+  responsibility on explicit recipient acceptance and shows nothing predicted.
+- **Note:** `addTaskAssigned` + `lib/notify` remain used by the Inbox "handoffs" tab
+  (a Tasks-domain hand-off with its own honest "saved and tracked; delivery isn't on
+  yet" framing) — that surface is out of Baby/Care scope and its copy is already
+  truthful. The vestigial delivery seam is still tracked by the existing "Care Handoff
+  — external delivery" and "partner_contacts notify flags are vestigial" debt items.
+
+### Baby header no longer falls back to demo fixture ("Emma")
+- **Status:** RESOLVED (Beta Phase 5; §22).
+- **What changed:** the Baby screen header previously used the `lib/mama-data` demo
+  `baby` fixture (name "Emma", a fabricated age) whenever the canonical profile hadn't
+  resolved. It now shows a truthful "Baby" with no invented age until the real profile
+  loads. The demo `baby` fixture is no longer imported by the product app (it still
+  backs the SEPARATE marketing landing site under `components/mama-hq/*`, which is out
+  of scope).
