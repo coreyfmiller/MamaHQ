@@ -120,18 +120,29 @@ self-notified).
 
 One logical action must produce one notification even under RPC retries, browser
 retries, multi-row changes, or realtime reconnects. Each emit supplies a deterministic
-`dedupe_key` (UNIQUE index; `on conflict do nothing`):
+`dedupe_key` (UNIQUE index; `on conflict do nothing`). The assignment keys encode the
+**transition** (`prev → new`), not just `(entity, person)`, so a legitimate A→B→A
+cycle produces three distinct notifications while an exact repeat of one transition
+collides and no-ops:
 
-- `task_assigned:<taskId>` (assignment at create) / `task_assigned:<taskId>:<personId>`
-  (via `assign_task`, keyed by new owner so a legitimate A→B→A re-assignment can
-  notify A again, while an exact retry — already blocked by the no-op guard — cannot).
+- `task_assigned:<taskId>:<prevPersonId|none>:<newPersonId>` (at create the previous
+  owner is `none`). A→B→A re-notifies A because `B→A` ≠ the earlier `none→A`.
 - `task_accepted:<taskId>:<accepterUid>`
-- `care_handoff_proposed:<handoffId>` / `care_handoff_accepted:<handoffId>`
-- `calendar_responsibility_assigned:<eventId>:<personId>`
+- `care_handoff_proposed:<handoffId>` / `care_handoff_accepted:<handoffId>` (a handoff
+  row is itself the transition identity — one pending per family/subject).
+- `calendar_responsibility_assigned:<eventId>:<prevPersonId|none>:<newPersonId>`
+  (same transition-keying; a routine title/note edit that doesn't change the
+  responsible person emits nothing at all, so it never reaches a key).
+
+> **Why transition-keyed?** An earlier `(entity, person)`-only key would permanently
+> suppress a legitimate re-designation back to a previous person (A→B→A). Keying on
+> the `prev→new` transition fixes that while still collapsing true retries. This was
+> corrected during the Step 11 final review; regression tests cover both the task and
+> calendar A→B→A cycles and the calendar routine-edit anti-spam case.
 
 The idempotent domain RPCs (e.g. `create_task` returning an existing row on client-id
-retry) never reach the emit path twice anyway; the dedupe key is the belt to that
-suspenders.
+retry, or `assign_task`'s same-owner no-op) never reach the emit path twice anyway;
+the dedupe key is the belt to those suspenders.
 
 ## Read / unread
 

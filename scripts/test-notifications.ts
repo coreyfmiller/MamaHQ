@@ -221,11 +221,50 @@ async function main() {
     // → James: notified.
     await mom.client.rpc('update_calendar_event', { p_event_id: eid, p_responsible_person_id: jamesPid })
     assertEqual((await myNotifications(james.client, { type: 'calendar_responsibility_assigned', entityId: eid })).length, 1, 'James notified on change')
-    // → Grandma (account-less): no notification row exists for that transition.
+    // → Grandma (account-less): no notification row is created for that transition.
+    // The event's only responsibility notification remains James's one.
     await mom.client.rpc('update_calendar_event', { p_event_id: eid, p_responsible_person_id: grandmaPid })
-    const grandmaKey = `calendar_responsibility_assigned:${eid}:${grandmaPid}`
-    const all = await myNotifications(A, { entityId: eid })
-    assert(!all.some((n) => n.dedupe_key === grandmaKey), 'account-less responsible → no notification')
+    const all = await myNotifications(A, { type: 'calendar_responsibility_assigned', entityId: eid })
+    assertEqual(all.length, 1, 'account-less responsible → no extra notification (still just James\'s)')
+    assertEqual(all[0].recipient_user_id, james.id, 'the only responsibility notification is James\'s')
+  })
+
+  await test('calendar A→B→A re-designation notifies A again (transition-keyed dedupe, §17)', async () => {
+    // Connect a second adult "Nan" so we have two account-linked people to cycle.
+    const nan = await createUser(A, 'ntf-nan')
+    const nanPid = await addPerson(mom.client, famA, 'Nan', 'grandparent')
+    await invitePartner(mom, nanPid, nan)
+    const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
+    // Create responsible = James (transition none→James).
+    const created = await mom.client.rpc('create_calendar_event', {
+      p_family_id: famA, p_title: 'Recital', p_all_day: false, p_starts_at: soon, p_ends_at: null,
+      p_start_date: null, p_end_date: null, p_location: null, p_notes: null,
+      p_responsible_person_id: jamesPid, p_participant_ids: null, p_client_event_id: null,
+    })
+    const eid = created.data as string
+    // James → Nan → James. The final James is a DISTINCT transition (Nan→James) from
+    // the create (none→James), so James must be notified again — not suppressed.
+    await mom.client.rpc('update_calendar_event', { p_event_id: eid, p_responsible_person_id: nanPid })
+    await mom.client.rpc('update_calendar_event', { p_event_id: eid, p_responsible_person_id: jamesPid })
+    const jamesSees = await myNotifications(james.client, { type: 'calendar_responsibility_assigned', entityId: eid })
+    assertEqual(jamesSees.length, 2, 'James notified for none→James AND Nan→James (not deduped away)')
+  })
+
+  await test('calendar routine edit with unchanged responsible does NOT re-notify (§16 anti-spam)', async () => {
+    const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
+    const created = await mom.client.rpc('create_calendar_event', {
+      p_family_id: famA, p_title: 'Checkup', p_all_day: false, p_starts_at: soon, p_ends_at: null,
+      p_start_date: null, p_end_date: null, p_location: null, p_notes: null,
+      p_responsible_person_id: jamesPid, p_participant_ids: null, p_client_event_id: null,
+    })
+    const eid = created.data as string
+    const before = (await myNotifications(james.client, { type: 'calendar_responsibility_assigned', entityId: eid })).length
+    // Edit title + notes, DON'T touch responsibility → no new notification.
+    await mom.client.rpc('update_calendar_event', { p_event_id: eid, p_title: 'Checkup (rescheduled)', p_notes: 'bring forms' })
+    // Re-pass the SAME responsible person → still no new notification (no transition).
+    await mom.client.rpc('update_calendar_event', { p_event_id: eid, p_responsible_person_id: jamesPid })
+    const after = (await myNotifications(james.client, { type: 'calendar_responsibility_assigned', entityId: eid })).length
+    assertEqual(after, before, 'a routine edit / same-owner re-set does not re-notify')
   })
 
   // ========================================================================
@@ -251,6 +290,18 @@ async function main() {
     await mom.client.rpc('assign_task', { p_task_id: taskId, p_person_id: jamesPid }) // same owner → no-op
     const after = (await myNotifications(james.client, { type: 'task_assigned', entityId: taskId })).length
     assertEqual(after, before, 'no extra notification on a no-op reassignment')
+  })
+
+  await test('task A→B→A reassignment notifies A again (transition-keyed dedupe, §17)', async () => {
+    // Mom (creator) assigns to James, then to Mom, then back to James. The final
+    // James is a DISTINCT transition (Mom→James) from the first (none→James), so
+    // James must be notified twice — not suppressed by a (task, person)-only key.
+    const taskId = await createTask(mom.client, famA, 'Cycle task') // unassigned
+    await mom.client.rpc('assign_task', { p_task_id: taskId, p_person_id: jamesPid }) // none→James
+    await mom.client.rpc('assign_task', { p_task_id: taskId, p_person_id: momPid })   // James→Mom
+    await mom.client.rpc('assign_task', { p_task_id: taskId, p_person_id: jamesPid }) // Mom→James
+    const jamesSees = await myNotifications(james.client, { type: 'task_assigned', entityId: taskId })
+    assertEqual(jamesSees.length, 2, 'James notified for none→James AND Mom→James (not deduped away)')
   })
 
   // ========================================================================

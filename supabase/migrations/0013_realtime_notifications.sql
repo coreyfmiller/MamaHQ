@@ -412,9 +412,10 @@ begin
       p_family_id, recipient, uid,
       'task_assigned', 'task', tid,
       'New task for you: ' || clean_title,
-      -- Dedupe on the task itself: the initial assignment of a task is a single
-      -- logical event regardless of retries.
-      'task_assigned:' || tid::text,
+      -- Dedupe on the TRANSITION none→assignee (the task is created already-owned).
+      -- Same key shape as assign_task so the semantics are one consistent
+      -- transition identity; a create retry (idempotent above) cannot double-notify.
+      'task_assigned:' || tid::text || ':none:' || p_assigned_to_person_id::text,
       jsonb_build_object('taskTitle', clean_title)
     );
   end if;
@@ -483,10 +484,13 @@ begin
       t.family_id, recipient, uid,
       'task_assigned', 'task', t.id,
       'New task for you: ' || t.title,
-      -- A distinct assignment transition = a distinct notification. Key by the
-      -- (task, new owner) pair so a later re-assignment to the same person after an
-      -- intervening owner is a new, legitimate notification.
-      'task_assigned:' || t.id::text || ':' || p_person_id::text,
+      -- Dedupe on the TRANSITION prev→new (not just (task, new owner)). This makes an
+      -- A→B→A reassignment cycle three distinct notifications, while an EXACT repeat
+      -- of one transition collides and no-ops (the same-owner case is already a no-op
+      -- return above). 'none' marks a previously-unassigned origin so the first
+      -- assignment does not collide with a later re-assignment to the same person.
+      'task_assigned:' || t.id::text || ':'
+        || coalesce(t.assigned_to_person_id::text, 'none') || ':' || p_person_id::text,
       jsonb_build_object('taskTitle', t.title)
     );
   end if;
@@ -798,8 +802,11 @@ begin
       p_family_id, recipient, uid,
       'calendar_responsibility_assigned', 'calendar', eid,
       'You''re handling: ' || clean_title,
-      -- Designation of a responsible person for an event = one logical event.
-      'calendar_responsibility_assigned:' || eid::text || ':' || p_responsible_person_id::text,
+      -- Dedupe on the TRANSITION, not just (event, person). At create the previous
+      -- responsible is 'none'. Keying by prev→new means a later A→B→A re-designation
+      -- (whose new-person matches the create) is still a distinct, legitimate
+      -- notification rather than being suppressed as a duplicate. See §17.
+      'calendar_responsibility_assigned:' || eid::text || ':none:' || p_responsible_person_id::text,
       jsonb_build_object('eventTitle', clean_title)
     );
   end if;
@@ -900,9 +907,13 @@ begin
       e.family_id, recipient, uid,
       'calendar_responsibility_assigned', 'calendar', e.id,
       'You''re handling: ' || e.title,
-      -- Key by (event, new responsible): a genuine re-designation to a different
-      -- person is a new notification; an exact repeat (same person) is deduped.
-      'calendar_responsibility_assigned:' || e.id::text || ':' || p_responsible_person_id::text,
+      -- Dedupe on the TRANSITION prev→new (not just (event, new)). This makes an
+      -- A→B→A cycle three distinct notifications, while an EXACT repeat of the same
+      -- prev→new transition (e.g. a retried identical update) collides and no-ops.
+      -- 'none' marks a create/previously-unassigned origin so update-back-to-A does
+      -- not collide with the create-time key. See §17.
+      'calendar_responsibility_assigned:' || e.id::text || ':'
+        || coalesce(prev_responsible::text, 'none') || ':' || p_responsible_person_id::text,
       jsonb_build_object('eventTitle', e.title)
     );
   end if;
