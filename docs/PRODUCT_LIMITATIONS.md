@@ -68,6 +68,20 @@ knowledge until it actually ships.
 | **Cross-device baby-log realtime on Today** | NOT IMPLEMENTED (known gap) | Tasks/calendar/care/grocery refresh via the Step 11 realtime coordinator, so Today reflects those live. Baby-care LOGS (`logs.tsx`) are not wired to the coordinator, so another device's new feed/diaper/sleep appears on reload, not instantly. See `docs/TECHNICAL_DEBT.md`. |
 | **Legacy Appointments on Today** | REMOVED from Today (Beta Phase 3) | The old "Coming up" card read the prototype `appointments` domain (separate from the canonical Step 10 Calendar). It was removed from Today to avoid two competing "upcoming" surfaces; the canonical Calendar is the single source. The legacy Appointments domain/overlay itself is untouched (consolidation is out of scope). |
 
+## Beta Phase 4 (First 90 Days & Mom)
+
+| Capability | Status | Reality today |
+|---|---|---|
+| **First 90 Days journey** | IMPLEMENTED (editorial) | 90 audited, human-written daily reads (`lib/daily-reads.ts`), one per journey day. Day 1 = the baby's local birth day; day calculation is centralized + timezone-safe (`lib/first90.ts` `journeyDay`; `dayNumber` delegates to it). No AI/personalization; the day number is sequencing metadata. |
+| **Day 90 transition** | HONEST (Beta Phase 4) | After Day 90 there is NO "today's read" — the Today button disappears and the read area shows a truthful "you've reached the end of the First 90 Days" note. MamaHQ no longer presents the Day 90 article as if it were today's forever. |
+| **Beyond Day 90 features** | NOT IMPLEMENTED (honest) | The former "Newborn → Teen" roadmap (which implied age-specific features that don't exist) was removed. The beyond-90 screen now truthfully points at the real tools that keep working (Tasks / Calendar / Grocery / Tell). No fake future roadmap. |
+| **Content → action** | IMPLEMENTED (Beta Phase 4) | A daily read can lead into existing trusted systems: "Tell MamaHQ" (opens the real Step 12 flow; confirmation required) and "Save a question for my doctor" (explicit tap adds to the existing doctor-questions list). Editorial content never auto-creates domain state. |
+| **Appointment prep / questions** | IMPLEMENTED (deterministic) | Per-appointment questions persist and can be checked/removed; a disclaimer states MamaHQ won't answer medical questions. Deterministic organization only — no AI, no symptom ranking, no urgency, no diagnosis, no clinical scoring. |
+| **Personal vs household privacy** | NOT PRIVATE (honest label) | Mom's mood check-in, personal to-dos, and doctor questions are stored **family-scoped** (`mom_moods` / `mom_items`, RLS = `is_family_member`), so household members can see them. There is **no private-to-Mom space**. The Me screen now says this plainly rather than implying privacy. A per-user private model would need a schema/RLS change (deferred — see `docs/TECHNICAL_DEBT.md`). |
+| **Mood / check-in** | IMPLEMENTED (nonclinical) | A simple daily mood (Tired/Okay/Good/Great) with no scoring, no screening (e.g. no EPDS/PHQ), no thresholds, no risk detection, no health interpretation, no alerts. Personal reflection only. |
+| **Reminder preview** | REMOVED (Beta Phase 4) | The hardcoded fake reminder cards (referencing a demo baby "Emma", implying notifications) and the Me "Reminders · See a preview" entry were removed. The appointment "Remind me" toggle now honestly says it only saves a preference — MamaHQ has no push/SMS/email delivery. |
+| **Mom personal to-dos vs Tasks** | RETAINED as-is (Beta Phase 4) | The Me "My to-dos" list (`mom_items`) is a lightweight personal list, kept as-is for beta (no data migration). It is distinct from canonical household **Tasks** (Step 8); actionable household items should go through Tell/Tasks. Consolidation is deferred. |
+
 ## Related known gaps (see TECHNICAL_DEBT.md)
 
 - **PurchaseEvent snapshot** now captures `canonical_item_id`, `resolved_attributes`,

@@ -79,8 +79,8 @@ export function ApptComposeScreen() {
           className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5 text-left"
         >
           <span>
-            <span className="block text-[15px] font-semibold">Reminders</span>
-            <span className="block text-[13px] text-muted-foreground">A day before and an hour before</span>
+            <span className="block text-[15px] font-semibold">Remind me</span>
+            <span className="block text-[13px] text-muted-foreground">Saves a preference · no notifications yet</span>
           </span>
           <span
             role="switch"

@@ -36,6 +36,7 @@ import { CategoryChip } from '../event-meta'
 import type { Category } from '@/lib/mama-data'
 import { pickAffirmation } from '@/lib/affirmations'
 import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
+import { firstNinetyState } from '@/lib/first90'
 import { useGrocery } from '../grocery'
 import { useCalendar } from '../calendar'
 import { useTasks } from '../tasks'
@@ -881,8 +882,11 @@ function TodaysReadButton() {
   const { profile } = useProfile()
   const now = useNow(60_000)
   if (!profile) return null
-  const day = dayNumber(profile.birthDate, now)
-  const read = pickDailyRead(day)
+  // Beta Phase 4 — only offer "Today's read" while within the 1–90 day journey. After
+  // Day 90 there is no read for today; we don't pretend the Day 90 piece is today's.
+  const j = firstNinetyState(profile.birthDate, now)
+  if (!j.hasReadToday) return null
+  const read = pickDailyRead(j.day)
   const mins = readMinutes(read)
   return (
     <button

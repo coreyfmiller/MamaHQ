@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { fetchBaby, upsertBaby } from '@/lib/supabase/data'
+import { journeyDay } from '@/lib/first90'
 
 export type Feeding = 'breast' | 'bottle' | 'both'
 
@@ -143,12 +144,12 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
 /* ---------------- Derived helpers ---------------- */
 
-/** Whole days since birth (day of birth = Day 1, matching the shipped app's feel). */
+/** Whole days since birth (day of birth = Day 1, matching the shipped app's feel).
+ *  Delegates to the shared `journeyDay` (lib/first90) so day calculation is defined
+ *  ONCE and is timezone-safe: a 'YYYY-MM-DD' birth date is parsed as a LOCAL calendar
+ *  day, not UTC (a UTC parse shifts the day by one in negative-offset timezones). */
 export function dayNumber(birthDate: string, now: Date = new Date()): number {
-  const birth = new Date(birthDate)
-  if (isNaN(birth.getTime())) return 1
-  const ms = now.setHours(0, 0, 0, 0) - new Date(birth).setHours(0, 0, 0, 0)
-  return Math.max(1, Math.floor(ms / 86_400_000) + 1)
+  return journeyDay(birthDate, now)
 }
 
 /** Human age label like "3 weeks old" / "5 days old" / "4 months old". */

@@ -150,6 +150,14 @@ export function MeScreen() {
           </p>
         </header>
 
+        {/* Beta Phase 4 — HONEST visibility. This space is family-scoped in the
+            database (mom_moods / mom_items are readable by household members), so we
+            must not imply it's private. We say so plainly rather than pretending. */}
+        <p className="rounded-2xl bg-muted/50 px-4 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
+          Your check-in, to-dos, and questions are part of your shared household — anyone in your
+          household can see them. MamaHQ doesn&apos;t have a private-to-you space yet.
+        </p>
+
         <CheckIn />
 
         {/* Mom's own to-dos */}
@@ -245,8 +253,7 @@ export function MeScreen() {
             { icon: ListChecks, label: 'Tasks', sub: 'Who owns what', action: () => openOverlay('tasks') },
             { icon: Users, label: 'Household', sub: 'People & invites', action: () => openOverlay('people') },
             { icon: Users, label: 'Partner view', sub: 'Share the load', action: () => openOverlay('partner') },
-            { icon: Bell, label: 'Reminders', sub: 'See a preview', action: () => openOverlay('reminder') },
-            { icon: Sparkles, label: 'How MamaHQ grows', sub: 'From newborn to teen', action: () => openOverlay('beyond90') },
+            { icon: Sparkles, label: 'After the first 90 days', sub: 'What keeps working', action: () => openOverlay('beyond90') },
           ].map(({ icon: Icon, label, sub, action }) => (
             <button key={label} onClick={action} className="flex w-full items-center gap-3.5 py-3 text-left">
               <span className="flex size-9 items-center justify-center rounded-2xl bg-muted text-muted-foreground">

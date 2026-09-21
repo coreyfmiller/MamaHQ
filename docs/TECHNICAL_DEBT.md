@@ -535,3 +535,63 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   only if identity isn't resolved yet. The fallback is display-only (never written as
   identity), consistent with the Beta Phase 1/2 rule that identity is canonical; it can
   be dropped when the local profile momName is fully retired.
+
+---
+
+## First 90 Days & Mom debt (Beta Phase 4)
+
+### No private-to-Mom space — mood/questions/to-dos are household-visible
+- **Status:** deferred (documented honestly; NOT a permissions redesign in Phase 4).
+- **Why it matters:** `mom_moods` and `mom_items` (mood, personal to-dos, doctor
+  questions) have `family_id`-scoped RLS (`is_family_member`), so any household member
+  can read them. The "Me" framing previously implied these were private. Phase 4 does
+  NOT claim privacy that doesn't exist — the Me screen now states plainly that this
+  content is shared with the household. A genuine per-user private space would need a
+  schema + RLS change (e.g. an `owner_user_id` column + owner-only policies, or a
+  separate private table) — a migration and permissions design that §11/§20 keep out of
+  Phase 4 scope.
+- **Suggested milestone:** a dedicated "private notes" step with its own migration and
+  RLS, only if beta users actually want it.
+
+### Mom personal to-dos duplicate the canonical Tasks model
+- **Status:** advisory (retained-as-is for beta).
+- **Why it matters:** `mom_items` (kind `task`) is a second, simpler personal task list
+  distinct from canonical household **Tasks** (Step 8, `tasks` table with ownership/
+  acceptance/completion). Phase 4 kept the Me list as lightweight personal reflection
+  (no data migration, no second responsibility model surfaced as household work) and
+  routes genuinely-actionable/household items through Tell → Tasks. Convergence
+  (migrate personal tasks onto `tasks`, or retire the personal list) is deferred.
+- **Note:** the vestigial `addTaskAssigned` + `lib/notify` SMS/email path in `mom.tsx`
+  is dead (no delivery exists; not reachable from the Me UI). Remove it when the
+  personal-todo/Tasks convergence happens.
+
+### Day calculation was timezone-unsafe (fixed in Beta Phase 4 + final review)
+- **Status:** RESOLVED.
+- **Why it mattered (two distinct bugs):**
+  1. **UTC parse of a date-only string:** `dayNumber` did `new Date('YYYY-MM-DD')`
+     (UTC midnight); in a negative-offset timezone `.getDate()` read back the PREVIOUS
+     local day, shifting every First-90 day number by one. Fixed by treating a
+     `YYYY-MM-DD` birth date as a LOCAL calendar day.
+  2. **DST off-by-one (caught in final review):** the interim fix still computed
+     `floor((localMidnightNow − localMidnightBirth) / 86,400,000) + 1`. Across a DST
+     transition two local midnights are 23h or 25h apart, so a span containing a
+     spring-forward day read one fewer day (e.g. `America/New_York` birth Mar 1 → now
+     Mar 9 returned Day 8 instead of Day 9). Fixed by switching to CALENDAR-DAY
+     arithmetic: map each local `(y, m, d)` to a stable UTC-based day index
+     (`Date.UTC(...) / 86,400,000`, DST-free) and diff the indices. No division of
+     local-midnight timestamps anywhere.
+- **Single truth:** all journey-day math lives in `lib/first90.ts` `journeyDay`;
+  `dayNumber` (profile.tsx) delegates to it, so affirmations / age labels / Today's read
+  all share the DST-safe calc. Covered by `test:first90` incl. hand-counted calendar
+  boundaries AND child-process DST tests forced into `America/New_York` and
+  `Europe/Berlin`. (Note: Phase 3 calendar/appointment relative-day labels still use
+  `Math.round` over local-midnight ms — tolerant for ±1-day labels; not the journey
+  calc; out of scope.)
+
+### Legacy Appointments "Remind me" toggle stores a preference only
+- **Status:** advisory (honest label applied).
+- **Why it matters:** the prototype Appointments domain's `reminders_on` field persists
+  but nothing delivers a reminder (no push/SMS/email — deferred product-wide). Phase 4
+  relabeled the toggle to say it only saves a preference and MamaHQ can't send
+  notifications yet, rather than implying "a day before · an hour before" delivery.
+  Real delivery + the legacy-Appointments/Calendar consolidation remain deferred.
