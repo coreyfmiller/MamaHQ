@@ -45,16 +45,24 @@ export interface ExecuteContext {
   validPersonIds: Set<string>
 }
 
-// A namespaced, deterministic client id per (proposal, domain) so retries collide
-// with the same DB key. Derived from the proposal's stable id.
+// The proposal's stable id IS a UUID (assigned by the server resolver via
+// randomUUID). The domain idempotency keys (clientTaskId / clientEventId / grocery
+// row id) are UUID-typed columns, so we pass the proposal id directly — a retry of
+// the SAME proposal reuses the SAME uuid and the domain create is a no-op returning
+// the existing row. A proposal is only ever one kind, so its id maps to exactly one
+// domain object (no task/event/grocery collision).
 function taskClientId(p: ResolvedProposal): string {
-  return `tell-task-${p.id}`
+  return p.id
 }
 function eventClientId(p: ResolvedProposal): string {
-  return `tell-event-${p.id}`
+  return p.id
+}
+function groceryRowId(p: ResolvedProposal): string {
+  return p.id
 }
 function groceryActionId(p: ResolvedProposal): string {
-  return `tell-grocery-${p.id}`
+  // A distinct-but-stable action id for the increment idempotency guard.
+  return p.id
 }
 
 async function executeTask(p: ResolvedTaskCreate, ctx: ExecuteContext): Promise<ExecuteResult> {
@@ -159,7 +167,7 @@ async function executeGroceryWithFamily(p: ResolvedGroceryAdd, ctx: ExecuteConte
   if (plan.op === 'insert') {
     const d = plan.detail
     await db.insertGroceryItem({
-      id: groceryActionId(p),
+      id: groceryRowId(p),
       family_id: ctx.familyId,
       display_name: d.displayName,
       canonical_item_id: d.canonicalItemId,

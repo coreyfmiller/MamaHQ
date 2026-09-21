@@ -19,7 +19,7 @@
 //
 //   node scripts/test-tell-security.ts   (npm run test:tell-security)
 
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import {
   admin, createUser, makeRunner, assert, assertEqual, errorContains, cleanupUsers,
   type Client, type TestUser,
@@ -49,10 +49,11 @@ async function invitePartner(owner: TestUser, personId: string, partner: TestUse
   await partner.client.rpc('accept_household_invitation', { p_token_hash: hash })
 }
 
-// Mirror of lib/tell/execute.ts id derivation, so idempotency is proven for the
-// EXACT keys the dispatcher uses.
-const taskClientId = (proposalId: string) => `tell-task-${proposalId}`
-const eventClientId = (proposalId: string) => `tell-event-${proposalId}`
+// Mirror of lib/tell/execute.ts id derivation: the proposal's stable UUID IS the
+// domain idempotency key (clientTaskId / clientEventId are UUID-typed columns). A
+// proposal id in production comes from randomUUID(); here we generate one per case.
+const taskClientId = (pid: string) => pid
+const eventClientId = (pid: string) => pid
 
 async function taskRow(client: Client, id: string) {
   const { data } = await client.from('tasks').select('*').eq('id', id).maybeSingle()
@@ -79,7 +80,7 @@ async function main() {
   // EXECUTION PASSES THROUGH DOMAIN AUTHORIZATION
   // ========================================================================
   await test('a Tell task execution creates a normal task with tell_mamahq provenance, NO acceptance', async () => {
-    const proposalId = randomBytes(6).toString('hex')
+    const proposalId = randomUUID()
     const { data, error } = await mom.client.rpc('create_task', {
       p_family_id: famA, p_title: 'Call dentist', p_assigned_to_person_id: jamesPid,
       p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(proposalId),
@@ -91,7 +92,7 @@ async function main() {
   })
 
   await test('a Tell task retry with the same proposal id does NOT duplicate', async () => {
-    const proposalId = randomBytes(6).toString('hex')
+    const proposalId = randomUUID()
     const args = {
       p_family_id: famA, p_title: 'Order photos', p_assigned_to_person_id: jamesPid,
       p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(proposalId),
@@ -104,7 +105,7 @@ async function main() {
   })
 
   await test('a Tell calendar retry with the same proposal id does NOT duplicate', async () => {
-    const proposalId = randomBytes(6).toString('hex')
+    const proposalId = randomUUID()
     const soon = new Date(Date.now() + 3 * 3600_000).toISOString()
     const args = {
       p_family_id: famA, p_title: 'Soccer', p_all_day: false, p_starts_at: soon, p_ends_at: null,
@@ -124,7 +125,7 @@ async function main() {
   await test('a tampered task assignee (cross-family person) is rejected at execution', async () => {
     const { error } = await mom.client.rpc('create_task', {
       p_family_id: famA, p_title: 'Tampered', p_assigned_to_person_id: famBPid, // client swapped in a foreign person id
-      p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(randomBytes(6).toString('hex')),
+      p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(randomUUID()),
     })
     assert(error, 'expected cross-family assignee to be rejected')
     assert(errorContains(error, 'not in this family') || errorContains(error, 'not found'), `got: ${error?.message}`)
@@ -135,7 +136,7 @@ async function main() {
     const { error } = await mom.client.rpc('create_calendar_event', {
       p_family_id: famA, p_title: 'Tampered', p_all_day: false, p_starts_at: soon, p_ends_at: null,
       p_start_date: null, p_end_date: null, p_location: null, p_notes: null,
-      p_responsible_person_id: famBPid, p_participant_ids: null, p_client_event_id: eventClientId(randomBytes(6).toString('hex')),
+      p_responsible_person_id: famBPid, p_participant_ids: null, p_client_event_id: eventClientId(randomUUID()),
     })
     assert(error, 'expected cross-family responsible to be rejected')
     assert(errorContains(error, 'not in this family'), `got: ${error?.message}`)
@@ -145,7 +146,7 @@ async function main() {
     const bogus = randomBytes(16).toString('hex').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5')
     const { error } = await mom.client.rpc('create_task', {
       p_family_id: famA, p_title: 'Bogus person', p_assigned_to_person_id: bogus,
-      p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(randomBytes(6).toString('hex')),
+      p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(randomUUID()),
     })
     assert(error, 'expected a random uuid assignee to be rejected')
     assert(errorContains(error, 'not found') || errorContains(error, 'not in this family'), `got: ${error?.message}`)
@@ -155,7 +156,7 @@ async function main() {
     // Outsider tries to create a task into Family A.
     const { error } = await outsider.client.rpc('create_task', {
       p_family_id: famA, p_title: 'Intruder', p_assigned_to_person_id: null,
-      p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(randomBytes(6).toString('hex')),
+      p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(randomUUID()),
     })
     assert(error, 'expected cross-family create to be rejected')
     assert(errorContains(error, 'not authorized'), `got: ${error?.message}`)
@@ -170,7 +171,7 @@ async function main() {
     // task is unaccepted until James himself accepts.
     const { data } = await mom.client.rpc('create_task', {
       p_family_id: famA, p_title: 'Prescription', p_assigned_to_person_id: jamesPid,
-      p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(randomBytes(6).toString('hex')),
+      p_due_at: null, p_notes: null, p_source: 'tell_mamahq', p_client_task_id: taskClientId(randomUUID()),
     })
     assertEqual((await taskRow(A, data as string))?.acknowledged_at, null, 'not accepted by the AI/execution path')
     // Mom (not the assignee) cannot accept on James's behalf even directly.
@@ -207,7 +208,7 @@ async function main() {
     // blocked regardless (so even a compromised client cannot forge one).
     const { error } = await mom.client.from('notifications').insert({
       family_id: famA, recipient_user_id: james.id, type: 'task_assigned', domain: 'task',
-      title: 'Forged by AI', dedupe_key: `tell-forge-${randomBytes(6).toString('hex')}`,
+      title: 'Forged by AI', dedupe_key: `tell-forge-${randomUUID()}`,
     })
     assert(error, 'expected direct notification insert to be blocked')
   })
