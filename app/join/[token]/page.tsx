@@ -21,6 +21,31 @@ import * as db from '@/lib/supabase/data'
 // We do NOT log the full invite URL or the plaintext token.
 type Phase = 'checking' | 'need-auth' | 'accepting' | 'done' | 'error'
 
+// Map the accept_household_invitation RPC's specific raised messages (0009) to calm,
+// honest, actionable guidance. Each maps to a REAL server state — we never invent
+// success. Falls back to the raw message so nothing is hidden.
+function friendlyJoinError(e: unknown): string {
+  const raw = e instanceof Error ? e.message.toLowerCase() : ''
+  if (raw.includes('expired')) {
+    return 'This invite link has expired. Ask whoever invited you to send a fresh link from Household.'
+  }
+  if (raw.includes('revoked')) {
+    return 'This invite has been revoked and can no longer be used. Ask for a new link.'
+  }
+  if (raw.includes('already accepted')) {
+    // Accepted by a DIFFERENT account (idempotent same-user re-accept succeeds and
+    // never reaches here).
+    return 'This invite was already used by someone else. If that wasn’t you, ask for a new link.'
+  }
+  if (raw.includes('already a member of another household')) {
+    return 'Your account already belongs to a different household. MamaHQ keeps you in one household at a time — sign in with a different account to join this one, or leave your current household first.'
+  }
+  if (raw.includes('not found')) {
+    return 'We couldn’t find this invitation. Double-check the link, or ask for a new one.'
+  }
+  return e instanceof Error ? e.message : 'This invitation could not be accepted.'
+}
+
 export default function JoinPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
   const [phase, setPhase] = useState<Phase>('checking')
@@ -49,7 +74,7 @@ export default function JoinPage({ params }: { params: Promise<{ token: string }
         setPhase('done')
       } catch (e) {
         if (!alive) return
-        setMessage(e instanceof Error ? e.message : 'This invitation could not be accepted.')
+        setMessage(friendlyJoinError(e))
         setPhase('error')
       }
     })()

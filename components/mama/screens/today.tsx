@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { BookOpen, CalendarDays, ChevronRight, Moon, Plus, ShoppingCart, Square } from 'lucide-react'
+import { BookOpen, CalendarDays, ChevronRight, Moon, Plus, ShoppingCart, Sparkles, Square } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, dayNumber } from '../profile'
 import {
@@ -274,44 +274,47 @@ function Footer() {
   return <BottomNav active="today" />
 }
 
-const suggestions = ['Log a feed', 'Add an appointment', 'Remember something', 'Ask me to remind you']
+// Beta Phase 2 — a calm first-value nudge for a household that genuinely has no
+// shared state yet. It never fabricates data; it simply points to the one place to
+// start (Tell MamaHQ). Shown only when there are no logs, no grocery, and no events
+// today — so it disappears the moment there's anything real to see. Not shown on the
+// signed-out/demo path (calendar unavailable) to avoid a dead CTA.
+function FirstRunNudge() {
+  const { setTab } = useNav()
+  const { logs } = useLogs()
+  const { active } = useGrocery()
+  const { available, today } = useCalendar()
 
-export function TodayScreen({ empty = false }: { empty?: boolean }) {
-  const { openOverlay } = useNav()
+  const isEmpty = available && logs.length === 0 && active.length === 0 && today.length === 0
+  if (!isEmpty) return null
 
-  if (empty) {
-    return (
-      <Screen>
-        <StatusBar />
-        <Scroll className="px-6">
-          <Header />
-          <p className="mt-8 font-serif text-[22px] leading-snug font-medium">
-            Nothing urgent right now.
-          </p>
-          <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
-            Tell MamaHQ anything you don&apos;t want to keep in your head.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                className="rounded-full border border-border bg-card px-4 py-2 text-[14px] font-medium text-foreground shadow-sm transition-transform active:scale-95"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </Scroll>
-        <Footer />
-      </Screen>
-    )
-  }
+  return (
+    <div className="mt-2 rounded-3xl border border-border/70 bg-card p-5 shadow-sm">
+      <p className="font-serif text-[19px] leading-snug font-semibold">Nothing needs your attention yet.</p>
+      <p className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
+        When something’s on your mind — a to-do, an appointment, groceries — tell MamaHQ and it’ll
+        sort it into your shared household. You approve everything first.
+      </p>
+      <button
+        onClick={() => setTab('tell')}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+      >
+        <Sparkles className="size-4" strokeWidth={2} />
+        Tell MamaHQ what’s on your mind
+      </button>
+    </div>
+  )
+}
 
+export function TodayScreen() {
   return (
     <Screen>
       <StatusBar />
       <Scroll className="space-y-4 px-6 pb-4">
         <Header />
+
+        {/* First-run nudge: only renders for a genuinely empty household. */}
+        <FirstRunNudge />
 
         {/* A gentle word for the moment */}
         <AffirmationCard />

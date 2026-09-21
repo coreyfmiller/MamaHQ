@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Users, UserPlus, Link2, X, Check } from 'lucide-react'
+import { Users, UserPlus, Link2, X, Check, Share2, Loader2 } from 'lucide-react'
 import { useNav } from '../context'
 import { useHousehold, type HouseholdPerson } from '../household'
+import { shareInvite, copyInvite, canNativeShare } from '../invite-share'
 import { Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
 
 // Step 7 — the Household People surface. Shows who's in the household and each
@@ -13,6 +14,9 @@ import { Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
 export function PeopleScreen() {
   const { closeOverlay, showToast } = useNav()
   const { people, invitePerson, revokeInvite } = useHousehold()
+  // The freshly-generated invite link, kept in memory per person so we can surface it
+  // for the user to share. The link is a credential — never logged, never sent by us.
+  const [inviteUrls, setInviteUrls] = useState<Record<string, string>>({})
 
   return (
     <Screen>
@@ -34,18 +38,34 @@ export function PeopleScreen() {
             <PersonRow
               key={p.id}
               person={p}
+              inviteUrl={inviteUrls[p.id]}
               onInvite={async () => {
                 const res = await invitePerson(p.id, p.email)
                 if (res.ok && res.url) {
-                  await copy(res.url)
-                  showToast('Invite link copied')
+                  // Surface the link for the user to send themselves (we don't
+                  // deliver it). Do NOT claim it was "sent".
+                  setInviteUrls((m) => ({ ...m, [p.id]: res.url! }))
                 } else {
                   showToast(res.error ? `Couldn't invite: ${res.error}` : "Couldn't create invite")
                 }
               }}
+              onShare={async (url) => {
+                const r = await shareInvite(url, p.displayName)
+                if (r === 'copied') showToast(`Invite link copied — send it to ${p.displayName}`)
+                else if (r === 'failed') showToast('Couldn’t copy — the link is shown below')
+              }}
+              onCopy={async (url) => {
+                const ok = await copyInvite(url)
+                showToast(ok ? 'Invite link copied' : 'Couldn’t copy — select the link above')
+              }}
               onRevoke={async () => {
                 if (p.pendingInvitationId) {
                   await revokeInvite(p.pendingInvitationId)
+                  setInviteUrls((m) => {
+                    const next = { ...m }
+                    delete next[p.id]
+                    return next
+                  })
                   showToast('Invite revoked')
                 }
               }}
@@ -68,11 +88,17 @@ export function PeopleScreen() {
 
 function PersonRow({
   person,
+  inviteUrl,
   onInvite,
+  onShare,
+  onCopy,
   onRevoke,
 }: {
   person: HouseholdPerson
+  inviteUrl?: string
   onInvite: () => void | Promise<void>
+  onShare: (url: string) => void | Promise<void>
+  onCopy: (url: string) => void | Promise<void>
   onRevoke: () => void | Promise<void>
 }) {
   const [busy, setBusy] = useState(false)
@@ -80,77 +106,109 @@ function PersonRow({
   const roleLabel = person.role === 'owner' ? 'Owner' : person.role === 'member' ? 'Partner' : person.relationship
 
   return (
-    <Card className="flex items-center gap-3.5">
-      <span className="flex size-11 items-center justify-center rounded-full bg-sage-soft font-serif text-[17px] font-semibold text-sage">
-        {person.displayName.trim().charAt(0).toUpperCase() || '?'}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-serif text-[17px] font-semibold leading-tight">{person.displayName}</p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-muted-foreground">
-          {roleLabel && <span className="capitalize">{roleLabel}</span>}
-          {roleLabel && <span aria-hidden>·</span>}
-          <StatusChip status={status} />
-        </p>
+    <Card className="space-y-3">
+      <div className="flex items-center gap-3.5">
+        <span className="flex size-11 items-center justify-center rounded-full bg-sage-soft font-serif text-[17px] font-semibold text-sage">
+          {person.displayName.trim().charAt(0).toUpperCase() || '?'}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-serif text-[17px] font-semibold leading-tight">{person.displayName}</p>
+          <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-muted-foreground">
+            {roleLabel && <span className="capitalize">{roleLabel}</span>}
+            {roleLabel && <span aria-hidden>·</span>}
+            <StatusChip status={status} hasLink={!!inviteUrl} />
+          </p>
+        </div>
+
+        {/* Eligible to invite: an account-less person with no pending invite. Once a
+            link exists we don't re-generate — the share/copy controls appear below. */}
+        {status === 'none' && !inviteUrl && (
+          <button
+            onClick={async () => {
+              setBusy(true)
+              await onInvite()
+              setBusy(false)
+            }}
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
+          >
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <UserPlus className="size-3.5" />}
+            {busy ? 'Creating…' : 'Invite'}
+          </button>
+        )}
+        {status === 'invited' && (
+          <button
+            onClick={async () => {
+              setBusy(true)
+              await onRevoke()
+              setBusy(false)
+            }}
+            disabled={busy}
+            aria-label="Revoke invite"
+            className="flex items-center gap-1.5 rounded-full bg-muted px-3.5 py-2 text-[13px] font-semibold text-muted-foreground disabled:opacity-40"
+          >
+            <X className="size-3.5" /> Revoke
+          </button>
+        )}
       </div>
 
-      {/* Eligible to invite: an account-less person with no pending invite. */}
-      {status === 'none' && (
-        <button
-          onClick={async () => {
-            setBusy(true)
-            await onInvite()
-            setBusy(false)
-          }}
-          disabled={busy}
-          className="flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
-        >
-          <UserPlus className="size-3.5" /> Invite
-        </button>
-      )}
-      {status === 'invited' && (
-        <button
-          onClick={async () => {
-            setBusy(true)
-            await onRevoke()
-            setBusy(false)
-          }}
-          disabled={busy}
-          aria-label="Revoke invite"
-          className="flex items-center gap-1.5 rounded-full bg-muted px-3.5 py-2 text-[13px] font-semibold text-muted-foreground disabled:opacity-40"
-        >
-          <X className="size-3.5" /> Revoke
-        </button>
+      {/* A freshly-generated link to share. Honest: MamaHQ generates the link, the
+          user sends it. Never "invitation sent". */}
+      {inviteUrl && status !== 'connected' && (
+        <div className="space-y-2 rounded-2xl bg-muted/50 px-3.5 py-3">
+          <p className="text-[13px] font-medium text-foreground">
+            Copy this private link and send it to {person.displayName}:
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded-xl border border-border bg-background px-3 py-2 text-[12px] text-muted-foreground">
+              {inviteUrl}
+            </code>
+            <button
+              onClick={() => onShare(inviteUrl)}
+              aria-label={canNativeShare() ? 'Share invite link' : 'Copy invite link'}
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95"
+            >
+              {canNativeShare() ? <Share2 className="size-4" /> : <Link2 className="size-4" />}
+            </button>
+          </div>
+          <button onClick={() => onCopy(inviteUrl)} className="text-[13px] font-medium text-primary">
+            Copy link
+          </button>
+        </div>
       )}
     </Card>
   )
 }
 
-function StatusChip({ status }: { status: 'connected' | 'invited' | 'none' }) {
+function StatusChip({ status, hasLink }: { status: 'connected' | 'invited' | 'none'; hasLink?: boolean }) {
   if (status === 'connected') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-sage-soft px-2 py-0.5 text-[12px] font-medium text-sage">
-        <Check className="size-3" strokeWidth={3} /> Connected
+        <Check className="size-3" strokeWidth={3} /> Joined
       </span>
     )
   }
   if (status === 'invited') {
+    // A pending invitation exists server-side but hasn't been accepted. We say
+    // "Invite pending" (not "sent") because MamaHQ never delivered it.
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-blush/30 px-2 py-0.5 text-[12px] font-medium text-foreground">
         <Link2 className="size-3" /> Invite pending
       </span>
     )
   }
+  // No pending invite. If we just generated a link this session, it's "ready" to
+  // share; otherwise "not invited".
+  if (hasLink) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blush/30 px-2 py-0.5 text-[12px] font-medium text-foreground">
+        <Link2 className="size-3" /> Invite ready
+      </span>
+    )
+  }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
-      Not connected
+      Not invited
     </span>
   )
-}
-
-async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    // Clipboard may be unavailable; the toast still confirms creation.
-  }
 }
