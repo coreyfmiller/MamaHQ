@@ -316,6 +316,21 @@ export async function fetchHouseholdPeople(familyId: string): Promise<DbHousehol
   return (data ?? []) as DbHouseholdPerson[]
 }
 
+// Beta Phase 1 — canonical identity. Set the CALLER'S OWN HouseholdPerson display
+// name in a family. Trusted SECURITY DEFINER RPC (0014): the person is resolved from
+// the authenticated account server-side, so this can never rename another person or
+// another family's person, and never creates a duplicate. Idempotent. Returns the
+// canonical person id. This is the ONE writer of the owner/member's household name;
+// the UI must not write display_name directly for the current user.
+export async function setMyDisplayNameRpc(familyId: string, displayName: string): Promise<string> {
+  const { data, error } = await supabaseBrowser().rpc('set_my_display_name', {
+    p_family_id: familyId,
+    p_display_name: displayName,
+  })
+  if (error) throw error
+  return data as string
+}
+
 export async function insertHouseholdPerson(
   row: Partial<DbHouseholdPerson> & { id: string; family_id: string; display_name: string },
 ): Promise<void> {

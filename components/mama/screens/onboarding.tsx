@@ -6,6 +6,7 @@ import { Clock, HeartHandshake, Sparkles, Heart, Camera, Check } from 'lucide-re
 import { Button } from '@/components/ui/button'
 import { useNav } from '../context'
 import { useProfile, type Feeding, type Profile } from '../profile'
+import { useHousehold } from '../household'
 import { NameAvatar } from '../name-avatar'
 import { LeafSprig } from '../decor'
 import { Screen, Scroll, StatusBar } from '../ui'
@@ -34,6 +35,7 @@ function todayISO(): string {
 export function OnboardingScreen() {
   const { setPhase, setTab } = useNav()
   const { saveProfile } = useProfile()
+  const { renameMe } = useHousehold()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [step, setStep] = useState<Step>('welcome')
@@ -49,14 +51,22 @@ export function OnboardingScreen() {
   const index = STEPS.indexOf(step)
 
   const finish = () => {
+    const cleanMom = momName.trim()
     const profile: Profile = {
-      momName: momName.trim() || 'Mama',
+      momName: cleanMom || 'Mama',
       babyName: babyName.trim() || 'Baby',
       birthDate: birthDate || todayISO(),
       feeding: feeding ?? 'both',
       photo,
     }
     saveProfile(profile)
+    // Canonical identity: the name entered here becomes the CURRENT USER'S linked
+    // HouseholdPerson display name (the source of truth for People / task ownership /
+    // calendar responsibility / care / notifications). Only set it when a real name
+    // was entered — never write the 'Mama' fallback as someone's canonical name.
+    // Fire-and-forget: onboarding must not block on the network, and the trusted RPC
+    // is idempotent + safe. When signed out (no family), renameMe is a no-op.
+    if (cleanMom) void renameMe(cleanMom)
     setTab('today')
     setPhase('app')
   }
