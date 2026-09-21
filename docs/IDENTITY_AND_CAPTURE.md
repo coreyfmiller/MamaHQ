@@ -25,15 +25,22 @@ People, task ownership, calendar responsibility, care, and notifications.
   Name validation: trim + collapse internal whitespace, 1..80 chars, Unicode/apostrophes/
   hyphens allowed (no culturally narrow rules).
 
-### Existing-user reconciliation (conservative)
+### Existing users with a placeholder name (set explicitly — never auto-guessed)
 
-Existing users whose linked person still carries a **bootstrap placeholder** (`'Me'` or
-`'Member'`) AND who have a real profile name on the device are reconciled once per
-family: the profile name is adopted as the canonical household name. We **only**
-overwrite the known placeholders — never a name the user intentionally set — so we can't
-clobber a deliberate choice. If we can't safely infer a real name, we leave it for the
-user to set explicitly in onboarding or Settings (never guess). See
-`components/mama/household.tsx` (`renameMe` + the reconciliation effect).
+An existing user whose linked person still shows a **bootstrap placeholder** (`'Me'` or
+`'Member'`) sets their real name **explicitly**: it is shown (and editable) in
+**Settings → Account → Your name**, and onboarding sets it for anyone who runs through
+onboarding again. There is deliberately **no automatic reconciliation** from the
+device's local profile name.
+
+Why not auto-adopt the local `momName`? Because the local profile is **device-local**,
+not tied to the current authenticated user. On a shared device, after one person
+onboards (local `momName='Alice'`) and signs out, a different person signing in — whose
+linked person is still `'Member'` — would have **their own** canonical cloud identity
+silently renamed to `'Alice'`. The RPC would rename the correct row, but with the wrong
+name. So we never guess: a placeholder stays visible until the actual account holder
+corrects it in Settings. See `components/mama/household.tsx` (`renameMe`; note the
+explicit comment where reconciliation was removed).
 
 ## One capture path: Tell MamaHQ
 

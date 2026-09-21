@@ -111,7 +111,7 @@ jobs:
       - name: Start local Supabase (Docker)
         run: supabase start
 
-      - name: Clean-provision from authoritative migrations (empty DB -> 0001..0007)
+      - name: Clean-provision from authoritative migrations (empty DB -> 0001..0014)
         # `db reset` drops the local db and replays every file in supabase/migrations
         # in order. This IS the clean-provision proof: it fails if any migration
         # cannot apply from scratch.

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import * as db from '@/lib/supabase/data'
 import { generateInviteToken, sha256Hex, inviteUrl } from '@/lib/household/invite-token'
@@ -291,38 +291,17 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     [people, user],
   )
 
-  // Conservative one-time reconciliation for EXISTING users (Beta Phase 1). If my
-  // linked person still carries a bootstrap PLACEHOLDER name ('Me'/'Member') — i.e.
-  // it was never set to a real name — and this device's profile has a real momName,
-  // adopt it as the canonical household identity. We ONLY overwrite the known
-  // placeholders, never an intentionally-chosen name, so we can't clobber a name the
-  // user deliberately set. Runs at most once per family per session.
-  const reconciledFor = useRef<string | null>(null)
-  useEffect(() => {
-    if (!familyId || !hydrated || !me) return
-    if (reconciledFor.current === familyId) return
-    const isPlaceholder = me.displayName === 'Me' || me.displayName === 'Member'
-    if (!isPlaceholder) {
-      reconciledFor.current = familyId
-      return
-    }
-    let momName = ''
-    try {
-      const raw = window.localStorage.getItem('mamahq.proto.profile.v1')
-      momName = raw ? (JSON.parse(raw) as { momName?: string }).momName?.trim() ?? '' : ''
-    } catch {
-      momName = ''
-    }
-    // Only adopt a real, non-placeholder profile name; otherwise leave it for the
-    // user to set explicitly (in onboarding or Settings) — never guess.
-    if (momName && momName !== 'Mama' && momName !== 'Me' && momName !== 'Member') {
-      reconciledFor.current = familyId
-      void renameMe(momName)
-    } else {
-      reconciledFor.current = familyId
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [familyId, hydrated, me])
+  // NOTE (Beta Phase 1 final review): there is deliberately NO automatic identity
+  // reconciliation here. An earlier version read this device's local profile momName
+  // and, if the caller's linked person still had a bootstrap placeholder ('Me'/
+  // 'Member'), silently adopted it as the canonical household name. That is unsafe on a
+  // shared device: after user A onboards (profile momName='Alice') and signs out, a
+  // freshly-joined user B (person still 'Member') would have their OWN cloud identity
+  // silently renamed to 'Alice' — device-local state is not tied to the current auth
+  // user. The RPC renames the correct row, but with the WRONG name. Identity is only
+  // ever set EXPLICITLY: by the current user in onboarding (renameMe), or corrected in
+  // Settings → Account → Your name. A placeholder is left visible (and editable) rather
+  // than guessed.
 
   const value = useMemo(
     () => ({ people, hydrated, me, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe }),

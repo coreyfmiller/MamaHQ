@@ -323,12 +323,28 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   code (and the `captures` read path) in a later phase, once beta confidence is
   established. Existing `captures` data is preserved; no destructive migration was run.
 
-### Monitoring requires an optional dependency + DSN
-- **Status:** advisory.
-- **Why it matters:** `lib/monitoring.ts` only actually sends when `NEXT_PUBLIC_SENTRY_DSN`
-  is set AND `@sentry/nextjs` is installed. Absent either, it's a safe no-op (dev logs a
-  warning). To turn on beta monitoring: `npm install @sentry/nextjs` + set the DSN.
-- **Suggested milestone:** enable before inviting families if crash visibility is desired.
+### Error monitoring is a NO-OP today — DEFERRED BLOCKER if crash visibility is required
+- **Status:** deferred (explicit blocker for the "crash visibility" beta goal).
+- **Why it matters:** `lib/monitoring.ts` is a privacy-safe seam that only actually sends
+  when `NEXT_PUBLIC_SENTRY_DSN` is set AND `@sentry/nextjs` is installed. **Neither is
+  true today** (the package is not a dependency and no DSN is configured), so in the
+  current build it can never send a production event — it is a no-op (dev logs a warning).
+  The error boundaries (`app/error.tsx` etc.) still work and never show raw errors; what
+  is missing is out-of-app crash *reporting*.
+- **Why it was NOT wired up in Beta Phase 1:** a *correct* `@sentry/nextjs` install under
+  Next.js 16 (Turbopack default) is not a one-line add — it needs `Sentry.init()` in
+  `instrumentation.ts` / `instrumentation-client.ts` (+ server/edge configs) and build
+  wiring, which the current direct-`captureException` seam does not do. That is a focused
+  change with build-config blast radius, not a safe bolt-on during a review, so it was
+  deliberately deferred rather than half-installed (a package present but never
+  initialized would still send nothing while adding weight — worse than an honest no-op).
+- **To actually enable (own small task):** add `@sentry/nextjs`, create the instrumentation
+  files with `Sentry.init({ dsn, tracesSampleRate: 0, replaysSessionSampleRate: 0,
+  replaysOnErrorSampleRate: 0 })` (NO session replay — privacy), set `NEXT_PUBLIC_SENTRY_DSN`,
+  and route `reportError` through the initialized client. Verify a test error appears.
+- **Suggested milestone:** do this before inviting families **if** crash visibility is a
+  launch requirement; otherwise the beta ships with in-app error boundaries only and this
+  stays a known, documented gap.
 
 ### Signed-in read fallback to localStorage on fetch error
 - **Status:** advisory (not a false-shared-truth write path).
