@@ -28,8 +28,8 @@ knowledge until it actually ships.
 | **Calendar conflict detection** | NOT IMPLEMENTED | Overlapping events are permitted and never flagged; no scheduling recommendations. |
 | **Offline support** | NOT IMPLEMENTED | No IndexedDB, no offline state, no mutation queue, no reconciliation. Online-only. Realtime (Step 11) recovers missed changes on reconnect via canonical refetch, but there is no offline mutation queue. |
 | **Care Handoff — external delivery** | NOT IMPLEMENTED | In-app notification exists (Step 11); no SMS/email/WhatsApp/iMessage/share is sent. `lib/notify.ts` is a no-op outbound seam. |
-| **LLM-powered Tell MamaHQ** | NOT IMPLEMENTED | Capture uses deterministic rule-based extraction only. `openai` is a dependency but is imported nowhere. |
-| **Tell MamaHQ → Grocery integration** | NOT IMPLEMENTED | Capture does not feed the Grocery resolver; no multi-item grocery parse from free text. |
+| **Tell MamaHQ (multi-domain action layer)** | IMPLEMENTED (Step 12) | Natural-language capture → server-side interpretation (provider-agnostic `Interpreter`, OpenAI adapter) → strict Zod-validated structured proposals → deterministic reference/time resolution → user confirmation → execution via the existing trusted domain RPCs (Grocery/Tasks/Calendar/Care propose). AI proposes; it never writes rows, forges acceptance/notifications, or executes autonomously. In-app text only. See `docs/TELL_MAMAHQ.md`. |
+| **Tell MamaHQ — voice/photo/purchasing/external** | NOT IMPLEMENTED (deferred) | Step 12 is in-app TEXT only. No voice/audio capture, image/OCR, purchasing, email/SMS, external calendars, budgeting, journaling, medical/medication automation, autonomous/confirmation-free execution, background agents, or multi-model routing. The interpreter is voice-ready (same text pipeline) but no speech infra is added. |
 | **Meals** | NOT IMPLEMENTED | No tables, domain, or UI. |
 | **Kitchen** | NOT IMPLEMENTED | No such surface. |
 | **Contextual Assistant** | NOT IMPLEMENTED | No assistant; depends on LLM + cross-person awareness that don't exist. |

@@ -26,6 +26,7 @@ export type Overlay =
   | 'calendar'
   | 'calendarCompose'
   | 'notifications'
+  | 'tell'
   | null
 
 interface PrototypeCtx {

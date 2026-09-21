@@ -274,3 +274,37 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
 - **Why it matters:** identity is comparatively static within a session and the
   coordinator's `household` domain slot is unused in Step 11. A future step can opt in
   with a one-line change (add the tables to the publication + wire a listener).
+---
+
+## Tell MamaHQ debt (Step 12)
+
+### Interpretation depends on a live model (OpenAI); no CI live-model test
+- **Status:** intentional (see `docs/TELL_MAMAHQ.md`).
+- **Why it matters:** the `/api/tell` interpretation step needs `OPENAI_API_KEY` and a
+  network call, so it is NOT exercised in CI. CI proves the deterministic safety core
+  (Zod validation, reference/time resolution, execution security) with mocked model
+  output + the JWT harness. A live-model smoke test is deliberately not required CI.
+- **Dependency:** a key + network.
+
+### Provider is OpenAI-only today (interface is provider-agnostic)
+- **Status:** by design for MamaHQ (`product-standard.md`).
+- **Why it matters:** the `Interpreter` interface + adapter seam let a different
+  provider drop in without touching the contract/resolver/route/UI, but only the
+  OpenAI adapter exists. Swapping = one new adapter + the factory in
+  `lib/tell/openai-adapter.ts`.
+
+### Tell MamaHQ manual (two-browser / real-model) QA is OUTSTANDING
+- **Status:** advisory (see `docs/MANUAL_QA.md` Step 12 section).
+- **Why it matters:** real end-to-end interpretation quality and the two-browser
+  realtime propagation of Tell-created items can only be validated by a human. CI
+  proves the deterministic + security layers; it does not prove model interpretation
+  quality.
+
+### `/api/tell` is stateless — no durable Tell-specific provenance beyond captures
+- **Status:** advisory.
+- **Why it matters:** Step 12 does not add a new table. The Inbox `captures` table
+  already stores raw input immutably (the provenance model), but the `/api/tell`
+  round-trip itself does not persist the interpretation/proposals server-side; the
+  client holds them until the user acts. If durable Tell provenance/analytics is ever
+  needed, a minimal `0014_tell_mamahq.sql` (family-scoped, RLS, minimal retention)
+  would be the smallest addition — deliberately not built now.
