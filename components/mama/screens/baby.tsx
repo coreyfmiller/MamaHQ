@@ -12,14 +12,15 @@ import { useMemories } from '../memories'
 import { NameAvatar } from '../name-avatar'
 import { CategoryChip } from '../event-meta'
 import { BottomNav, Card, Screen, Scroll, Segmented, StatusBar } from '../ui'
-import { baby } from '@/lib/mama-data'
 
 type BabyTab = 'timeline' | 'patterns' | 'memories'
 
 function Header() {
   const { profile } = useProfile()
-  const name = profile?.babyName ?? baby.name
-  const age = profile ? ageLabel(profile.birthDate) : baby.age
+  // Truthful fallback: before onboarding fills in a profile we don't invent a
+  // baby name or age. No demo fixture ("Emma") ever surfaces in the product app.
+  const name = profile?.babyName?.trim() || 'Baby'
+  const age = profile ? ageLabel(profile.birthDate) : null
   return (
     <header className="flex items-center gap-3 px-6 pt-1">
       <span className="ring-2 ring-card rounded-full">
@@ -27,7 +28,7 @@ function Header() {
       </span>
       <div className="flex-1">
         <h1 className="font-serif text-[24px] leading-tight font-semibold tracking-tight">{name}</h1>
-        <p className="text-[14px] text-muted-foreground">{age}</p>
+        {age && <p className="text-[14px] text-muted-foreground">{age}</p>}
       </div>
     </header>
   )

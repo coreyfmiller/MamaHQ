@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import * as db from '@/lib/supabase/data'
+import { isDuplicateAdd } from '@/lib/logs/dedupe'
 
 // Kinds line up with the existing CategoryChip categories so they render for free.
 export type LogKind = 'feed' | 'sleep' | 'diaper' | 'pumping' | 'medication'
@@ -40,6 +41,18 @@ interface LogsCtx {
   startSleep: () => LogEntry | null
   /** Stop a running sleep by id, stamping endedAt (defaults to now). */
   endSleep: (id: string, endedAt?: string) => void
+  /**
+   * Truthfulness (Beta Phase 5 §24): logs are written optimistically so the UI feels
+   * instant AND keeps working offline. But when signed in, the write is also meant to
+   * reach the cloud — and previously a failed cloud write vanished into console.warn
+   * while the UI still claimed success. `syncError` surfaces the LAST cloud-sync
+   * failure so the shell can tell the truth ("Saved on this device, but couldn't sync
+   * to the cloud"). It's set only for signed-in cloud writes, and cleared the moment a
+   * later cloud write (or a fresh load) succeeds. It never blocks the optimistic write.
+   */
+  syncError: string | null
+  /** Dismiss the current sync-error banner (e.g. after the shell has shown it). */
+  clearSyncError: () => void
 }
 
 const Ctx = createContext<LogsCtx>({
@@ -51,6 +64,8 @@ const Ctx = createContext<LogsCtx>({
   clearLogs: () => {},
   startSleep: () => null,
   endSleep: () => {},
+  syncError: null,
+  clearSyncError: () => {},
 })
 
 export function useLogs() {
@@ -96,6 +111,19 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   const { familyId, status } = useAuth()
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [hydrated, setHydrated] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
+
+  // A single place to record the outcome of a cloud write. On failure we surface a
+  // truthful message (the optimistic local entry is untouched); on success we clear a
+  // stale error so the banner doesn't linger once syncing recovers.
+  const noteSync = (op: string) => ({
+    ok: () => setSyncError(null),
+    fail: (e: unknown) => {
+      console.warn(`log ${op} sync`, e)
+      setSyncError(`Saved on this device, but couldn't sync your last ${op} to the cloud.`)
+    },
+  })
+  const clearSyncError = () => setSyncError(null)
 
   // Load from the right source when auth resolves: cloud (family) or local.
   useEffect(() => {
@@ -107,6 +135,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
         .then((rows) => {
           if (!alive) return
           setLogs(rows.map(fromDb))
+          setSyncError(null) // a good read means the cloud is reachable again
           setHydrated(true)
         })
         .catch(() => {
@@ -121,6 +150,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
 
     if (status !== 'loading') {
       setLogs(readLocal())
+      setSyncError(null) // signed out → no cloud to be out of sync with
       setHydrated(true)
     }
     return () => {
@@ -135,13 +165,29 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   }, [logs, hydrated, familyId])
 
   const addLog: LogsCtx['addLog'] = (entry) => {
+    const now = entry.createdAt ?? new Date().toISOString()
+    // Duplicate-submission guard (Beta Phase 5 §26): a fast double-tap on a one-tap
+    // log (or the feed/diaper amount button) should not create two identical entries.
+    // We collapse an add that exactly matches the newest entry of the same kind within
+    // a short window back to that existing entry. This is deliberately narrow — a real
+    // second feed a few minutes later differs in time (>window) and is kept; only a
+    // near-instant identical repeat is treated as an accidental double-fire. We only
+    // guard entries the user creates "now" (no explicit past createdAt) so logging a
+    // past sleep with matching fields is never suppressed.
+    if (!entry.createdAt) {
+      const recent = logs.find((l) => l.kind === entry.kind)
+      if (recent && isDuplicateAdd(recent, entry, now)) return recent
+    }
     const full: LogEntry = {
       id: newId(),
-      createdAt: entry.createdAt ?? new Date().toISOString(),
+      createdAt: now,
       ...entry,
     }
     setLogs((prev) => [full, ...prev]) // optimistic
-    if (familyId) db.insertLog(toDb(full, familyId)).catch((e) => console.warn('log sync', e))
+    if (familyId) {
+      const s = noteSync(full.kind)
+      db.insertLog(toDb(full, familyId)).then(s.ok, s.fail)
+    }
     return full
   }
 
@@ -156,13 +202,17 @@ export function LogsProvider({ children }: { children: ReactNode }) {
       if ('diaperType' in patch) dbPatch.diaper_type = patch.diaperType ?? null
       if ('note' in patch) dbPatch.note = patch.note ?? null
       if ('createdAt' in patch && patch.createdAt) dbPatch.created_at = patch.createdAt
-      db.updateLog(id, dbPatch).catch((e) => console.warn('log sync', e))
+      const s = noteSync('edit')
+      db.updateLog(id, dbPatch).then(s.ok, s.fail)
     }
   }
 
   const deleteLog = (id: string) => {
     setLogs((prev) => prev.filter((l) => l.id !== id))
-    if (familyId) db.deleteLog(id).catch((e) => console.warn('log sync', e))
+    if (familyId) {
+      const s = noteSync('delete')
+      db.deleteLog(id).then(s.ok, s.fail)
+    }
   }
 
   const startSleep: LogsCtx['startSleep'] = () => {
@@ -174,14 +224,20 @@ export function LogsProvider({ children }: { children: ReactNode }) {
       endedAt: null,
     }
     setLogs((prev) => [full, ...prev])
-    if (familyId) db.insertLog(toDb(full, familyId)).catch((e) => console.warn('log sync', e))
+    if (familyId) {
+      const s = noteSync('sleep')
+      db.insertLog(toDb(full, familyId)).then(s.ok, s.fail)
+    }
     return full
   }
 
   const endSleep = (id: string, endedAt?: string) => {
     const end = endedAt ?? new Date().toISOString()
     setLogs((prev) => prev.map((l) => (l.id === id ? { ...l, endedAt: end } : l)))
-    if (familyId) db.updateLog(id, { ended_at: end }).catch((e) => console.warn('log sync', e))
+    if (familyId) {
+      const s = noteSync('sleep')
+      db.updateLog(id, { ended_at: end }).then(s.ok, s.fail)
+    }
   }
 
   const clearLogs = () => {
@@ -191,8 +247,8 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo(
-    () => ({ logs, hydrated, addLog, patchLog, deleteLog, clearLogs, startSleep, endSleep }),
-    [logs, hydrated, familyId],
+    () => ({ logs, hydrated, addLog, patchLog, deleteLog, clearLogs, startSleep, endSleep, syncError, clearSyncError }),
+    [logs, hydrated, familyId, syncError],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
