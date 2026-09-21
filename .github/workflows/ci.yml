@@ -68,6 +68,9 @@ jobs:
       - name: Tell MamaHQ interpreter/validation/resolution tests (Step 12)
         run: pnpm run test:tell
 
+      - name: Today projection tests (Beta Phase 3)
+        run: pnpm run test:today
+
       - name: TypeScript
         run: pnpm run typecheck
 
