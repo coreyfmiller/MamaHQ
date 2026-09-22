@@ -663,3 +663,39 @@ the items below need a human because they exercise navigation and two-account re
 11. **[HUMAN]** Review the Calendar screen, Calendar composer, and Me "Coming up" card at
     320 / 375 / 390 / 430px: no horizontal overflow, reachable actions, long titles
     wrap, safe-area CTAs.
+
+---
+
+## Beta Launch Fixes — Trust & Data Exit (all [HUMAN], OUTSTANDING)
+
+Scope: truthful "Start over" copy, honest Tell AI disclosure, operator-managed deletion
+procedure. No new features, no migration (chain stays at `0014`).
+
+### Start over truthfulness
+1. **[HUMAN]** Settings → Danger zone: the subtext reads "Clears this baby's profile and
+   logs on your account" and a line below states "Start over isn't account deletion… contact
+   beta support." No copy claims permanent full erasure or account deletion.
+2. **[HUMAN]** Open the reset screen: headline is "Start over?"; the body enumerates what
+   clears (profile, all logs, check-in, to-dos, questions, memories, grocery) and states
+   shared items (tasks, calendar, care hand-offs) may remain + contact beta support for full
+   deletion. The confirm button reads "Clear this baby & logs" (not "Permanently erase
+   everything").
+3. **[HUMAN]** Execute Start over on a test household: verify the success toast is "Your baby
+   profile and logs were cleared" (NOT "Everything was erased"), and that the profile/logs are
+   gone but any tasks/calendar events/care hand-offs created beforehand remain (documented
+   limitation — this is expected, not a bug).
+4. **[HUMAN]** Force a cloud failure during reset (offline): verify the toast says "Cleared on
+   this device — some cloud data couldn't be reached" rather than claiming success.
+
+### Tell AI disclosure
+5. **[HUMAN]** Open Tell: the line "MamaHQ uses AI to understand what you type. Nothing is
+   added to your household until you review and approve it." is visible directly under the
+   input, BEFORE submitting, and is readable at 320 / 375 / 390 / 430px.
+6. **[HUMAN]** Submit a real Tell request: proposals still appear and still require an explicit
+   confirm; cancelling/removing a proposal does not add anything to the household.
+
+### Operator deletion procedure
+7. **[HUMAN, OPERATOR]** Review `docs/BETA_DATA_DELETION.md` against a TEST household before
+   Family #1: run the read-only identify/verify queries, delete the test family row, confirm
+   the verification queries all return 0, and delete the test auth user. Never rehearse the
+   destructive steps against a real family's data.

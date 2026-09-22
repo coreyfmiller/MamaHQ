@@ -15,8 +15,12 @@ import { clearFamilyData } from '@/lib/supabase/data'
 import { TopBar } from '../ui'
 
 /**
- * Deliberately hard "start over". This permanently erases the profile and every
- * log. To prevent accidents it takes several intentional steps:
+ * Deliberately hard "start over". This clears the baby profile and all logs (plus
+ * check-in, to-dos, questions, memories and grocery) — locally and in the cloud — but
+ * it is NOT account/household deletion: RPC-protected shared records (tasks, calendar,
+ * care hand-offs, pending invites, notifications) survive, and full permanent deletion
+ * is operator-managed (see docs/BETA_DATA_DELETION.md). To prevent accidents it takes
+ * several intentional steps:
  *   1. An explicit "I understand" acknowledgement of what will be lost.
  *   2. Typing the baby's name EXACTLY to confirm.
  *   3. A final destructive button that only enables once the name matches.
@@ -40,10 +44,11 @@ export function ResetScreen() {
   // Case-insensitive exact match, ignoring surrounding whitespace.
   const matches = typed.trim().toLowerCase() === babyName.toLowerCase() && babyName.length > 0
 
-  const doReset = () => {
-    if (!matches) return
-    // Wipe the cloud family's data too (fire-and-forget; local clears are instant).
-    if (familyId) clearFamilyData(familyId).catch((e) => console.warn('cloud reset', e))
+  const [busy, setBusy] = useState(false)
+
+  const doReset = async () => {
+    if (!matches || busy) return
+    // Clear the on-device copies immediately (these always succeed locally).
     clearLogs()
     clearMom()
     clearMemories()
@@ -51,12 +56,34 @@ export function ResetScreen() {
     clearInbox()
     clearPartner()
     clearProfile()
-    showToast('Everything was erased')
-    // Note: this erases the baby profile + logs, not your household identity — so
-    // you return to the (now empty) app, where Today shows the first-run nudge. We
-    // no longer force the onboarding phase here: first-run routing is derived from
-    // authoritative identity (useHousehold().firstRun), and your identity still
-    // stands. Re-establishing a baby is done from the normal add-people flow.
+    // Clear the cloud family data. Truthfulness (Beta Launch Fixes): this removes the
+    // baby profile, logs, mood/to-dos/questions, memories and grocery, but some SHARED
+    // household records (tasks, calendar events, care handoffs, and any pending
+    // invites) are RPC-protected and are NOT wiped by this client path — they can
+    // remain until beta support removes them. So we do NOT claim "everything was
+    // erased". We also await the cloud clear so we can tell the truth if it fails
+    // rather than firing an unconditional success toast.
+    let cloudOk = true
+    if (familyId) {
+      setBusy(true)
+      try {
+        await clearFamilyData(familyId)
+      } catch (e) {
+        console.warn('cloud reset', e)
+        cloudOk = false
+      } finally {
+        setBusy(false)
+      }
+    }
+    showToast(
+      cloudOk
+        ? 'Your baby profile and logs were cleared'
+        : "Cleared on this device — some cloud data couldn't be reached",
+    )
+    // This clears the baby profile + logs, not your household identity — so you return
+    // to the (now empty) app, where Today shows the first-run nudge. first-run routing
+    // is derived from authoritative identity (useHousehold().firstRun), and your
+    // identity still stands. Re-establishing a baby is done from the normal add flow.
     closeOverlay()
   }
 
@@ -70,12 +97,17 @@ export function ResetScreen() {
         </div>
 
         <h1 className="mt-5 text-center font-serif text-[24px] font-semibold tracking-tight">
-          Erase everything and start over?
+          Start over?
         </h1>
         <p className="mx-auto mt-3 max-w-[19rem] text-center text-[15px] leading-relaxed text-muted-foreground">
-          This permanently deletes {babyName ? <strong className="text-foreground">{babyName}</strong> : 'your baby'}
-          &apos;s profile and <strong className="text-foreground">every log</strong> — feeds, sleeps, diapers,
-          all of it. This cannot be undone.
+          This clears {babyName ? <strong className="text-foreground">{babyName}</strong> : 'your baby'}
+          &apos;s profile and <strong className="text-foreground">all the logs</strong> — feeds, sleeps,
+          diapers — plus your check-in, to-dos, questions, memories and grocery list. This can&apos;t be
+          undone.
+        </p>
+        <p className="mx-auto mt-3 max-w-[19rem] text-center text-[13px] leading-relaxed text-muted-foreground">
+          Shared items like tasks, calendar events and care hand-offs may stay with your household.
+          To permanently delete your whole account and household, contact beta support.
         </p>
 
         {!acknowledged ? (
@@ -112,11 +144,11 @@ export function ResetScreen() {
             </label>
 
             <button
-              onClick={doReset}
-              disabled={!matches}
+              onClick={() => void doReset()}
+              disabled={!matches || busy}
               className="mt-5 w-full rounded-2xl bg-destructive py-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.99] disabled:opacity-40"
             >
-              Permanently erase everything
+              {busy ? 'Clearing…' : 'Clear this baby & logs'}
             </button>
             <button
               onClick={closeOverlay}

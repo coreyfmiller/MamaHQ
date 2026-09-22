@@ -108,6 +108,15 @@ knowledge until it actually ships.
 | **External calendar sync** | NOT IMPLEMENTED | No Google / Apple / Outlook sync, no ICS import/export. The Calendar is internal household scheduling truth for the beta. |
 | **Reminder delivery** | NOT IMPLEMENTED (honest) | MamaHQ does not send push / email / SMS / calendar alarms. The legacy appointment "Remind me" toggle was preference-only (and its screen is now retired); no scheduling surface implies delivery that doesn't happen. |
 
+## Beta Launch Fixes (trust & data exit)
+
+| Capability | Status | Reality today |
+|---|---|---|
+| **"Start over" truthfulness** | CORRECTED (Beta Launch Fixes) | "Start over" (Settings → Danger zone → reset) clears the baby profile, all logs, mood/to-dos/questions, memories and grocery — locally and in the cloud. It does NOT delete the family/household, account, or the RPC-protected shared records (tasks, calendar events, care hand-offs, pending invites, notifications), which have no client DELETE policy and survive. The copy now says "Start over?" (not "Erase everything"), enumerates what it clears, notes shared items may remain, and points to beta support for full deletion. The reset now awaits the cloud clear and shows a truthful toast ("Your baby profile and logs were cleared" on success, or "Cleared on this device — some cloud data couldn't be reached" on failure) instead of an unconditional "Everything was erased". |
+| **Tell uses AI (disclosure)** | ADDED (Beta Launch Fixes) | A calm one-line disclosure now sits directly under the Tell input, visible before submit: "MamaHQ uses AI to understand what you type. Nothing is added to your household until you review and approve it." Tell still sends the typed text to the server-side OpenAI interpreter, still returns proposals, and still requires explicit user confirmation before anything becomes household truth (architecture unchanged). |
+| **Self-service account/data deletion** | NOT IMPLEMENTED (operator-managed for beta) | There is no in-app "delete my account/household" button. For the closed beta this is deliberately operator-managed: a family asks and the operator deletes their family row (cascades all family-scoped data) + auth users, per `docs/BETA_DATA_DELETION.md`. The app never claims self-delete exists — Settings says "Start over isn't account deletion… contact beta support." A user-facing deletion flow is future work. |
+| **In-product support channel** | NOT CONFIGURED (honest) | No support email is configured in code; the app says only "contact beta support" and fabricates no address. The support contact is communicated out-of-band during beta onboarding (the channel used to invite each family). |
+
 ## Related known gaps (see TECHNICAL_DEBT.md)
 
 - **PurchaseEvent snapshot** now captures `canonical_item_id`, `resolved_attributes`,

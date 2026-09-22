@@ -744,3 +744,45 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
   legacy appointment "Remind me" preference toggle is gone with its retired screen; no
   scheduling surface implies delivery. Real delivery remains product-wide deferred work
   (see the notification-delivery debt item).
+
+---
+
+## Beta Launch Fixes (trust & data exit)
+
+### "Start over" does not wipe RPC-protected tables (truthful copy, not a full wipe)
+- **Status:** advisory (copy corrected; a full-wipe path is deferred).
+- **Reality:** `clearFamilyData` (client, `lib/supabase/data.ts`) deletes the tables that
+  allow client writes (logs, babies+cascade, mom_moods, mom_items, memories, captures,
+  partner_contacts, appointments/appointment_questions, grocery/household-memory,
+  household_people). It ALSO issues deletes against the RPC-only tables (tasks,
+  task_events, calendar_events, calendar_event_participants, care_handoffs,
+  care_responsibility, household_invitations) but those have no client DELETE policy, so
+  under RLS the delete matches **zero rows** and they survive. `notifications` likewise.
+- **Beta Launch Fixes correction:** the reset UI no longer claims "Erase everything" /
+  "Everything was erased". It now says "Start over?", enumerates exactly what it clears,
+  states shared items (tasks/calendar/care hand-offs/pending invites) may remain, points
+  to beta support for full deletion, and `doReset` awaits the cloud clear to show a
+  truthful success/failure toast rather than an unconditional success.
+- **Full permanent deletion** is operator-managed for the closed beta: delete the
+  `public.families` row (cascades ALL family-scoped tables, including the RPC-protected
+  ones) + the member `auth.users` rows. See `docs/BETA_DATA_DELETION.md`.
+- **Suggested milestone:** a trusted `reset_family_data` RPC (or a self-service deletion
+  flow) that wipes the RPC-only tables — needs a migration, so deliberately NOT done in
+  this pass (§Beta Launch Fixes forbids migration 0015).
+
+### No self-service account/household deletion (operator-managed for beta)
+- **Status:** deferred (acceptable for a directly-supported 10-family beta).
+- **Why acceptable:** the app makes no false self-delete claim (Settings: "Start over
+  isn't account deletion… contact beta support"), and the operator has a reliable,
+  cascade-based procedure (`docs/BETA_DATA_DELETION.md`). `removePerson` exists in
+  `household.tsx` but is still wired to no UI; member removal is also operator-managed.
+- **Suggested milestone:** a user-facing "delete my account" flow + a member-removal UI,
+  post-beta.
+
+### Tell sends typed text to OpenAI — now disclosed in-product
+- **Status:** RESOLVED for disclosure (behavior unchanged, intentional).
+- Tell's server route (`/api/tell`) sends the user's typed text to the OpenAI interpreter
+  (`lib/tell/openai-adapter.ts`, model default `gpt-4o-mini`). Beta Launch Fixes adds a
+  calm one-line disclosure directly under the Tell input so the user knows AI reads what
+  they type before they submit, and that nothing is added until they review + approve.
+  No data-handling behavior changed; proposals still require explicit confirmation.
