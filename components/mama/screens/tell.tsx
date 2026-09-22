@@ -116,6 +116,13 @@ function Composer() {
         placeholder="Need diapers, we're low on milk, James has soccer pickup Thursday at 6…"
         className="w-full resize-none rounded-2xl border border-border bg-card px-4 py-3 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
       />
+      {/* Honest AI disclosure at the point of entry (Beta Launch Fixes): the user
+          should know AI reads what they type BEFORE they submit, and that nothing is
+          added to the household until they review + approve it. Calm, not scary. */}
+      <p className="px-1 text-[12px] leading-relaxed text-muted-foreground">
+        MamaHQ uses AI to understand what you type. Nothing is added to your household until you
+        review and approve it.
+      </p>
       {showExamples && (
         <div className="space-y-1.5">
           <p className="px-1 text-[12px] font-medium text-muted-foreground">Try something like</p>

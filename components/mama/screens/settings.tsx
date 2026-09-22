@@ -85,11 +85,17 @@ export function SettingsScreen() {
             <span>
               <span className="block text-[15px] font-semibold text-destructive">Start over</span>
               <span className="block text-[13px] text-muted-foreground">
-                Permanently erase this baby&apos;s profile and all logs
+                Clears this baby&apos;s profile and logs on your account
               </span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-destructive/70" />
           </button>
+          {/* Beta honesty: Start over is NOT account/household deletion. No self-serve
+              account deletion exists yet; it's operator-managed for the closed beta. */}
+          <p className="mt-2 px-1 text-[12px] leading-relaxed text-muted-foreground">
+            Start over isn&apos;t account deletion. To permanently delete your account and household
+            data, contact beta support and we&apos;ll remove it for you.
+          </p>
         </div>
       </Scroll>
     </Screen>
