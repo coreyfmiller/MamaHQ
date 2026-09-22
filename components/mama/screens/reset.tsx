@@ -15,8 +15,12 @@ import { clearFamilyData } from '@/lib/supabase/data'
 import { TopBar } from '../ui'
 
 /**
- * Deliberately hard "start over". This permanently erases the profile and every
- * log. To prevent accidents it takes several intentional steps:
+ * Deliberately hard "start over". This clears the baby profile and all logs (plus
+ * check-in, to-dos, questions, memories and grocery) — locally and in the cloud — but
+ * it is NOT account/household deletion: RPC-protected shared records (tasks, calendar,
+ * care hand-offs, pending invites, notifications) survive, and full permanent deletion
+ * is operator-managed (see docs/BETA_DATA_DELETION.md). To prevent accidents it takes
+ * several intentional steps:
  *   1. An explicit "I understand" acknowledgement of what will be lost.
  *   2. Typing the baby's name EXACTLY to confirm.
  *   3. A final destructive button that only enables once the name matches.
