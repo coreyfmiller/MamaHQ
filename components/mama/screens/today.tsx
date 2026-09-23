@@ -236,6 +236,7 @@ function TodayLoading() {
 
 function EmptyToday() {
   const { setTab, openOverlay } = useNav()
+  const soloHousehold = useIsSoloHousehold()
   return (
     <div className="mt-2 space-y-4">
       <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-sm">
@@ -256,6 +257,11 @@ function EmptyToday() {
         <QuickShortcut icon={CalendarDays} label="Add event" onClick={() => openOverlay('calendar')} />
         <QuickShortcut icon={ShoppingCart} label="Grocery" onClick={() => openOverlay('grocery')} />
       </div>
+      {/* A fresh solo Today is the FIRST place a new user should learn MamaHQ supports
+          shared responsibility — otherwise the empty state hides the concept entirely.
+          Rendered only here (empty branch) or in the populated branch, never both, so
+          it is never duplicated. Same compact card + Invite action. */}
+      {soloHousehold && <ShareTheLoadCard />}
     </div>
   )
 }

@@ -434,6 +434,19 @@ function todayAt(h: number, m = 0): string {
   )
   // Empty household → solo (nothing to share with yet).
   ok(isSoloHousehold([], ME), 'empty household is solo')
+
+  // FRESH EMPTY TODAY regression: a brand-new solo user has an EMPTY Today model
+  // (isEmpty === true) AND is solo — both must be true at once, because the teaching
+  // card must render in the empty branch too (it must not be hidden just because the
+  // operational model is empty). These two signals are independent: model emptiness
+  // is about domain data; solo is about connected adults.
+  const emptyModel = buildTodayModel(base())
+  ok(emptyModel.isEmpty, 'fresh account: Today model is empty')
+  ok(isSoloHousehold([meP], ME), 'fresh account: household is solo')
+  ok(
+    emptyModel.isEmpty && isSoloHousehold([meP], ME),
+    'fresh solo account is BOTH empty AND solo → the empty-state teaching card must render',
+  )
 }
 
 // ==========================================================================
