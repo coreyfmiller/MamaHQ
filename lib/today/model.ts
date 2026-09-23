@@ -245,6 +245,30 @@ const ATTENTION_RANK: Record<AttentionKind, number> = {
 }
 
 // ---------------------------------------------------------------------------
+// Responsibility teaching state (pure predicate).
+//
+// A household is "solo" when the current user is the ONLY connected adult — i.e. no
+// OTHER person is linked to an authenticated account. This gates the Today "Share the
+// load" teaching card, which explains shared responsibility BEFORE any other adult
+// exists (since "Others are handling" can never populate solo). It is derived from
+// DURABLE membership truth (accountStatus === 'connected'), never from display text
+// or pending invites: a merely-invited person does NOT count, so the teaching copy
+// ("when another adult joins…") stays literally true until someone actually accepts.
+//
+// Kept here (pure, independently testable) rather than inline in the screen.
+// ---------------------------------------------------------------------------
+export interface TeachingPerson {
+  id: string
+  /** 'connected' only when linked to an auth user with active membership. */
+  accountStatus?: 'connected' | 'invited' | 'none'
+}
+
+/** True when no OTHER person than `mePersonId` is a connected adult. */
+export function isSoloHousehold(people: TeachingPerson[], mePersonId: string | null): boolean {
+  return !people.some((p) => p.id !== mePersonId && p.accountStatus === 'connected')
+}
+
+// ---------------------------------------------------------------------------
 // buildTodayModel — the projection.
 // ---------------------------------------------------------------------------
 export function buildTodayModel(input: TodayInput): TodayModel {

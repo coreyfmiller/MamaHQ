@@ -57,8 +57,9 @@ export function TasksScreen() {
             Tasks <ListChecks className="size-5 text-sage" strokeWidth={1.75} />
           </h1>
           <p className="mt-1 text-[15px] leading-relaxed text-muted-foreground">
-            Get it out of your head and give it an owner. When someone owns it, you don&apos;t
-            have to keep carrying it.
+            Shared household responsibilities. Get it out of your head and give it an owner —
+            when someone owns it, you don&apos;t have to keep carrying it. (For a personal
+            reminder just for you, use My to-dos on Me.)
           </p>
         </header>
 

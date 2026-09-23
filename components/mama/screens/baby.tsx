@@ -59,6 +59,11 @@ function CareHolderCard() {
         <p className="text-[15px] font-semibold leading-tight">
           {pending ? `Handoff pending → ${name(pending.toPersonId)}` : `${name(holderPersonId)} ${holderPersonId ? 'has the baby' : ''}`.trim()}
         </p>
+        {/* Make handoff DISCOVERABLE without a pending one: a quiet hint that tapping
+            opens the (existing) handoff flow. No care semantics change — this is a
+            label into the same CareHandoff surface, which still requires an explicit
+            propose + the recipient's acceptance before care actually moves. */}
+        {!pending && <p className="mt-0.5 text-[13px] text-muted-foreground">Tap to hand off care</p>}
       </div>
       <ChevronRight className="size-4 text-muted-foreground" />
     </Card>

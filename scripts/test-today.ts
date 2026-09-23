@@ -8,6 +8,7 @@
 
 import {
   buildTodayModel,
+  isSoloHousehold,
   type TodayInput,
   type TodayTask,
   type TodayEvent,
@@ -400,6 +401,39 @@ function todayAt(h: number, m = 0): string {
     'attention order does not depend on input array order (stable by refId at equal rank/time)',
   )
   eq(m1.attention[0].refId, 'a', 'equal rank+time → stable ascending by refId')
+}
+
+// ==========================================================================
+// RESPONSIBILITY TEACHING STATE — isSoloHousehold predicate
+// (gates the Today "Share the load" card; must be literally true — only a
+//  CONNECTED other adult ends the solo state; invited/account-less do not.)
+// ==========================================================================
+{
+  const meP = { id: ME, accountStatus: 'connected' as const }
+  // Solo: just me connected.
+  ok(isSoloHousehold([meP], ME), 'solo when I am the only connected adult')
+  // Solo: me + an account-less person (Sam has no account).
+  ok(
+    isSoloHousehold([meP, { id: SAM, accountStatus: 'none' }], ME),
+    'still solo with an account-less person (no account = cannot participate)',
+  )
+  // Solo: me + a merely-INVITED (not yet joined) partner — teaching copy stays true.
+  ok(
+    isSoloHousehold([meP, { id: ALEX, accountStatus: 'invited' }], ME),
+    'still solo while a partner is only invited (not yet accepted)',
+  )
+  // NOT solo: another connected adult exists.
+  ok(
+    !isSoloHousehold([meP, { id: ALEX, accountStatus: 'connected' }], ME),
+    'not solo once another adult is connected',
+  )
+  // NOT solo even if I have no resolved person but a connected other exists.
+  ok(
+    !isSoloHousehold([{ id: ALEX, accountStatus: 'connected' }], null),
+    'not solo when a connected adult exists and my person is unresolved',
+  )
+  // Empty household → solo (nothing to share with yet).
+  ok(isSoloHousehold([], ME), 'empty household is solo')
 }
 
 // ==========================================================================

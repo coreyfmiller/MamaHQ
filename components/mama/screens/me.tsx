@@ -189,9 +189,15 @@ export function MeScreen() {
 
         <CheckIn />
 
-        {/* Mom's own to-dos */}
+        {/* Mom's own to-dos — a personal, lightweight checklist, distinct from shared
+            Household Tasks (which have owners + acceptance). The subtitle makes the
+            distinction obvious: personal reminder → here; something someone should own
+            → Tasks. */}
         <Card className="space-y-1">
           <CardLabel className="mb-1 text-foreground">My to-dos</CardLabel>
+          <p className="-mt-0.5 mb-1 text-[12px] leading-relaxed text-muted-foreground">
+            Just for you — a personal checklist. To hand something to the household, use Tasks.
+          </p>
           {state.tasks.length > 0 ? (
             <div className="divide-y divide-border/50">
               {state.tasks.map((t) => (
