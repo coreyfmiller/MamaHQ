@@ -293,3 +293,31 @@ care / notifications could show a placeholder.
 Authoritative apply order for a clean environment is now `0001 → … → 0014`. See
 `docs/IDENTITY_AND_CAPTURE.md` and `docs/SECURITY_DEFINER_AUDIT.md` (Beta Phase 1
 addendum).
+
+---
+
+`0015_owner_family_uniqueness.sql` (additive, after `0014`) fixes a P1 bootstrap
+defect found during Human-QA prep: one authenticated user could end up **owning two
+families** created ~1ms apart from normal first-load bootstrap. `ensure_family()`
+(0001) was a check-then-insert with no locking and no uniqueness guard, and
+`families.owner_id` had only a non-unique index — so two concurrent bootstrap calls
+(the client fires `ensure_family` from both `getSession().then(...)` and
+`onAuthStateChange(...)` on a fresh sign-in) could both miss the existence checks and
+both insert a family.
+- Adds a **partial unique index** `families_owner_unique` on `families (owner_id)` —
+  at most one owner family per user at the storage layer, so two concurrent inserts
+  can never both succeed regardless of timing.
+- Rewrites `ensure_family()` to be concurrency-safe + idempotent: it takes a
+  transaction-level advisory lock keyed to the user (concurrent bootstraps for the
+  same user serialize; the loser observes and returns the family the winner created),
+  and inserts with `on conflict (owner_id) do nothing` + re-select as defense in depth.
+- **Preserves Person ≠ Account ≠ Membership**: constrains only `families.owner_id`
+  (who OWNS a household). It does NOT constrain `family_members`, so future
+  multi-household MEMBERSHIP stays possible; the "one active household per user"
+  product rule remains solely in `accept_household_invitation` (0009), unchanged.
+- Non-destructive: adds one index + one create-or-replace function; drops nothing,
+  deletes no data. Assumes no pre-existing duplicate owner families (production was
+  reconciled to 0 families first; the index creation fails loudly rather than guessing
+  a winner if duplicates ever exist).
+Authoritative apply order for a clean environment is now `0001 → … → 0015`. See
+`scripts/test-bootstrap.ts` for the concurrency + idempotency proofs.

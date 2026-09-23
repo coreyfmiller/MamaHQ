@@ -120,7 +120,7 @@ jobs:
       - name: Start local Supabase (Docker)
         run: supabase start
 
-      - name: Clean-provision from authoritative migrations (empty DB -> 0001..0014)
+      - name: Clean-provision from authoritative migrations (empty DB -> 0001..0015)
         # `db reset` drops the local db and replays every file in supabase/migrations
         # in order. This IS the clean-provision proof: it fails if any migration
         # cannot apply from scratch.
@@ -182,6 +182,9 @@ jobs:
 
       - name: Onboarding & Partner tests (Beta Phase 2)
         run: node scripts/test-onboarding-partner.ts
+
+      - name: Owner-family bootstrap integrity tests (0015 — duplicate-family fix)
+        run: node scripts/test-bootstrap.ts
 
       - name: Stop local Supabase
         if: always()
