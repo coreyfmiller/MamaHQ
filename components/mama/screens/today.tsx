@@ -17,6 +17,7 @@ import {
   ListChecks,
   Clock,
   HeartHandshake,
+  Users,
 } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, dayNumber } from '../profile'
@@ -45,6 +46,7 @@ import { useHousehold } from '../household'
 import { useAuth } from '../auth'
 import {
   buildTodayModel,
+  isSoloHousehold,
   type TodayModel,
   type DomainState,
   type AttentionItem,
@@ -128,6 +130,7 @@ export function TodayScreen() {
   const now = useNow(60_000)
   const model = useTodayModel(now)
   const { profile } = useProfile()
+  const soloHousehold = useIsSoloHousehold()
 
   return (
     <Screen>
@@ -145,6 +148,11 @@ export function TodayScreen() {
             <TodayPlan model={model} />
             <MineSection model={model} />
             <HouseholdSection model={model} />
+            {/* Responsibility teaching state: when Mom is the only connected adult,
+                "Others are handling" can never populate, so the biggest differentiator
+                (shared, owned responsibility) is invisible. Teach it honestly — never
+                fabricate activity — and only until another adult actually connects. */}
+            {soloHousehold && !model.failedDomains.includes('tasks') && <ShareTheLoadCard />}
             <CareSection model={model} />
             <GroceryCard count={model.grocery.activeCount} />
             <TellCta />
@@ -228,6 +236,7 @@ function TodayLoading() {
 
 function EmptyToday() {
   const { setTab, openOverlay } = useNav()
+  const soloHousehold = useIsSoloHousehold()
   return (
     <div className="mt-2 space-y-4">
       <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-sm">
@@ -248,6 +257,11 @@ function EmptyToday() {
         <QuickShortcut icon={CalendarDays} label="Add event" onClick={() => openOverlay('calendar')} />
         <QuickShortcut icon={ShoppingCart} label="Grocery" onClick={() => openOverlay('grocery')} />
       </div>
+      {/* A fresh solo Today is the FIRST place a new user should learn MamaHQ supports
+          shared responsibility — otherwise the empty state hides the concept entirely.
+          Rendered only here (empty branch) or in the populated branch, never both, so
+          it is never duplicated. Same compact card + Invite action. */}
+      {soloHousehold && <ShareTheLoadCard />}
     </div>
   )
 }
@@ -592,6 +606,52 @@ function HouseholdSection({ model }: { model: TodayModel }) {
   )
 }
 
+// True when the current user is the ONLY connected adult in the household — i.e. no
+// OTHER person is linked to an authenticated account. Derived from durable household
+// truth (accountStatus === 'connected'), never from display text or pending invites:
+// a person who was merely invited (not yet joined) does NOT count, so the teaching
+// state stays literally true ("when another adult joins…") until someone actually
+// accepts. Signed-out/unhydrated households are treated as solo (nothing to show yet).
+function useIsSoloHousehold(): boolean {
+  const { people, me, hydrated } = useHousehold()
+  if (!hydrated) return false
+  // Pure predicate (lib/today/model) so the teaching-state condition is testable
+  // without React. Signed-out/unhydrated households are treated as solo (handled above).
+  return isSoloHousehold(people, me?.id ?? null)
+}
+
+// The responsibility teaching state. Calm, compact, truthful: it explains the
+// capability that "Others are handling" will show once another adult connects, and
+// offers a single action into the EXISTING Household/People surface. It fabricates no
+// tasks and no household activity, and disappears entirely once a second adult joins.
+function ShareTheLoadCard() {
+  const { openOverlay } = useNav()
+  return (
+    <Card className="space-y-2.5">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sage">
+          <Users className="size-[18px]" strokeWidth={1.75} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-semibold leading-tight">Share the load</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+            When another adult joins MamaHQ, you&apos;ll both see who&apos;s handling what — and you can
+            hand things off so it&apos;s not all on you.
+          </p>
+        </div>
+      </div>
+      <div className="pl-12">
+        <button
+          onClick={() => openOverlay('people')}
+          className="rounded-full bg-muted px-4 py-2 text-[13px] font-semibold text-foreground transition-transform active:scale-[0.98]"
+        >
+          Invite someone
+        </button>
+      </div>
+    </Card>
+  )
+}
+
 /* ======================================================================== */
 /* Care                                                                      */
 /* ======================================================================== */
@@ -897,6 +957,12 @@ function TodaysReadButton() {
         <BookOpen className="size-5" strokeWidth={1.75} />
       </span>
       <div className="min-w-0 flex-1">
+        {/* Subtle journey framing so MamaHQ feels like it's intentionally walking Mom
+            through the first 90 days. Uses the SAME authoritative journey-day state as
+            everything else; only rendered within Days 1–90 (hasReadToday gates it). */}
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-sage">
+          Day {j.day} of your first 90
+        </p>
         <p className="truncate text-[15px] font-semibold leading-tight">{read.title}</p>
         <p className="text-[13px] text-muted-foreground">
           {read.category} &middot; {mins} min read

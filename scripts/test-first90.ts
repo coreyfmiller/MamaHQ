@@ -173,6 +173,25 @@ import { spawnSync } from 'node:child_process'
 }
 
 // ==========================================================================
+// JOURNEY MARKER GATING — the Today "Day N of your first 90" framing renders
+// ONLY within the journey (hasReadToday), shows the authoritative day number, and
+// must NOT appear on Day 91+ (no fabricated "Day N of 90" past the journey).
+// ==========================================================================
+{
+  const birth = birthISO(2026, 9, 22)
+  const d12 = firstNinetyState(birth, daysAfterBirth(2026, 9, 22, 11))
+  ok(d12.hasReadToday, 'marker gate open on Day 12 (within journey)')
+  eq(d12.day, 12, 'marker shows the authoritative journey day (12)')
+  // Day 91+: gate closed → no marker (and no "today's read").
+  const d91 = firstNinetyState(birth, daysAfterBirth(2026, 9, 22, 90))
+  ok(!d91.hasReadToday, 'marker gate CLOSED on Day 91 (no "Day N of your first 90")')
+  // No birth date → clamps to Day 1 but is still within journey (marker shows Day 1
+  // only when a profile/birth date exists; the screen additionally gates on profile).
+  const noBirth = firstNinetyState(null, daysAfterBirth(2026, 9, 22, 11))
+  eq(noBirth.day, 1, 'missing birth date clamps to Day 1 (screen also requires a profile before showing the marker)')
+}
+
+// ==========================================================================
 console.log(`\nFirst 90 Days: ${passed} passed, ${failed} failed`)
 if (failed > 0) {
   console.log('\nFailures:')

@@ -56,14 +56,24 @@ export function GroceryScreen() {
           </p>
         ) : (
           <div className="space-y-2">
-            {active.map((it) => (
-              <ActiveRow
-                key={it.id}
-                item={it}
-                onComplete={() => completeItem(it.id)}
-                onQty={(q) => editItem(it.id, { quantity: q })}
-              />
-            ))}
+            {active.map((it) => {
+              // Persistent "your usual" cue, from EXISTING household memory only: show
+              // it when this item's learned variant is the household's default/usual
+              // (isDefault is the conservative truth the backend computes — either the
+              // explicitly-set usual or a single established variant; ambiguous → no
+              // default → no cue). Never invented; explicit precedence preserved.
+              const variant = householdVariantForItem(it)
+              const isUsual = !!variant?.isDefault
+              return (
+                <ActiveRow
+                  key={it.id}
+                  item={it}
+                  isUsual={isUsual}
+                  onComplete={() => completeItem(it.id)}
+                  onQty={(q) => editItem(it.id, { quantity: q })}
+                />
+              )
+            })}
           </div>
         )}
 
@@ -314,10 +324,13 @@ function AddRow({
 
 function ActiveRow({
   item,
+  isUsual = false,
   onComplete,
   onQty,
 }: {
   item: GroceryItem
+  /** True when household memory has this item's variant as the household's usual. */
+  isUsual?: boolean
   onComplete: () => void
   onQty: (q: number) => void
 }) {
@@ -329,6 +342,13 @@ function ActiveRow({
       <span className="min-w-0 flex-1 truncate text-[16px] font-medium text-foreground">
         {item.displayName}
         {item.unit ? <span className="text-muted-foreground"> · {item.unit}</span> : null}
+        {/* Quiet, persistent household-memory cue — "MamaHQ knows how we shop." No
+            technical internals (no tiers/confidence/ids), just human value. */}
+        {isUsual ? (
+          <span className="ml-1.5 whitespace-nowrap rounded-full bg-sage-soft px-2 py-0.5 text-[11px] font-semibold text-sage align-middle">
+            your usual
+          </span>
+        ) : null}
       </span>
 
       {/* Quantity stepper */}
