@@ -94,31 +94,39 @@ begin
   -- gives a stable per-user key namespaced to this function.
   perform pg_advisory_xact_lock(hashtextextended('mamahq.ensure_family:' || uid::text, 0));
 
-  -- Already a member of a family? return it (membership is the authorization truth).
+  -- Already a member of a family? adopt it. Otherwise resolve/create the owned family.
+  -- NOTE: we do NOT early-return here — the owner-person invariant (0002) must hold
+  -- on EVERY bootstrap (existing families included), so ensure_owner_person(fid) runs
+  -- unconditionally below before returning, exactly like the 0002 definition.
   select m.family_id into fid from public.family_members m where m.user_id = uid limit 1;
-  if fid is not null then
-    return fid;
-  end if;
 
-  -- Owns a family but is somehow missing membership? adopt it.
-  select f.id into fid from public.families f where f.owner_id = uid limit 1;
-
-  -- Otherwise create one. ON CONFLICT (owner_id) is belt-and-suspenders: even if the
-  -- advisory lock were bypassed, the unique index prevents a duplicate insert, and we
-  -- re-select the existing row so the function still returns the one true family.
   if fid is null then
-    insert into public.families (owner_id) values (uid)
-      on conflict (owner_id) where owner_id is not null do nothing
-      returning id into fid;
+    -- Owns a family but is somehow missing membership? adopt it.
+    select f.id into fid from public.families f where f.owner_id = uid limit 1;
+
+    -- Otherwise create one. ON CONFLICT (owner_id) is belt-and-suspenders: even if the
+    -- advisory lock were bypassed, the unique index prevents a duplicate insert, and we
+    -- re-select the existing row so the function still returns the one true family.
     if fid is null then
-      select f.id into fid from public.families f where f.owner_id = uid limit 1;
+      insert into public.families (owner_id) values (uid)
+        on conflict (owner_id) where owner_id is not null do nothing
+        returning id into fid;
+      if fid is null then
+        select f.id into fid from public.families f where f.owner_id = uid limit 1;
+      end if;
     end if;
+
+    -- Ensure owner membership exists (idempotent).
+    insert into public.family_members (family_id, user_id, role)
+    values (fid, uid, 'owner')
+    on conflict (family_id, user_id) do nothing;
   end if;
 
-  -- Ensure owner membership exists (idempotent).
-  insert into public.family_members (family_id, user_id, role)
-  values (fid, uid, 'owner')
-  on conflict (family_id, user_id) do nothing;
+  -- Guarantee the owner has exactly one connected Household Person (0002 invariant).
+  -- Unconditional + idempotent: holds for both newly created and pre-existing
+  -- families on every sign-in bootstrap. This was dropped in an earlier draft of
+  -- 0015 and MUST remain, or the owner-person never gets created.
+  perform public.ensure_owner_person(fid);
 
   return fid;
 end $$;
