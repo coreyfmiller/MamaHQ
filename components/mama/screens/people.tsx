@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Users, UserPlus, Link2, X, Check, Share2, Loader2 } from 'lucide-react'
+import { Users, UserPlus, Link2, X, Check, Share2, Loader2, ChevronRight } from 'lucide-react'
 import { useNav } from '../context'
 import { useHousehold, type HouseholdPerson } from '../household'
 import { shareInvite, copyInvite, canNativeShare } from '../invite-share'
@@ -20,7 +20,7 @@ function newPersonId(): string {
 // owner invite an account-less adult by generating a shareable join link. Minimal by
 // design: this proves + uses household membership, it is not a settings product.
 export function PeopleScreen() {
-  const { closeOverlay, showToast } = useNav()
+  const { closeOverlay, openOverlay, showToast } = useNav()
   const { people, savePerson, invitePerson, revokeInvite } = useHousehold()
   // The freshly-generated invite link, kept in memory per person so we can surface it
   // for the user to share. The link is a credential — never logged, never sent by us.
@@ -113,6 +113,23 @@ export function PeopleScreen() {
           this household. Being listed here is not the same as having access — access comes only
           from accepting an invite.
         </p>
+
+        {/* Partner view — the "share the load" surface. Kept reachable here in the
+            household domain (Home → Family) after Me 2.0 removed its Me link, so the
+            existing PartnerScreen never becomes orphaned. */}
+        <button
+          onClick={() => openOverlay('partner')}
+          className="flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left ring-1 ring-border/60 transition-colors active:bg-muted"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sage">
+            <Users className="size-[18px]" strokeWidth={1.9} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold leading-tight">Partner view</p>
+            <p className="text-[13px] text-muted-foreground">Share the load</p>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </button>
       </Scroll>
     </Screen>
   )

@@ -1,14 +1,42 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, ChevronRight, Heart, ListChecks, Moon, Plus, Sparkles, Star, Sun, Smile, Users, X } from 'lucide-react'
+import {
+  Bell,
+  ChevronRight,
+  Moon,
+  Plus,
+  Settings as SettingsIcon,
+  Star,
+  Sun,
+  Smile,
+  X,
+  Sparkles,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react'
 import { useNav } from '../context'
-import { CategoryChip } from '../event-meta'
-import { BottomNav, Card, CardLabel, CheckBox, Screen, Scroll, StatusBar } from '../ui'
-import { LeafSprig } from '../decor'
+import { useProfile, dayNumber } from '../profile'
+import { firstNinetyState } from '@/lib/first90'
+import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
+import { pickAffirmation } from '@/lib/affirmations'
 import { useMom, dayKey, type Mood, type MomItem } from '../mom'
 import { useCalendar, type CalendarEvent } from '../calendar'
 import { useNotifications } from '../notifications'
+import { useNow } from '../logs'
+import { BottomNav, Card, CardLabel, CheckBox, Screen, Scroll, StatusBar } from '../ui'
+
+// ── Me (MamaHQ 2.0) ─────────────────────────────────────────────────────────
+//
+// "Me = Mom." One coherent page about her: How are you? → My Journey → My to-dos →
+// Questions for my doctor → My appointments → quiet utilities (Notifications,
+// Settings). Household operations (Tasks/People/Partner) now live in Home and are
+// intentionally NOT re-listed here.
+//
+// Truthfulness: Mom's mood, to-dos and doctor questions are family-scoped (household-
+// visible) — there is NO private-to-user storage. We therefore never show lock icons,
+// "Private", or "Only me"; where the distinction matters we say "Shared with
+// household" quietly, once. Loading ≠ Empty ≠ Failed via useMom.hydrated/loadError.
 
 const moodOptions: { id: Mood; label: string; icon: 'moon' | 'sun' | 'smile' | 'star' }[] = [
   { id: 'tired', label: 'Tired', icon: 'moon' },
@@ -18,49 +46,384 @@ const moodOptions: { id: Mood; label: string; icon: 'moon' | 'sun' | 'smile' | '
 ]
 const moodIcon = { moon: Moon, sun: Sun, smile: Smile, star: Star }
 
-function CheckIn() {
-  const { state, setTodayMood } = useMom()
-  const today = state.moodByDay[dayKey()] ?? null
+export function MeScreen() {
+  const { openOverlay } = useNav()
+
   return (
-    <Card className="space-y-4">
-      <div>
-        <h3 className="font-serif text-[17px] font-medium">How are you doing today?</h3>
-        <p className="text-[13px] text-muted-foreground">
-          {today ? 'Thanks for checking in. Tap again to change it.' : 'Take a moment for you.'}
-        </p>
-      </div>
-      <div className="grid grid-cols-4 gap-2">
-        {moodOptions.map((m) => {
-          const Icon = moodIcon[m.icon]
-          const isActive = today === m.id
-          return (
-            <button
-              key={m.id}
-              onClick={() => setTodayMood(isActive ? null : m.id)}
-              className={`flex flex-col items-center gap-1.5 rounded-2xl border py-3 transition-colors ${
-                isActive ? 'border-primary bg-sage-soft text-primary' : 'border-border/70 bg-card text-muted-foreground'
-              }`}
-            >
-              <Icon className="size-5" strokeWidth={1.75} />
-              <span className={`text-[12px] ${isActive ? 'font-semibold text-foreground' : ''}`}>{m.label}</span>
-            </button>
-          )
-        })}
-      </div>
-    </Card>
+    <Screen>
+      <StatusBar />
+      <Scroll className="px-5 pb-28">
+        {/* Header — name + quiet Settings gear (opens the canonical settings overlay). */}
+        <header className="flex items-start justify-between pt-1">
+          <div>
+            <h1 className="font-serif text-[26px] font-semibold tracking-tight">Me</h1>
+            <p className="text-[13.5px] text-muted-foreground">You matter too.</p>
+          </div>
+          <button
+            onClick={() => openOverlay('settings')}
+            aria-label="Settings"
+            className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground transition-transform active:scale-95"
+          >
+            <SettingsIcon className="size-[19px]" strokeWidth={1.9} />
+          </button>
+        </header>
+
+        <CheckIn />
+        <MyJourney />
+        <MyToDos />
+        <DoctorQuestions />
+        <MyAppointments />
+
+        {/* Quiet utilities — not major sections. */}
+        <section className="mt-6 overflow-hidden rounded-2xl ring-1 ring-border/50">
+          <NotificationsRow />
+          <div className="h-px bg-border/50" aria-hidden />
+          <UtilityRow icon={SettingsIcon} label="Settings" sub="Profile, account, sign out" onClick={() => openOverlay('settings')} />
+        </section>
+      </Scroll>
+
+      <BottomNav active="me" />
+    </Screen>
   )
 }
 
-// A checkable, removable row for a mom task/question.
-function ItemRow({
-  item,
-  onToggle,
-  onRemove,
-}: {
-  item: MomItem
-  onToggle: () => void
-  onRemove: () => void
-}) {
+/* ── How are you? (mood check-in) ─────────────────────────────────────────────
+ * Warm, one-tap, no scores/trends/history (none exist). Real + persisted per day
+ * via useMom → mom_moods. */
+function CheckIn() {
+  const { state, setTodayMood, hydrated, loadError } = useMom()
+  const today = state.moodByDay[dayKey()] ?? null
+
+  return (
+    <section className="mt-5">
+      <h2 className="px-1 font-serif text-[17px] font-semibold">How are you today?</h2>
+      {loadError ? (
+        <p className="mt-2 flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+          <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} /> Couldn&apos;t load your check-in.
+        </p>
+      ) : !hydrated ? (
+        <p className="mt-2 flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Loading…
+        </p>
+      ) : (
+        <div className="mt-2.5 grid grid-cols-4 gap-2">
+          {moodOptions.map((m) => {
+            const Icon = moodIcon[m.icon]
+            const isActive = today === m.id
+            return (
+              <button
+                key={m.id}
+                onClick={() => setTodayMood(isActive ? null : m.id)}
+                aria-pressed={isActive}
+                className={`flex flex-col items-center gap-1.5 rounded-2xl border py-3 transition-colors ${
+                  isActive ? 'border-primary bg-sage-soft text-primary' : 'border-border/70 bg-card text-muted-foreground'
+                }`}
+              >
+                <Icon className="size-5" strokeWidth={1.75} />
+                <span className={`text-[12px] ${isActive ? 'font-semibold text-foreground' : ''}`}>{m.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/* ── My Journey (First 90 / Beyond 90) ────────────────────────────────────────
+ * The wedge, owned by Me. Within the journey: Day N + a quiet affirmation + today's
+ * daily read. After Day 90: a graceful continuation into Beyond 90. Reuses the
+ * existing first90 engine, daily-reads, affirmations, and read/beyond90 overlays. */
+function MyJourney() {
+  const { openOverlay } = useNav()
+  const { profile } = useProfile()
+  const now = useNow(60_000)
+
+  if (!profile?.birthDate) return null
+
+  const st = firstNinetyState(profile.birthDate, now)
+  const day = dayNumber(profile.birthDate, now)
+
+  return (
+    <section className="mt-6">
+      <CardLabel className="mb-2 px-1 text-foreground">My Journey</CardLabel>
+
+      {st.withinJourney ? (
+        <div className="overflow-hidden rounded-3xl bg-sage-soft/40 ring-1 ring-border/40">
+          <div className="px-5 pt-4">
+            <p className="font-serif text-[22px] font-semibold leading-none tracking-tight">Day {day}</p>
+            <p className="mt-1 text-[13px] text-muted-foreground">of your first 90 days</p>
+            <p className="mt-3 text-[14px] italic leading-relaxed text-foreground/80">
+              {pickAffirmation(day, now)}
+            </p>
+          </div>
+          <TodaysRead />
+        </div>
+      ) : (
+        <button
+          onClick={() => openOverlay('beyond90')}
+          className="flex w-full items-center gap-3 rounded-3xl bg-sage-soft/40 px-5 py-4 text-left ring-1 ring-border/40 transition-transform active:scale-[0.99]"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sage">
+            <Sparkles className="size-5" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold leading-tight">Beyond the first 90 days</p>
+            <p className="text-[13px] text-muted-foreground">What keeps working, now that you&apos;re past Day 90.</p>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </button>
+      )}
+    </section>
+  )
+}
+
+// Today's daily read entry — reuses the canonical read overlay.
+function TodaysRead() {
+  const { openOverlay } = useNav()
+  const { profile } = useProfile()
+  const now = useNow(60_000)
+  if (!profile?.birthDate) return null
+  const read = pickDailyRead(dayNumber(profile.birthDate, now))
+  if (!read) return null
+
+  return (
+    <button
+      onClick={() => openOverlay('read')}
+      className="mt-3 flex w-full items-center gap-3 border-t border-border/50 px-5 py-3.5 text-left transition-colors active:bg-foreground/[0.03]"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Today&apos;s read</p>
+        <p className="truncate text-[14.5px] font-semibold leading-tight">{read.title}</p>
+        <p className="text-[12px] text-muted-foreground">{readMinutes(read)} min · {read.category}</p>
+      </div>
+      <ChevronRight className="size-4 shrink-0 text-primary" />
+    </button>
+  )
+}
+
+/* ── My to-dos (Mom's personal checklist) ─────────────────────────────────────
+ * mom_items kind='task'. Distinct from Home → Tasks (shared responsibility). Add /
+ * toggle / remove preserved. Family-scoped, so a single quiet "Shared with
+ * household" note — never a privacy/lock claim. */
+function MyToDos() {
+  const { state, hydrated, loadError, addTask, toggleTask, removeTask } = useMom()
+
+  return (
+    <section className="mt-6">
+      <div className="mb-1.5 flex items-baseline justify-between px-1">
+        <CardLabel className="text-foreground">My to-dos</CardLabel>
+        <span className="text-[11px] text-muted-foreground/70">Shared with household</span>
+      </div>
+      <Card className="space-y-1 p-4">
+        {loadError ? (
+          <ErrorLine label="Couldn't load your to-dos." />
+        ) : !hydrated ? (
+          <LoadingLine />
+        ) : (
+          <>
+            {state.tasks.length > 0 ? (
+              <div className="divide-y divide-border/50">
+                {state.tasks.map((t) => (
+                  <ItemRow key={t.id} item={t} onToggle={() => toggleTask(t.id)} onRemove={() => removeTask(t.id)} />
+                ))}
+              </div>
+            ) : (
+              <p className="py-1 text-[13.5px] text-muted-foreground">Nothing here yet — a quick personal checklist for you.</p>
+            )}
+            <AddInline label="Add a to-do" placeholder="e.g. Take medication" onAdd={addTask} />
+          </>
+        )}
+      </Card>
+    </section>
+  )
+}
+
+/* ── Questions for my doctor ──────────────────────────────────────────────────
+ * mom_items kind='question'. Appointment prep, NOT a general notes/journal system. */
+function DoctorQuestions() {
+  const { state, hydrated, loadError, addQuestion, toggleQuestion, removeQuestion } = useMom()
+
+  return (
+    <section className="mt-6">
+      <CardLabel className="mb-1.5 px-1 text-foreground">Questions for my doctor</CardLabel>
+      <Card className="space-y-1 p-4">
+        {loadError ? (
+          <ErrorLine label="Couldn't load your questions." />
+        ) : !hydrated ? (
+          <LoadingLine />
+        ) : (
+          <>
+            {state.questions.length > 0 ? (
+              <div className="divide-y divide-border/50">
+                {state.questions.map((q) => (
+                  <ItemRow key={q.id} item={q} onToggle={() => toggleQuestion(q.id)} onRemove={() => removeQuestion(q.id)} />
+                ))}
+              </div>
+            ) : (
+              <p className="py-1 text-[13.5px] text-muted-foreground">
+                Save questions as they come to you, so you don&apos;t forget at the visit.
+              </p>
+            )}
+            <AddInline label="Add a question" placeholder="e.g. Breastfeeding discomfort" onAdd={addQuestion} />
+          </>
+        )}
+      </Card>
+    </section>
+  )
+}
+
+/* ── My appointments (Calendar "mine" preview) ────────────────────────────────
+ * A small Mom-associated view of the shared Calendar (participant or responsible).
+ * NOT a second calendar; routes to the canonical Calendar for detail. Honors the
+ * Calendar provider's own loading / loadError / empty states. Household-visible. */
+function eventWhen(e: CalendarEvent): string {
+  const rel = (d: Date): string => {
+    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+    const diff = Math.round((startOfDay(d) - startOfDay(new Date())) / 86_400_000)
+    if (diff === 0) return 'Today'
+    if (diff === 1) return 'Tomorrow'
+    if (diff > 1 && diff < 7) return d.toLocaleDateString(undefined, { weekday: 'short' })
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+  const clock = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (e.allDay) {
+    if (!e.startDate) return 'All day'
+    const [y, m, d] = e.startDate.split('-').map(Number)
+    return `${rel(new Date(y, (m ?? 1) - 1, d ?? 1))} · All day`
+  }
+  if (!e.startsAt) return ''
+  const start = new Date(e.startsAt)
+  return `${rel(start)} · ${clock(start)}`
+}
+
+function MyAppointments() {
+  const { openOverlay, composeEvent } = useNav()
+  const { mine, hydrated, available, loadError } = useCalendar()
+  const now = useNow(60_000)
+
+  // Only upcoming Mom-associated events (now or later), soonest first.
+  const nowMs = now.getTime()
+  const upcomingMine = mine
+    .filter((e) => {
+      const t = e.allDay
+        ? (e.startDate ? new Date(e.startDate + 'T23:59:59').getTime() : 0)
+        : (e.startsAt ? new Date(e.startsAt).getTime() : 0)
+      return t >= nowMs - 12 * 3_600_000 // include today's earlier-today items
+    })
+    .sort((a, b) => {
+      const at = a.startsAt ?? a.startDate ?? ''
+      const bt = b.startsAt ?? b.startDate ?? ''
+      return at < bt ? -1 : at > bt ? 1 : 0
+    })
+    .slice(0, 3)
+
+  const body = () => {
+    if (!available) return <p className="text-[13.5px] text-muted-foreground">Your shared schedule shows up here once you&apos;re set up.</p>
+    if (loadError) return <ErrorLine label="Couldn't load your calendar." onRetry={() => openOverlay('calendar')} />
+    if (!hydrated) return <LoadingLine />
+    if (upcomingMine.length === 0) {
+      return (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[13.5px] text-muted-foreground">Nothing on your calendar right now.</p>
+          <button onClick={() => composeEvent(null)} className="flex shrink-0 items-center gap-0.5 text-[13px] font-medium text-primary">
+            <Plus className="size-3.5" strokeWidth={2.25} /> Add
+          </button>
+        </div>
+      )
+    }
+    return (
+      <ul className="space-y-2">
+        {upcomingMine.map((e) => (
+          <li key={e.id}>
+            <button onClick={() => composeEvent(e.id)} className="flex w-full items-center gap-3 text-left">
+              <span className="w-24 shrink-0 text-[12.5px] font-medium tabular-nums text-muted-foreground">{eventWhen(e)}</span>
+              <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">{e.title}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  return (
+    <section className="mt-6">
+      <div className="mb-1.5 flex items-center justify-between px-1">
+        <CardLabel className="text-foreground">My appointments</CardLabel>
+        <button onClick={() => openOverlay('calendar')} className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
+          Calendar <ChevronRight className="size-3.5" />
+        </button>
+      </div>
+      <Card className="p-4">{body()}</Card>
+    </section>
+  )
+}
+
+/* ── Quiet utility rows ───────────────────────────────────────────────────────── */
+
+function NotificationsRow() {
+  const { openOverlay } = useNav()
+  const { unreadCount } = useNotifications()
+  return (
+    <button onClick={() => openOverlay('notifications')} className="flex w-full items-center gap-3.5 bg-card px-4 py-3.5 text-left transition-colors active:bg-muted">
+      <span className="relative flex size-9 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Bell className="size-[18px]" strokeWidth={1.75} />
+        {unreadCount > 0 && (
+          <span className="absolute -right-1 -top-1 flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-[18px] text-primary-foreground">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-semibold leading-tight">Notifications</p>
+        <p className="text-[13px] text-muted-foreground">
+          {unreadCount > 0 ? `${unreadCount} need${unreadCount === 1 ? 's' : ''} your attention` : 'When someone needs you'}
+        </p>
+      </div>
+      <ChevronRight className="size-4 text-muted-foreground" />
+    </button>
+  )
+}
+
+function UtilityRow({ icon: Icon, label, sub, onClick }: { icon: typeof Bell; label: string; sub: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-3.5 bg-card px-4 py-3.5 text-left transition-colors active:bg-muted">
+      <span className="flex size-9 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Icon className="size-[18px]" strokeWidth={1.75} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-semibold leading-tight">{label}</p>
+        <p className="text-[13px] text-muted-foreground">{sub}</p>
+      </div>
+      <ChevronRight className="size-4 text-muted-foreground" />
+    </button>
+  )
+}
+
+/* ── Shared bits ──────────────────────────────────────────────────────────────── */
+
+function LoadingLine() {
+  return (
+    <p className="flex items-center gap-1.5 py-1 text-[13.5px] text-muted-foreground">
+      <Loader2 className="size-3.5 animate-spin" /> Loading…
+    </p>
+  )
+}
+
+function ErrorLine({ label, onRetry }: { label: string; onRetry?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-1">
+      <p className="flex items-center gap-1.5 text-[13.5px] text-muted-foreground">
+        <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} /> {label}
+      </p>
+      {onRetry && (
+        <button onClick={onRetry} className="shrink-0 text-[13px] font-medium text-primary">Open</button>
+      )}
+    </div>
+  )
+}
+
+function ItemRow({ item, onToggle, onRemove }: { item: MomItem; onToggle: () => void; onRemove: () => void }) {
   return (
     <div className="group flex items-center gap-3 py-2">
       <button onClick={onToggle} className="flex flex-1 items-center gap-3 text-left" aria-label="Toggle done">
@@ -80,7 +443,6 @@ function ItemRow({
   )
 }
 
-// Inline "add" affordance: a link that becomes a text input.
 function AddInline({ label, placeholder, onAdd }: { label: string; placeholder: string; onAdd: (t: string) => void }) {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
@@ -94,10 +456,7 @@ function AddInline({ label, placeholder, onAdd }: { label: string; placeholder: 
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="mt-2 flex items-center gap-2 text-[14px] font-medium text-primary"
-      >
+      <button onClick={() => setOpen(true)} className="mt-2 flex items-center gap-2 text-[14px] font-medium text-primary">
         <span className="flex size-6 items-center justify-center rounded-full bg-sage-soft">
           <Plus className="size-4" strokeWidth={2} />
         </span>
@@ -121,207 +480,9 @@ function AddInline({ label, placeholder, onAdd }: { label: string; placeholder: 
         placeholder={placeholder}
         className="flex-1 rounded-xl border border-border bg-card px-3 py-2 text-[15px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
       />
-      <button
-        onClick={submit}
-        className="rounded-xl bg-primary px-3.5 py-2 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-95"
-      >
+      <button onClick={submit} className="rounded-xl bg-primary px-3.5 py-2 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-95">
         Add
       </button>
     </div>
-  )
-}
-
-// Compact "when" label for the next Calendar event on the Me screen. Deterministic,
-// structured-data only (no fabrication): "Today · 2:00 PM", "Tomorrow · All day",
-// "Jul 4 · All day". Mirrors the Calendar screen's phrasing without importing its
-// private formatter (kept small + self-contained to avoid touching Step 10).
-function eventWhen(e: CalendarEvent): string {
-  const rel = (d: Date): string => {
-    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
-    const diff = Math.round((startOfDay(d) - startOfDay(new Date())) / 86_400_000)
-    if (diff === 0) return 'Today'
-    if (diff === 1) return 'Tomorrow'
-    if (diff > 1 && diff < 7) return d.toLocaleDateString(undefined, { weekday: 'short' })
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-  }
-  const clock = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-  if (e.allDay) {
-    if (!e.startDate) return 'All day'
-    const [y, m, d] = e.startDate.split('-').map(Number)
-    return `${rel(new Date(y, (m ?? 1) - 1, d ?? 1))} · All day`
-  }
-  if (!e.startsAt) return ''
-  const start = new Date(e.startsAt)
-  return `${rel(start)} · ${clock(start)}`
-}
-
-export function MeScreen() {
-  const { openOverlay, composeEvent } = useNav()
-  const { state, addTask, addQuestion, toggleTask, toggleQuestion, removeTask, removeQuestion } = useMom()
-  // Beta Phase 6 — "Coming up" reads the CANONICAL shared Calendar (Step 10), not the
-  // retired legacy Appointments store. One scheduling truth: if it happens at a date
-  // or time, it's a Calendar event. We track hydrated/loadError so a still-loading or
-  // failed calendar is NEVER shown as "nothing coming up" (that would be a false empty
-  // truth — §Beta Phase 6 review).
-  const { upcoming, hydrated: calHydrated, loadError: calLoadError, available: calAvailable } = useCalendar()
-  const nextEvent = upcoming[0] ?? null
-  const { unreadCount } = useNotifications()
-
-  return (
-    <Screen>
-      <StatusBar />
-      <LeafSprig className="pointer-events-none absolute -right-4 top-8 h-32 w-20 rotate-12 opacity-60" />
-      <Scroll className="space-y-4 px-6 pb-4">
-        <header className="pt-1">
-          <h1 className="font-serif text-[26px] font-semibold tracking-tight">Me</h1>
-          <p className="flex items-center gap-1.5 text-[14px] text-muted-foreground">
-            You matter too <Heart className="size-3.5 fill-blush text-blush" />
-          </p>
-        </header>
-
-        {/* Beta Phase 4 — HONEST visibility. This space is family-scoped in the
-            database (mom_moods / mom_items are readable by household members), so we
-            must not imply it's private. We say so plainly rather than pretending. */}
-        <p className="rounded-2xl bg-muted/50 px-4 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
-          Your check-in, to-dos, and questions are part of your shared household — anyone in your
-          household can see them. MamaHQ doesn&apos;t have a private-to-you space yet.
-        </p>
-
-        <CheckIn />
-
-        {/* Mom's own to-dos — a personal, lightweight checklist, distinct from shared
-            Household Tasks (which have owners + acceptance). The subtitle makes the
-            distinction obvious: personal reminder → here; something someone should own
-            → Tasks. */}
-        <Card className="space-y-1">
-          <CardLabel className="mb-1 text-foreground">My to-dos</CardLabel>
-          <p className="-mt-0.5 mb-1 text-[12px] leading-relaxed text-muted-foreground">
-            Just for you — a personal checklist. To hand something to the household, use Tasks.
-          </p>
-          {state.tasks.length > 0 ? (
-            <div className="divide-y divide-border/50">
-              {state.tasks.map((t) => (
-                <ItemRow key={t.id} item={t} onToggle={() => toggleTask(t.id)} onRemove={() => removeTask(t.id)} />
-              ))}
-            </div>
-          ) : (
-            <p className="py-1 text-[14px] text-muted-foreground">Nothing here yet. Add something for you.</p>
-          )}
-          <AddInline label="Add a to-do" placeholder="e.g. Take medication" onAdd={addTask} />
-        </Card>
-
-        {/* Coming up — the next event on the shared Calendar. Tapping opens the
-            canonical Calendar; adding routes to the Calendar composer. We never show
-            "nothing coming up" while the calendar is still loading or after it failed
-            to load — that would be a false empty truth. */}
-        <div>
-          <CardLabel className="mb-2 px-1 text-foreground">Coming up</CardLabel>
-          {nextEvent ? (
-            <Card onClick={() => openOverlay('calendar')} className="flex items-center gap-3.5">
-              <CategoryChip category="appointment" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-semibold">{nextEvent.title}</p>
-                <p className="text-[13px] text-muted-foreground">{eventWhen(nextEvent)}</p>
-              </div>
-              <ChevronRight className="size-4 text-muted-foreground" />
-            </Card>
-          ) : calAvailable && !calHydrated ? (
-            // Signed in, calendar still loading — don't claim it's empty yet.
-            <p className="rounded-3xl border border-dashed border-border bg-card/60 px-4 py-3.5 text-[14px] text-muted-foreground">
-              Loading your calendar…
-            </p>
-          ) : calLoadError ? (
-            // Load failed — say so truthfully; tapping opens the Calendar to retry.
-            <button
-              onClick={() => openOverlay('calendar')}
-              className="flex w-full items-center gap-3 rounded-3xl border border-dashed border-border bg-card/60 p-3.5 text-left text-muted-foreground transition-colors active:bg-muted"
-            >
-              <span className="flex size-9 items-center justify-center rounded-2xl bg-muted">
-                <ChevronRight className="size-[18px]" strokeWidth={1.75} />
-              </span>
-              <span className="text-[14px] font-medium">Couldn&apos;t load your calendar — tap to open it</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => composeEvent(null)}
-              className="flex w-full items-center gap-3 rounded-3xl border border-dashed border-border bg-card/60 p-3.5 text-left text-muted-foreground transition-colors active:bg-muted"
-            >
-              <span className="flex size-9 items-center justify-center rounded-2xl bg-muted">
-                <Plus className="size-[18px]" strokeWidth={1.75} />
-              </span>
-              <span className="text-[14px] font-medium">Add to the calendar</span>
-            </button>
-          )}
-        </div>
-
-        {/* Questions for my doctor */}
-        <Card className="space-y-1">
-          <CardLabel className="mb-1 text-foreground">Questions for my doctor</CardLabel>
-          {state.questions.length > 0 ? (
-            <div className="divide-y divide-border/50">
-              {state.questions.map((q) => (
-                <ItemRow
-                  key={q.id}
-                  item={q}
-                  onToggle={() => toggleQuestion(q.id)}
-                  onRemove={() => removeQuestion(q.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="py-1 text-[14px] text-muted-foreground">
-              Save questions as they come to you, so you don&apos;t forget at the visit.
-            </p>
-          )}
-          <AddInline label="Add a question" placeholder="e.g. Breastfeeding discomfort" onAdd={addQuestion} />
-        </Card>
-
-        {/* Notifications entry with a live unread badge. */}
-        <Card className="py-1">
-          <button
-            onClick={() => openOverlay('notifications')}
-            className="flex w-full items-center gap-3.5 py-3 text-left"
-          >
-            <span className="relative flex size-9 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-              <Bell className="size-[18px]" strokeWidth={1.75} />
-              {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-bold leading-[18px] text-primary-foreground">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-semibold leading-tight">Notifications</p>
-              <p className="text-[13px] text-muted-foreground">
-                {unreadCount > 0 ? `${unreadCount} need${unreadCount === 1 ? 's' : ''} your attention` : 'When someone needs you'}
-              </p>
-            </div>
-            <ChevronRight className="size-4 text-muted-foreground" />
-          </button>
-        </Card>
-
-        <Card className="divide-y divide-border/50 py-1">
-          {[
-            { icon: ListChecks, label: 'Tasks', sub: 'Who owns what', action: () => openOverlay('tasks') },
-            { icon: Users, label: 'Household', sub: 'People & invites', action: () => openOverlay('people') },
-            { icon: Users, label: 'Partner view', sub: 'Share the load', action: () => openOverlay('partner') },
-            { icon: Sparkles, label: 'After the first 90 days', sub: 'What keeps working', action: () => openOverlay('beyond90') },
-          ].map(({ icon: Icon, label, sub, action }) => (
-            <button key={label} onClick={action} className="flex w-full items-center gap-3.5 py-3 text-left">
-              <span className="flex size-9 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                <Icon className="size-[18px]" strokeWidth={1.75} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-semibold leading-tight">{label}</p>
-                <p className="text-[13px] text-muted-foreground">{sub}</p>
-              </div>
-              <ChevronRight className="size-4 text-muted-foreground" />
-            </button>
-          ))}
-        </Card>
-      </Scroll>
-
-      <BottomNav active="me" />
-    </Screen>
   )
 }

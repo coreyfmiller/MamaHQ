@@ -34,6 +34,11 @@ const empty: MomState = { moodByDay: {}, tasks: [], questions: [] }
 interface MomCtx {
   state: MomState
   hydrated: boolean
+  /** True when the last signed-in cloud READ failed (mood + items). Distinct from
+   *  write failures. Lets Me show a truthful "couldn't load" instead of a false
+   *  "empty" for Mom's mood/to-dos/questions. Mirrors Grocery/Logs/Tasks/Calendar/
+   *  Care. Only meaningful when signed in; signed-out local mode never sets it. */
+  loadError: boolean
   /** Set (or clear) today's mood. Passing the current mood again clears it. */
   setTodayMood: (mood: Mood | null) => void
   addTask: (text: string) => void
@@ -50,6 +55,7 @@ interface MomCtx {
 const Ctx = createContext<MomCtx>({
   state: empty,
   hydrated: false,
+  loadError: false,
   setTodayMood: () => {},
   addTask: () => {},
   addTaskAssigned: () => {},
@@ -98,11 +104,13 @@ export function MomProvider({ children }: { children: ReactNode }) {
   const { partner } = usePartner()
   const [state, setState] = useState<MomState>(empty)
   const [hydrated, setHydrated] = useState(false)
+  const [loadError, setLoadError] = useState(false)
 
   // Load from cloud (moods + items) or local, when auth resolves.
   useEffect(() => {
     let alive = true
     setHydrated(false)
+    setLoadError(false)
 
     if (familyId) {
       Promise.all([db.fetchMomMoods(familyId), db.fetchMomItems(familyId)])
@@ -113,11 +121,16 @@ export function MomProvider({ children }: { children: ReactNode }) {
             tasks: items.filter((i) => i.kind === 'task').map((i) => ({ id: i.id, text: i.text, done: i.done, createdAt: i.created_at, assignee: i.assignee ?? undefined })),
             questions: items.filter((i) => i.kind === 'question').map((i) => ({ id: i.id, text: i.text, done: i.done, createdAt: i.created_at })),
           })
+          setLoadError(false)
           setHydrated(true)
         })
         .catch(() => {
           if (!alive) return
-          setState(readLocal())
+          // Signed-in cloud read failed. Do NOT present the signed-out localStorage
+          // state as authoritative cloud truth (that would let a failure look like a
+          // real/empty Mom space). Surface loadError so Me can say "couldn't load"
+          // honestly rather than a reassuring empty state.
+          setLoadError(true)
           setHydrated(true)
         })
       return () => {
@@ -126,7 +139,9 @@ export function MomProvider({ children }: { children: ReactNode }) {
     }
 
     if (status !== 'loading') {
+      // Signed out: local is the legitimate source of truth, not a failure.
       setState(readLocal())
+      setLoadError(false)
       setHydrated(true)
     }
     return () => {
@@ -229,6 +244,7 @@ export function MomProvider({ children }: { children: ReactNode }) {
     () => ({
       state,
       hydrated,
+      loadError,
       setTodayMood,
       addTask,
       addTaskAssigned,
@@ -239,7 +255,7 @@ export function MomProvider({ children }: { children: ReactNode }) {
       removeQuestion,
       clearMom,
     }),
-    [state, hydrated, familyId, partner],
+    [state, hydrated, loadError, familyId, partner],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
