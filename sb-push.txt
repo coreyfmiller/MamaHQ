@@ -1,0 +1,13 @@
+Initialising login role...
+Connecting to remote database...
+Skipping migration README.md... (file name must match pattern "<timestamp>_name.sql")
+[?25l|
+*  Do you want to push these migrations to the remote database?
+|   • 0010_tasks.sql
+|   • 0011_responsibility_handoff.sql
+|   • 0012_calendar_commitments.sql
+|   • 0013_realtime_notifications.sql
+|   • 0014_owner_identity.sql
+|  
+|  > Yes /   No
+—
