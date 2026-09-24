@@ -115,11 +115,11 @@ function CheckIn() {
                 key={m.id}
                 onClick={() => setTodayMood(isActive ? null : m.id)}
                 aria-pressed={isActive}
-                className={`flex flex-col items-center gap-1.5 rounded-2xl border py-3 transition-colors ${
+                className={`flex flex-col items-center gap-1 rounded-2xl border py-2.5 transition-colors ${
                   isActive ? 'border-primary bg-sage-soft text-primary' : 'border-border/70 bg-card text-muted-foreground'
                 }`}
               >
-                <Icon className="size-5" strokeWidth={1.75} />
+                <Icon className="size-[18px]" strokeWidth={1.75} />
                 <span className={`text-[12px] ${isActive ? 'font-semibold text-foreground' : ''}`}>{m.label}</span>
               </button>
             )
@@ -136,17 +136,55 @@ function CheckIn() {
  * existing first90 engine, daily-reads, affirmations, and read/beyond90 overlays. */
 function MyJourney() {
   const { openOverlay } = useNav()
-  const { profile } = useProfile()
+  const { profile, hydrated } = useProfile()
   const now = useNow(60_000)
 
-  if (!profile?.birthDate) return null
+  // The section ALWAYS renders (never silently disappears). Three truthful states:
+  //   • profile not hydrated yet → compact loading line
+  //   • no birth date on file    → compact setup prompt (no invented Day number)
+  //   • have a birth date        → within-journey Day N, or Beyond 90
+  const header = <CardLabel className="mb-2 px-1 text-foreground">My Journey</CardLabel>
+
+  if (!hydrated) {
+    return (
+      <section className="mt-6">
+        {header}
+        <p className="flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Loading your journey…
+        </p>
+      </section>
+    )
+  }
+
+  if (!profile?.birthDate) {
+    // Missing the one input the journey needs — guide to set it in Settings rather
+    // than removing the section or fabricating a day.
+    return (
+      <section className="mt-6">
+        {header}
+        <button
+          onClick={() => openOverlay('settings')}
+          className="flex w-full items-center gap-3 rounded-3xl bg-sage-soft/40 px-5 py-4 text-left ring-1 ring-border/40 transition-transform active:scale-[0.99]"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sage">
+            <Sparkles className="size-5" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold leading-tight">Start your first 90 days</p>
+            <p className="text-[13px] text-muted-foreground">Add Baby&apos;s birth date to see your day-by-day journey.</p>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </button>
+      </section>
+    )
+  }
 
   const st = firstNinetyState(profile.birthDate, now)
   const day = dayNumber(profile.birthDate, now)
 
   return (
     <section className="mt-6">
-      <CardLabel className="mb-2 px-1 text-foreground">My Journey</CardLabel>
+      {header}
 
       {st.withinJourney ? (
         <div className="overflow-hidden rounded-3xl bg-sage-soft/40 ring-1 ring-border/40">
@@ -208,34 +246,21 @@ function TodaysRead() {
  * household" note — never a privacy/lock claim. */
 function MyToDos() {
   const { state, hydrated, loadError, addTask, toggleTask, removeTask } = useMom()
-
   return (
-    <section className="mt-6">
-      <div className="mb-1.5 flex items-baseline justify-between px-1">
-        <CardLabel className="text-foreground">My to-dos</CardLabel>
-        <span className="text-[11px] text-muted-foreground/70">Shared with household</span>
-      </div>
-      <Card className="space-y-1 p-4">
-        {loadError ? (
-          <ErrorLine label="Couldn't load your to-dos." />
-        ) : !hydrated ? (
-          <LoadingLine />
-        ) : (
-          <>
-            {state.tasks.length > 0 ? (
-              <div className="divide-y divide-border/50">
-                {state.tasks.map((t) => (
-                  <ItemRow key={t.id} item={t} onToggle={() => toggleTask(t.id)} onRemove={() => removeTask(t.id)} />
-                ))}
-              </div>
-            ) : (
-              <p className="py-1 text-[13.5px] text-muted-foreground">Nothing here yet — a quick personal checklist for you.</p>
-            )}
-            <AddInline label="Add a to-do" placeholder="e.g. Take medication" onAdd={addTask} />
-          </>
-        )}
-      </Card>
-    </section>
+    <MomItemsSection
+      title="My to-dos"
+      note="Shared with household"
+      items={state.tasks}
+      hydrated={hydrated}
+      loadError={loadError}
+      emptyLabel="Nothing here yet."
+      addLabel="Add a to-do"
+      addPlaceholder="e.g. Take medication"
+      errorLabel="Couldn't load your to-dos."
+      onToggle={toggleTask}
+      onRemove={removeTask}
+      onAdd={addTask}
+    />
   )
 }
 
@@ -243,32 +268,88 @@ function MyToDos() {
  * mom_items kind='question'. Appointment prep, NOT a general notes/journal system. */
 function DoctorQuestions() {
   const { state, hydrated, loadError, addQuestion, toggleQuestion, removeQuestion } = useMom()
+  return (
+    <MomItemsSection
+      title="Questions for my doctor"
+      items={state.questions}
+      hydrated={hydrated}
+      loadError={loadError}
+      emptyLabel="No questions saved yet."
+      addLabel="Add a question"
+      addPlaceholder="e.g. Breastfeeding discomfort"
+      errorLabel="Couldn't load your questions."
+      onToggle={toggleQuestion}
+      onRemove={removeQuestion}
+      onAdd={addQuestion}
+    />
+  )
+}
+
+/* A Mom-items section (to-dos / doctor questions). Empty and loading/error states
+ * are DELIBERATELY light — a title, a one-line message, and an inline Add — so they
+ * get out of the way. Only once real items exist does it grow into a grouped
+ * surface. Shared by both lists so their density stays identical. */
+function MomItemsSection({
+  title,
+  note,
+  items,
+  hydrated,
+  loadError,
+  emptyLabel,
+  addLabel,
+  addPlaceholder,
+  errorLabel,
+  onToggle,
+  onRemove,
+  onAdd,
+}: {
+  title: string
+  note?: string
+  items: MomItem[]
+  hydrated: boolean
+  loadError: boolean
+  emptyLabel: string
+  addLabel: string
+  addPlaceholder: string
+  errorLabel: string
+  onToggle: (id: string) => void
+  onRemove: (id: string) => void
+  onAdd: (text: string) => void
+}) {
+  const hasItems = hydrated && !loadError && items.length > 0
 
   return (
     <section className="mt-6">
-      <CardLabel className="mb-1.5 px-1 text-foreground">Questions for my doctor</CardLabel>
-      <Card className="space-y-1 p-4">
-        {loadError ? (
-          <ErrorLine label="Couldn't load your questions." />
-        ) : !hydrated ? (
+      <div className="mb-1.5 flex items-baseline justify-between px-1">
+        <CardLabel className="text-foreground">{title}</CardLabel>
+        {note && <span className="text-[11px] text-muted-foreground/70">{note}</span>}
+      </div>
+
+      {loadError ? (
+        <div className="px-1">
+          <ErrorLine label={errorLabel} />
+        </div>
+      ) : !hydrated ? (
+        <div className="px-1">
           <LoadingLine />
-        ) : (
-          <>
-            {state.questions.length > 0 ? (
-              <div className="divide-y divide-border/50">
-                {state.questions.map((q) => (
-                  <ItemRow key={q.id} item={q} onToggle={() => toggleQuestion(q.id)} onRemove={() => removeQuestion(q.id)} />
-                ))}
-              </div>
-            ) : (
-              <p className="py-1 text-[13.5px] text-muted-foreground">
-                Save questions as they come to you, so you don&apos;t forget at the visit.
-              </p>
-            )}
-            <AddInline label="Add a question" placeholder="e.g. Breastfeeding discomfort" onAdd={addQuestion} />
-          </>
-        )}
-      </Card>
+        </div>
+      ) : hasItems ? (
+        // Populated → grouped surface.
+        <Card className="space-y-1 p-4">
+          <div className="divide-y divide-border/50">
+            {items.map((it) => (
+              <ItemRow key={it.id} item={it} onToggle={() => onToggle(it.id)} onRemove={() => onRemove(it.id)} />
+            ))}
+          </div>
+          <AddInline label={addLabel} placeholder={addPlaceholder} onAdd={onAdd} />
+        </Card>
+      ) : (
+        // Empty → light, out-of-the-way treatment (no big card).
+        <div className="px-1">
+          <p className="text-[13.5px] text-muted-foreground">{emptyLabel}</p>
+          <AddInline label={addLabel} placeholder={addPlaceholder} onAdd={onAdd} />
+        </div>
+      )}
     </section>
   )
 }
