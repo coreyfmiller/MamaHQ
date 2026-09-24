@@ -57,7 +57,7 @@ export function BabyScreen() {
         ) : !hydrated ? (
           <LoadingBlock />
         ) : logs.length === 0 ? (
-          <EmptyBaby onLog={() => openQuickLog()} />
+          <EmptyBaby />
         ) : (
           <>
             <RightNow />
@@ -358,6 +358,17 @@ function Timeline() {
   const today = useMemo(() => logs.filter((l) => isSameDay(l.createdAt, now)), [logs, now])
 
   if (today.length === 0) {
+    // Distinguish two truthful states so we don't echo the global empty message:
+    //   • No logs AT ALL → the global EmptyBaby message already explains emptiness;
+    //     here we show only a very subtle line (no container) to avoid repetition.
+    //   • Logs exist but none TODAY → "Nothing logged today yet." is meaningful.
+    if (logs.length === 0) {
+      return (
+        <p className="px-1 text-[13px] text-muted-foreground/80">
+          Activity will appear here as you log it.
+        </p>
+      )
+    }
     return (
       <p className="rounded-2xl bg-muted/40 px-4 py-3 text-[13.5px] text-muted-foreground ring-1 ring-border/40">
         Nothing logged today yet.
@@ -535,19 +546,16 @@ function LoadFailed() {
   )
 }
 
-function EmptyBaby({ onLog }: { onLog: () => void }) {
+// Quiet onboarding message — NOT a feature card. The contextual Log lives in the
+// header (and the global + is always present), so this panel deliberately carries no
+// second action, no icon, no stats.
+function EmptyBaby() {
   return (
-    <div className="mt-4 rounded-2xl bg-muted/40 px-4 py-5 ring-1 ring-border/40">
+    <div className="mt-4 px-1">
       <p className="font-serif text-[17px] font-semibold">Nothing logged yet.</p>
       <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">
-        Log the first feed, diaper or sleep whenever you&apos;re ready — or use the + button anytime.
+        Log Baby&apos;s first feed, diaper or sleep whenever you&apos;re ready.
       </p>
-      <button
-        onClick={onLog}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2.5 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
-      >
-        <Plus className="size-4" strokeWidth={2.25} /> Log
-      </button>
     </div>
   )
 }
