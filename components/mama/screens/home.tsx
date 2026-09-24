@@ -4,11 +4,11 @@ import { useMemo } from 'react'
 import {
   ShoppingCart,
   ListChecks,
-  CalendarDays,
   Users,
-  Check,
-  Circle,
-  Clock,
+  ChevronRight,
+  Plus,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import { useNav } from '../context'
 import { useGrocery } from '../grocery'
@@ -17,47 +17,54 @@ import { useCalendar, type CalendarEvent } from '../calendar'
 import { useHousehold } from '../household'
 import {
   BottomNav,
-  PreviewRow,
+  GroupedSurface,
+  Hairline,
+  OpenRegion,
   Screen,
   Scroll,
-  StatRow,
   StatusBar,
-  StatusChip,
-  SummaryEmpty,
-  SummaryError,
-  SummaryLoading,
-  SummarySection,
 } from '../ui'
 
 // ── Home (MamaHQ 2.0) ───────────────────────────────────────────────────────
 //
 // "What needs managing around home and family life?"
 //
-// Home is the canonical discovery/management surface for Grocery, Tasks, Calendar
-// and Family. It shows REAL information from the existing providers and opens the
-// existing full-feature screens (overlays) — it never rebuilds those features or
-// owns their state.
+// Canonical discovery/management surface for Grocery, Tasks, Calendar and Family.
+// It shows REAL provider data and opens the existing full-feature screens; it never
+// rebuilds a feature or owns its state. Every module obeys Loading ≠ Empty ≠ Failed.
 //
-// Every summary obeys the MamaHQ 2.0 rule: Loading ≠ Empty ≠ Failed. A count is
-// never shown before its provider has hydrated, and a load failure never collapses
-// into a false "0 / nothing here" empty state.
+// COMPOSITION (not four identical cards):
+//   • Grocery + Tasks  → one soft "operational band" of two compact rows.
+//   • Calendar         → an open agenda section on the page background (more width).
+//   • Family           → an understated single row, not a full card.
+// Three surface treatments + three sizes create rhythm instead of repetition.
 
-const MAX_PREVIEW = 3
+const PREVIEW_NAMES = 4
+const PREVIEW_ROWS = 3
 
 export function HomeScreen() {
   return (
     <Screen>
       <StatusBar />
-      <Scroll className="space-y-5 px-5 pb-6">
-        <header className="pt-1">
-          <h1 className="font-serif text-[26px] font-semibold tracking-tight">Home</h1>
-          <p className="mt-0.5 text-[14px] text-muted-foreground">Keep life moving.</p>
+      {/* Extra bottom padding so the fixed BottomNav never covers Family/agenda. */}
+      <Scroll className="px-5 pb-28">
+        <header className="pb-4 pt-1">
+          <h1 className="font-serif text-[25px] font-semibold tracking-tight">Home</h1>
+          <p className="text-[13.5px] text-muted-foreground">Keep life moving.</p>
         </header>
 
-        <GrocerySummary />
-        <TasksSummary />
-        <CalendarSummary />
-        <FamilySummary />
+        {/* Operational band — Grocery + Tasks share one grouped surface. */}
+        <GroupedSurface>
+          <GroceryRow />
+          <Hairline />
+          <TasksRow />
+        </GroupedSurface>
+
+        {/* Agenda — wider, open on the page, deliberately unlike the band. */}
+        <CalendarAgenda />
+
+        {/* Family — quiet single row. */}
+        <FamilyRow />
       </Scroll>
 
       <BottomNav active="home" />
@@ -65,68 +72,94 @@ export function HomeScreen() {
   )
 }
 
-/* ── Grocery ─────────────────────────────────────────────────────────────────
- * The hero of Home: substantial functionality already exists but was hidden. We
- * surface count + first few names, and open the full GroceryScreen (autocomplete,
- * quantities, complete/restore, Your Usual, purchase history all live there). */
-function GrocerySummary() {
-  const { openOverlay } = useNav()
-  const { active, hydrated, loadError } = useGrocery()
+/* ── small shared bits ─────────────────────────────────────────────────────── */
 
-  const preview = active.slice(0, 4)
-  const overflow = active.length - preview.length
-
-  const body = () => {
-    if (loadError) return <SummaryError onRetry={() => openOverlay('grocery')} />
-    if (!hydrated) return <SummaryLoading label="Loading your list…" />
-    if (active.length === 0) {
-      return (
-        <SummaryEmpty
-          label="Nothing on the list yet."
-          action={{ label: 'Add item', onClick: () => openOverlay('grocery') }}
-        />
-      )
-    }
-    return (
-      <div className="flex flex-wrap gap-1.5">
-        {preview.map((it) => (
-          <span
-            key={it.id}
-            className="max-w-full truncate rounded-full bg-muted px-2.5 py-1 text-[13px] font-medium text-foreground"
-          >
-            {it.displayName}
-          </span>
-        ))}
-        {overflow > 0 && (
-          <span className="rounded-full px-1.5 py-1 text-[13px] font-medium text-muted-foreground">
-            +{overflow} more
-          </span>
-        )}
-      </div>
-    )
-  }
-
-  // Count in the header only once we truthfully know it.
-  const count = loadError ? undefined : hydrated ? `${active.length} ${active.length === 1 ? 'item' : 'items'}` : undefined
-
+// One-line module heading used inside the operational band: icon + name + count,
+// with an affordance chevron. Whole row is the open target (no separate footer).
+function RowHead({
+  icon: Icon,
+  title,
+  count,
+  trailing,
+}: {
+  icon: typeof ShoppingCart
+  title: string
+  count?: string
+  trailing?: React.ReactNode
+}) {
   return (
-    <SummarySection
-      title="Grocery"
-      icon={ShoppingCart}
-      count={count}
-      onOpen={() => openOverlay('grocery')}
-      openLabel="Open list"
-    >
-      {body()}
-    </SummarySection>
+    <div className="flex items-center gap-2.5">
+      <Icon className="size-[18px] shrink-0 text-sage" strokeWidth={1.9} />
+      <span className="font-serif text-[16px] font-semibold tracking-tight">{title}</span>
+      {count && <span className="text-[13px] font-medium text-muted-foreground">· {count}</span>}
+      <span className="ml-auto flex items-center">{trailing}</span>
+    </div>
   )
 }
 
-/* ── Tasks ───────────────────────────────────────────────────────────────────
- * Signed-in shared household feature (no local mode). We answer "how many need
- * attention today / how many open" and preview the next few. Full management —
- * assignment, acceptance/relinquish — stays in TasksScreen. We never imply a task
- * has been accepted; we only show its title + a neutral open marker here. */
+function MutedLine({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 truncate text-[13.5px] text-muted-foreground">{children}</p>
+}
+
+/* ── Grocery (operational band, top row) ──────────────────────────────────────
+ * Compact: name + count on one line, a single truncated preview line of item
+ * names, and a contextual inline "+" (the one place quick-add materially helps).
+ * The row body opens the full GroceryScreen (autocomplete, quantities,
+ * complete/restore, Your Usual, purchase history all live there). */
+function GroceryRow() {
+  const { openOverlay } = useNav()
+  const { active, hydrated, loadError } = useGrocery()
+
+  const names = active.slice(0, PREVIEW_NAMES).map((i) => i.displayName).join(' · ')
+  const overflow = active.length - Math.min(active.length, PREVIEW_NAMES)
+  const count = !loadError && hydrated && active.length > 0 ? `${active.length}` : undefined
+
+  const line = () => {
+    if (loadError) {
+      return (
+        <p className="mt-1 flex items-center gap-1.5 text-[13.5px] text-muted-foreground">
+          <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} /> Couldn&apos;t load your list.
+        </p>
+      )
+    }
+    if (!hydrated) {
+      return (
+        <p className="mt-1 flex items-center gap-1.5 text-[13.5px] text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Loading…
+        </p>
+      )
+    }
+    if (active.length === 0) return <MutedLine>Nothing on the list yet.</MutedLine>
+    return <MutedLine>{names}{overflow > 0 ? ` +${overflow}` : ''}</MutedLine>
+  }
+
+  return (
+    <div className="flex items-stretch">
+      <OpenRegion onOpen={() => openOverlay('grocery')} ariaLabel="Open grocery list" className="min-w-0 flex-1 px-4 py-3">
+        <RowHead
+          icon={ShoppingCart}
+          title="Grocery"
+          count={count}
+          trailing={<ChevronRight className="size-4 text-muted-foreground/70" />}
+        />
+        {line()}
+      </OpenRegion>
+      {/* Contextual quick-add — the one Add that materially speeds a real task. */}
+      <button
+        onClick={() => openOverlay('grocery')}
+        aria-label="Add a grocery item"
+        className="flex w-12 shrink-0 items-center justify-center border-l border-border/50 text-muted-foreground transition-colors active:bg-foreground/[0.04]"
+      >
+        <Plus className="size-[18px]" strokeWidth={2} />
+      </button>
+    </div>
+  )
+}
+
+/* ── Tasks (operational band, bottom row) ─────────────────────────────────────
+ * Compact sibling of Grocery. "N today" as the count; a single preview line of the
+ * next task titles. Full management (assignment, acceptance/relinquish) stays in
+ * TasksScreen — we never imply acceptance here. */
 function isDueToday(t: Task): boolean {
   if (!t.dueAt) return false
   const d = new Date(t.dueAt)
@@ -134,59 +167,54 @@ function isDueToday(t: Task): boolean {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
 }
 
-function TasksSummary() {
+function TasksRow() {
   const { openOverlay } = useNav()
   const { open, hydrated, available, loadError } = useTasks()
 
   const todayCount = useMemo(() => open.filter(isDueToday).length, [open])
-  const preview = open.slice(0, MAX_PREVIEW)
-
-  const body = () => {
-    // Tasks require an authenticated family. Signed-out/solo-without-family: don't
-    // fabricate; guide to the full screen which handles that state truthfully.
-    if (!available) {
-      return <SummaryEmpty label="Shared tasks live here once you're set up." action={{ label: 'Open tasks', onClick: () => openOverlay('tasks') }} />
-    }
-    if (loadError) return <SummaryError onRetry={() => openOverlay('tasks')} />
-    if (!hydrated) return <SummaryLoading label="Loading tasks…" />
-    if (open.length === 0) {
-      return <SummaryEmpty label="Nothing to handle right now." action={{ label: 'Add a task', onClick: () => openOverlay('tasks') }} />
-    }
-    return (
-      <div className="space-y-0.5">
-        <StatRow
-          className="mb-1.5"
-          stats={[
-            { value: todayCount, label: 'today' },
-            { value: open.length, label: 'open' },
-          ]}
-        />
-        {preview.map((t) => (
-          <PreviewRow
-            key={t.id}
-            lead={<Circle className="size-4 text-muted-foreground/50" strokeWidth={2} />}
-            label={t.title}
-            meta={isDueToday(t) ? 'Today' : undefined}
-          />
-        ))}
-      </div>
-    )
-  }
-
+  const names = open.slice(0, PREVIEW_ROWS).map((t) => t.title).join(' · ')
+  const overflow = open.length - Math.min(open.length, PREVIEW_ROWS)
   const count = available && hydrated && !loadError && open.length > 0
-    ? `${todayCount} today`
+    ? (todayCount > 0 ? `${todayCount} today` : `${open.length} open`)
     : undefined
 
+  const line = () => {
+    if (!available) return <MutedLine>Shared tasks live here once you&apos;re set up.</MutedLine>
+    if (loadError) {
+      return (
+        <p className="mt-1 flex items-center gap-1.5 text-[13.5px] text-muted-foreground">
+          <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} /> Couldn&apos;t load tasks.
+        </p>
+      )
+    }
+    if (!hydrated) {
+      return (
+        <p className="mt-1 flex items-center gap-1.5 text-[13.5px] text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Loading…
+        </p>
+      )
+    }
+    if (open.length === 0) return <MutedLine>Nothing to handle right now.</MutedLine>
+    return <MutedLine>{names}{overflow > 0 ? ` +${overflow}` : ''}</MutedLine>
+  }
+
   return (
-    <SummarySection title="Tasks" icon={ListChecks} count={count} onOpen={() => openOverlay('tasks')} openLabel="Open tasks">
-      {body()}
-    </SummarySection>
+    <OpenRegion onOpen={() => openOverlay('tasks')} ariaLabel="Open tasks" className="px-4 py-3">
+      <RowHead
+        icon={ListChecks}
+        title="Tasks"
+        count={count}
+        trailing={<ChevronRight className="size-4 text-muted-foreground/70" />}
+      />
+      {line()}
+    </OpenRegion>
   )
 }
 
-/* ── Calendar ────────────────────────────────────────────────────────────────
- * Near-term schedule: today + tomorrow. Opens the canonical CalendarScreen. We
- * preserve the provider's existing loading / load-error / empty distinction. */
+/* ── Calendar (agenda section) ────────────────────────────────────────────────
+ * Given horizontal width and an agenda treatment on the plain page background — a
+ * time gutter + event rows under TODAY / TOMORROW — so it reads differently from
+ * the operational band. Opens the canonical CalendarScreen. */
 function eventTime(e: CalendarEvent): string {
   if (e.allDay) return 'All day'
   if (!e.startsAt) return ''
@@ -200,7 +228,7 @@ function dayKeyOf(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-function CalendarSummary() {
+function CalendarAgenda() {
   const { openOverlay } = useNav()
   const { onDay, today, hydrated, available, loadError } = useCalendar()
 
@@ -212,102 +240,114 @@ function CalendarSummary() {
   const tomorrow = useMemo(() => onDay(tomorrowKey), [onDay, tomorrowKey])
 
   const body = () => {
-    if (!available) {
-      return <SummaryEmpty label="Your shared schedule shows up here." action={{ label: 'Open calendar', onClick: () => openOverlay('calendar') }} />
+    if (!available) return <p className="text-[13.5px] text-muted-foreground">Your shared schedule shows up here.</p>
+    if (loadError) {
+      return (
+        <p className="flex items-center gap-1.5 text-[13.5px] text-muted-foreground">
+          <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} /> Couldn&apos;t load your calendar.
+        </p>
+      )
     }
-    if (loadError) return <SummaryError onRetry={() => openOverlay('calendar')} />
-    if (!hydrated) return <SummaryLoading label="Loading your calendar…" />
+    if (!hydrated) {
+      return (
+        <p className="flex items-center gap-1.5 text-[13.5px] text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Loading your calendar…
+        </p>
+      )
+    }
     if (today.length === 0 && tomorrow.length === 0) {
-      return <SummaryEmpty label="Nothing scheduled today or tomorrow." action={{ label: 'Add to calendar', onClick: () => openOverlay('calendar') }} />
+      return <p className="text-[13.5px] text-muted-foreground">Nothing scheduled today or tomorrow.</p>
     }
     return (
-      <div className="space-y-2">
-        <DayGroup label="Today" events={today} />
-        <DayGroup label="Tomorrow" events={tomorrow} />
+      <div className="space-y-2.5">
+        <AgendaDay label="Today" events={today} emptyHint="Nothing today." />
+        {tomorrow.length > 0 && <AgendaDay label="Tomorrow" events={tomorrow} />}
       </div>
     )
   }
 
   return (
-    <SummarySection title="Calendar" icon={CalendarDays} onOpen={() => openOverlay('calendar')} openLabel="View calendar">
+    <section className="mt-6">
+      <button
+        onClick={() => openOverlay('calendar')}
+        className="mb-2 flex w-full items-center gap-2 text-left"
+        aria-label="View calendar"
+      >
+        <h2 className="font-serif text-[16px] font-semibold tracking-tight">Calendar</h2>
+        <span className="ml-auto flex items-center gap-0.5 text-[13px] font-medium text-primary">
+          View <ChevronRight className="size-3.5" />
+        </span>
+      </button>
       {body()}
-    </SummarySection>
+    </section>
   )
 }
 
-function DayGroup({ label, events }: { label: string; events: CalendarEvent[] }) {
-  if (events.length === 0) return null
+function AgendaDay({ label, events, emptyHint }: { label: string; events: CalendarEvent[]; emptyHint?: string }) {
   return (
     <div>
-      <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">{label}</p>
-      {events.slice(0, MAX_PREVIEW).map((e) => (
-        <PreviewRow
-          key={e.id}
-          lead={<Clock className="size-3.5 text-muted-foreground/60" strokeWidth={2} />}
-          label={e.title}
-          meta={eventTime(e)}
-        />
-      ))}
-      {events.length > MAX_PREVIEW && (
-        <p className="pl-6 text-[12px] text-muted-foreground">+{events.length - MAX_PREVIEW} more</p>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">{label}</p>
+      {events.length === 0 ? (
+        emptyHint ? <p className="text-[13px] text-muted-foreground">{emptyHint}</p> : null
+      ) : (
+        <ul className="space-y-1.5">
+          {events.slice(0, PREVIEW_ROWS).map((e) => (
+            <li key={e.id} className="flex items-baseline gap-3">
+              <span className="w-16 shrink-0 text-[13px] font-medium tabular-nums text-muted-foreground">
+                {eventTime(e)}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">{e.title}</span>
+            </li>
+          ))}
+          {events.length > PREVIEW_ROWS && (
+            <li className="pl-[76px] text-[12px] text-muted-foreground">+{events.length - PREVIEW_ROWS} more</li>
+          )}
+        </ul>
       )}
     </div>
   )
 }
 
-/* ── Family ──────────────────────────────────────────────────────────────────
- * Understated. Reuses the household people; opens the existing People/Household
- * screen. Solo households get a light "invite" nudge, not empty partner fields.
- * Truthful visibility: this is shared household data — no private/lock UI. */
-function FamilySummary() {
+/* ── Family (understated row) ─────────────────────────────────────────────────
+ * A single quiet row: overlapping avatars + a one-line summary + Manage. Reuses
+ * household people; opens the existing People screen. Solo → light invite nudge.
+ * Shared household data — no private/lock UI. */
+function FamilyRow() {
   const { openOverlay } = useNav()
   const { people, hydrated, me } = useHousehold()
 
-  const body = () => {
-    if (!hydrated) return <SummaryLoading label="Loading your household…" />
-    // Others = everyone who isn't the current user's own person.
-    const others = people.filter((p) => !me || p.id !== me.id)
-    if (others.length === 0) {
-      return (
-        <SummaryEmpty
-          label="It's just you so far. Invite another adult to share the load."
-          action={{ label: 'Invite', onClick: () => openOverlay('people') }}
-        />
-      )
-    }
-    return (
-      <div className="space-y-1">
-        {others.slice(0, MAX_PREVIEW).map((p) => {
-          const roleLabel = p.role === 'owner' ? 'Owner' : p.role === 'member' ? 'Partner' : p.relationship
-          return (
-            <PreviewRow
-              key={p.id}
-              label={p.displayName}
-              meta={roleLabel || undefined}
-              lead={
-                <span className="flex size-6 items-center justify-center rounded-full bg-sage-soft text-[12px] font-semibold text-sage">
-                  {p.displayName.trim().charAt(0).toUpperCase() || '?'}
-                </span>
-              }
-            />
-          )
-        })}
-        {/* Status chips row — icon+text, not colour alone. */}
-        <div className="flex flex-wrap gap-1.5 pt-0.5">
-          {others.some((p) => p.accountStatus === 'connected') && (
-            <StatusChip label="Connected" tone="positive" icon={Check} />
-          )}
-          {others.some((p) => p.accountStatus === 'invited') && (
-            <StatusChip label="Invite pending" tone="info" />
-          )}
-        </div>
-      </div>
-    )
+  const others = people.filter((p) => !me || p.id !== me.id)
+
+  const summary = () => {
+    if (!hydrated) return 'Loading…'
+    if (others.length === 0) return 'Just you for now.'
+    const connected = others.filter((p) => p.accountStatus === 'connected').length
+    const pending = others.filter((p) => p.accountStatus === 'invited').length
+    const names = others.slice(0, 2).map((p) => p.displayName).join(', ')
+    const extra = others.length > 2 ? ` +${others.length - 2}` : ''
+    const status = connected > 0 ? ' · Connected' : pending > 0 ? ' · Invite pending' : ''
+    return `${names}${extra}${status}`
   }
 
   return (
-    <SummarySection title="Family" icon={Users} onOpen={() => openOverlay('people')} openLabel="Manage family">
-      {body()}
-    </SummarySection>
+    <section className="mt-6">
+      <button
+        onClick={() => openOverlay('people')}
+        aria-label="Manage family"
+        className="flex w-full items-center gap-3 rounded-2xl py-2 text-left transition-colors active:bg-foreground/[0.03]"
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sage">
+          <Users className="size-[18px]" strokeWidth={1.9} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-semibold leading-tight">Family</p>
+          <p className="truncate text-[13px] text-muted-foreground">{summary()}</p>
+        </div>
+        <span className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
+          {hydrated && others.length === 0 ? 'Invite' : 'Manage'}
+          <ChevronRight className="size-3.5" />
+        </span>
+      </button>
+    </section>
   )
 }

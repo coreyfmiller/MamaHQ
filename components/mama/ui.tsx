@@ -628,3 +628,49 @@ export function SummaryError({
     </div>
   )
 }
+
+/* ---- Home composition helpers (MamaHQ 2.0) ----
+ * Small, low-opinion primitives that let Home be composed as ONE screen with
+ * varied surface treatments — a tinted grouped band, an open agenda section, a
+ * plain row — instead of four identical enclosed cards. */
+
+/** A hairline separator for grouping rows within a single surface. */
+export function Hairline({ className }: { className?: string }) {
+  return <div className={cn('h-px bg-border/60', className)} aria-hidden />
+}
+
+/** A soft, low-elevation grouped surface (subtle tint, gentle radius, NO heavy
+ *  shadow) used to relate the operational lists without enclosing each in its own
+ *  floating white card. */
+export function GroupedSurface({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn('overflow-hidden rounded-2xl bg-muted/40 ring-1 ring-border/50', className)}>
+      {children}
+    </div>
+  )
+}
+
+/** A whole-region tappable that opens a canonical screen. Renders as a button for
+ *  keyboard/AT while keeping the compact row look. The chevron communicates "opens
+ *  more" so we don't need a separate footer action per module. */
+export function OpenRegion({
+  onOpen,
+  ariaLabel,
+  children,
+  className,
+}: {
+  onOpen: () => void
+  ariaLabel: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <button
+      onClick={onOpen}
+      aria-label={ariaLabel}
+      className={cn('block w-full text-left transition-colors active:bg-foreground/[0.03]', className)}
+    >
+      {children}
+    </button>
+  )
+}
