@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronRight, ChevronLeft, Moon, Play } from 'lucide-react'
 import type { Category } from '@/lib/mama-data'
 import { useNav } from '../context'
@@ -25,11 +25,30 @@ const diaperTypes: { value: 'wet' | 'dirty' | 'mixed'; label: string }[] = [
 type Detail = 'feed' | 'diaper' | 'sleep' | null
 
 export function QuickLogContent() {
-  const { closeOverlay, showToast } = useNav()
+  const { closeOverlay, showToast, quickLogKind } = useNav()
   const { logs, addLog, startSleep } = useLogs()
-  const [detail, setDetail] = useState<Detail>(null)
+  // PR2 — Capture can deep-link a specific baby log. feed/diaper/sleep jump straight
+  // to their detail step; a non-detail kind (pumping) is logged in one tap on open.
+  // This reuses the SAME logging system (useLogs) — not a second implementation.
+  const initialDetail: Detail =
+    quickLogKind === 'feed' || quickLogKind === 'diaper' || quickLogKind === 'sleep' ? quickLogKind : null
+  const [detail, setDetail] = useState<Detail>(initialDetail)
+  const directLogged = useRef(false)
 
   const running = activeSleep(logs)
+
+  // A direct (no-detail) kind from Capture — e.g. Pump — logs immediately and closes.
+  useEffect(() => {
+    if (directLogged.current) return
+    if (quickLogKind === 'pumping') {
+      directLogged.current = true
+      addLog({ kind: 'pumping' })
+      closeOverlay()
+      showToast('Pumping logged')
+    }
+    // Run once on mount for the Capture-provided intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const done = (title: string) => {
     closeOverlay()

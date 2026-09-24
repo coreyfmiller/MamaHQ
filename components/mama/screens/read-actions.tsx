@@ -23,7 +23,7 @@ import type { DailyRead } from '@/lib/daily-reads'
  * out there is nowhere trustworthy to route, so we show nothing.
  */
 export function ReadActions({ read }: { read: DailyRead }) {
-  const { setTab, showToast } = useNav()
+  const { openOverlay, showToast } = useNav()
   const { addQuestion } = useMom()
   const { familyId } = useAuth()
   const [saved, setSaved] = useState(false)
@@ -35,7 +35,7 @@ export function ReadActions({ read }: { read: DailyRead }) {
       <p className="text-[13px] font-medium text-muted-foreground">Want to act on this?</p>
       <div className="mt-3 space-y-2">
         <button
-          onClick={() => setTab('tell')}
+          onClick={() => openOverlay('tell')}
           className="flex w-full items-center gap-3 rounded-2xl bg-primary/10 px-4 py-3 text-left transition-transform active:scale-[0.99]"
         >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">

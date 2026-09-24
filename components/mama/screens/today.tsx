@@ -155,7 +155,9 @@ export function TodayScreen() {
             {soloHousehold && !model.failedDomains.includes('tasks') && <ShareTheLoadCard />}
             <CareSection model={model} />
             <GroceryCard count={model.grocery.activeCount} />
-            <TellCta />
+            {/* PR2 — the standalone "Tell MamaHQ" CTA was removed here: Tell is now
+                always reachable via the center + (Capture), so a dedicated giant
+                button on Today is redundant. Today itself is otherwise unchanged. */}
           </>
         )}
 
@@ -235,7 +237,7 @@ function TodayLoading() {
 }
 
 function EmptyToday() {
-  const { setTab, openOverlay } = useNav()
+  const { openOverlay } = useNav()
   const soloHousehold = useIsSoloHousehold()
   return (
     <div className="mt-2 space-y-4">
@@ -246,7 +248,7 @@ function EmptyToday() {
           it&apos;ll sort it into your shared household. You approve everything first.
         </p>
         <button
-          onClick={() => setTab('tell')}
+          onClick={() => openOverlay('tell')}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
         >
           <Sparkles className="size-4" strokeWidth={2} /> What&apos;s on your mind?
@@ -734,18 +736,6 @@ function GroceryCard({ count }: { count: number }) {
         </p>
       </div>
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-    </button>
-  )
-}
-
-function TellCta() {
-  const { setTab } = useNav()
-  return (
-    <button
-      onClick={() => setTab('tell')}
-      className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
-    >
-      <Sparkles className="size-4" strokeWidth={2} /> Tell MamaHQ what&apos;s on your mind
     </button>
   )
 }

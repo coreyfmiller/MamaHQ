@@ -2,11 +2,11 @@
 
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
-// MamaHQ 2.0 nav: Today · Baby · + · Home · Me. `tell` is retained as a resolvable
-// Tab value (existing callers still setTab('tell')) but no longer has a bottom-nav
-// slot — Tell is reached via Capture (+) and its overlay. The tab value is removed
-// in PR2 once all callers route through Capture.
-export type Tab = 'today' | 'baby' | 'home' | 'tell' | 'me'
+// MamaHQ 2.0 nav: Today · Baby · + · Home · Me. Tell is NOT a primary destination —
+// it is a capability launched from Capture (+) and rendered as the `tell` OVERLAY.
+// (PR2 removed the `tell` Tab value; every former setTab('tell') caller now uses
+// openOverlay('tell').)
+export type Tab = 'today' | 'baby' | 'home' | 'me'
 
 export type Overlay =
   | 'capture'
@@ -52,7 +52,17 @@ interface PrototypeCtx {
   setSelectedEventId: (id: string | null) => void
   /** Convenience: open the calendar composer to create (null) or edit an event. */
   composeEvent: (id?: string | null) => void
+  /** PR2 — the baby log kind Capture wants Quick Log to open straight into
+   *  (feed/diaper/sleep jump to their detail step; others log directly). null = show
+   *  the normal Quick Log picker. Consumed by QuickLogContent, cleared on close. */
+  quickLogKind: QuickLogKind | null
+  /** Open the existing Quick Log baby-logging sheet, optionally pre-targeting a kind. */
+  openQuickLog: (kind?: QuickLogKind | null) => void
 }
+
+/** The baby log kinds Capture can deep-link into. Mirrors the existing log kinds
+ *  used by QuickLogContent / useLogs (note: pumping, not "pump"). */
+export type QuickLogKind = 'feed' | 'diaper' | 'sleep' | 'pumping'
 
 const noop = () => {}
 
@@ -71,6 +81,8 @@ const defaultCtx: PrototypeCtx = {
   selectedEventId: null,
   setSelectedEventId: noop,
   composeEvent: noop,
+  quickLogKind: null,
+  openQuickLog: noop,
 }
 
 const Ctx = createContext<PrototypeCtx>(defaultCtx)
@@ -94,10 +106,16 @@ export function PrototypeProvider({
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [quickLogKind, setQuickLogKind] = useState<QuickLogKind | null>(null)
 
   const composeEvent = (id: string | null = null) => {
     setSelectedEventId(id)
     setOverlay('calendarCompose')
+  }
+
+  const openQuickLog = (kind: QuickLogKind | null = null) => {
+    setQuickLogKind(kind)
+    setOverlay('quicklog')
   }
 
   const showToast = (msg: string) => {
@@ -126,6 +144,8 @@ export function PrototypeProvider({
         selectedEventId,
         setSelectedEventId,
         composeEvent,
+        quickLogKind,
+        openQuickLog,
       }}
     >
       {children}

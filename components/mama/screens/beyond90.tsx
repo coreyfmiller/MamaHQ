@@ -20,7 +20,7 @@ const realTools: { icon: LucideIcon; label: string; sub: string; overlay: 'tasks
 ]
 
 export function Beyond90Screen() {
-  const { closeOverlay, openOverlay, setTab } = useNav()
+  const { closeOverlay, openOverlay } = useNav()
   return (
     <Screen className="relative">
       <StatusBar />
@@ -60,10 +60,7 @@ export function Beyond90Screen() {
         </div>
 
         <button
-          onClick={() => {
-            closeOverlay()
-            setTab('tell')
-          }}
+          onClick={() => openOverlay('tell')}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
         >
           <Sparkles className="size-4" strokeWidth={2} /> Tell MamaHQ what’s on your mind

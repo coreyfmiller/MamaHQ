@@ -65,10 +65,6 @@ function ActiveTab() {
     case 'home':
       // MamaHQ 2.0 — Home: canonical management surface for Grocery/Tasks/Calendar/Family.
       return <HomeScreen />
-    case 'tell':
-      // Retained for compatibility: Tell has no bottom-nav slot in 2.0 (reached via
-      // Capture), but existing setTab('tell') callers must still resolve until PR2.
-      return <TellScreen asTab />
     case 'me':
       return <MeScreen />
     default:

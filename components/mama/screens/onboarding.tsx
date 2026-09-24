@@ -11,7 +11,6 @@ import {
   Check,
   Loader2,
   Plus,
-  X,
   Users,
   Baby as BabyIcon,
   Link2,
@@ -45,7 +44,7 @@ function todayISO(): string {
 }
 
 export function OnboardingScreen() {
-  const { setTab, showToast, dismissOnboarding } = useNav()
+  const { setTab, openOverlay, showToast, dismissOnboarding } = useNav()
   const { saveProfile, profile } = useProfile()
   const { renameMe, savePerson, people, invitePerson } = useHousehold()
 
@@ -83,13 +82,17 @@ export function OnboardingScreen() {
   // Settings. Because firstRun is derived from the cloud name, leaving it a
   // placeholder means they'd see onboarding again next time — which is honest: they
   // haven't told us who they are. To avoid a loop we only offer this on welcome.
-  const enterApp = (tab: 'today' | 'tell' = 'today') => {
-    setTab(tab)
+  // PR2 — the app always lands on a real tab (Today). "Start with a first Tell" now
+  // opens the Tell overlay ON Today rather than routing to a Tell tab (which no
+  // longer exists — Tell is a Capture capability, not a destination).
+  const enterApp = (startTell = false) => {
+    setTab('today')
     // Hand off to the app. dismissOnboarding makes Stage render the product even if
     // firstRun is still 'creator' (e.g. the user chose to name themselves later) —
     // an honest exit that doesn't fabricate an identity. If they DID set a name,
-    // firstRun is already 'done'; either way the app now shows on the chosen tab.
+    // firstRun is already 'done'.
     dismissOnboarding()
+    if (startTell) openOverlay('tell')
   }
 
   const index = ORDER.indexOf(step)
@@ -230,8 +233,8 @@ export function OnboardingScreen() {
     <ReadyStep
       index={index}
       onBack={() => go('invite')}
-      onStartTell={() => enterApp('tell')}
-      onSkip={() => enterApp('today')}
+      onStartTell={() => enterApp(true)}
+      onSkip={() => enterApp()}
     />
   )
 }

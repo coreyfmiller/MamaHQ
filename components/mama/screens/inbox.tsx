@@ -188,9 +188,10 @@ export function InboxScreen() {
           ))}
       </Scroll>
 
-      {/* Beta Phase 1: this legacy Inbox screen is retained but no longer routed
-          from primary navigation (Tell MamaHQ is the single capture surface). */}
-      <BottomNav active="tell" />
+      {/* Legacy Inbox screen — retained but NOT routed from primary navigation
+          (Tell, launched from Capture, is the single capture surface). 'tell' is no
+          longer a Tab (PR2); this dormant screen just needs a valid value. */}
+      <BottomNav active="today" />
     </Screen>
   )
 }

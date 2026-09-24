@@ -12,7 +12,7 @@ import { downscaleImage } from '@/lib/utils'
 type Phase = 'pick' | 'working' | 'review'
 
 export function PhotoScreen() {
-  const { closeOverlay, setTab, showToast } = useNav()
+  const { closeOverlay, openOverlay, showToast } = useNav()
   const { addCapture } = useInbox()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -49,8 +49,7 @@ export function PhotoScreen() {
     const t = text.trim()
     if (!t) return
     await addCapture(t, 'photo')
-    closeOverlay()
-    setTab('tell')
+    openOverlay('tell')
     showToast('Saved to review')
   }
 

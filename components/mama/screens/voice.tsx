@@ -13,7 +13,7 @@ const bars = [14, 26, 40, 22, 34, 48, 30, 18, 38, 24, 44, 20, 30, 16]
 type Phase = 'listening' | 'review' | 'unsupported'
 
 export function VoiceScreen() {
-  const { closeOverlay, setTab, showToast } = useNav()
+  const { closeOverlay, openOverlay, showToast } = useNav()
   const { addCapture } = useInbox()
 
   const supported = transcriber.isSupported()
@@ -57,8 +57,7 @@ export function VoiceScreen() {
     const t = text.trim()
     if (!t) return
     await addCapture(t, 'voice')
-    closeOverlay()
-    setTab('tell')
+    openOverlay('tell')
     showToast('Saved to review')
   }
 

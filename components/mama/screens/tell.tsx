@@ -16,7 +16,7 @@ import {
 import { useNav } from '../context'
 import { useTell } from '../tell'
 import type { ResolvedProposal, ProposalIssue } from '@/lib/tell/contract'
-import { BottomNav, Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
+import { Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
 
 // Step 12 — the Tell MamaHQ surface. One calm input: get it out of your head.
 // MamaHQ shows what it understood; the user approves; trusted domains execute.
@@ -36,19 +36,17 @@ const KIND_LABEL: Record<ResolvedProposal['kind'], string> = {
   CARE_HANDOFF_PROPOSE: 'Ask to take over care',
 }
 
-export function TellScreen({ asTab = false }: { asTab?: boolean }) {
+// PR2 — Tell is a Capture capability rendered as an overlay (opened from the center
+// +). It is no longer a primary tab, so it always shows the close bar and never the
+// bottom nav.
+export function TellScreen() {
   const { closeOverlay } = useNav()
   const tell = useTell()
 
   return (
     <Screen>
       <StatusBar />
-      {/* As a primary tab there's no "close"; as an overlay it keeps the close bar. */}
-      {asTab ? (
-        <div className="px-4 py-2" />
-      ) : (
-        <TopBar variant="close" title="Tell MamaHQ" onBack={closeOverlay} />
-      )}
+      <TopBar variant="close" title="Tell MamaHQ" onBack={closeOverlay} />
       <Scroll className="space-y-4 px-6 pb-8">
         <header className="pt-1">
           <h1 className="flex items-center gap-2 font-serif text-[24px] font-semibold tracking-tight">
@@ -83,7 +81,6 @@ export function TellScreen({ asTab = false }: { asTab?: boolean }) {
           </>
         )}
       </Scroll>
-      {asTab && <BottomNav active="tell" />}
     </Screen>
   )
 }
