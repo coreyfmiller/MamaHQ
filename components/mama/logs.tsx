@@ -32,6 +32,11 @@ const STORAGE_KEY = 'mamahq.proto.logs.v1'
 interface LogsCtx {
   logs: LogEntry[]
   hydrated: boolean
+  /** True when the last cloud LOAD failed (distinct from syncError, which is about
+   *  WRITES). Lets read-only summaries (Baby) show a truthful "couldn't load" rather
+   *  than a false "nothing logged yet" empty. Mirrors Tasks/Calendar/Grocery/Care.
+   *  Only meaningful when signed in; signed-out local mode never sets it. */
+  loadError: boolean
   addLog: (entry: Omit<LogEntry, 'id' | 'createdAt'> & { createdAt?: string }) => LogEntry
   /** Edit fields on an existing log (e.g. correct a stop time). */
   patchLog: (id: string, patch: Partial<Omit<LogEntry, 'id'>>) => void
@@ -61,6 +66,7 @@ interface LogsCtx {
 const Ctx = createContext<LogsCtx>({
   logs: [],
   hydrated: false,
+  loadError: false,
   addLog: () => ({ id: '', kind: 'feed', createdAt: '' }),
   patchLog: () => {},
   deleteLog: () => {},
@@ -114,6 +120,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   const { familyId, status } = useAuth()
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [hydrated, setHydrated] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
 
   // Monotonic session generation, bumped whenever the active family (or auth status)
@@ -150,6 +157,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true
     setHydrated(false)
+    setLoadError(false)
     // A family/session change starts fresh: any prior-session sync error is no longer
     // relevant (and its originating write is neutralized by the generation guard).
     setSyncError(null)
@@ -159,12 +167,17 @@ export function LogsProvider({ children }: { children: ReactNode }) {
         .then((rows) => {
           if (!alive) return
           setLogs(rows.map(fromDb))
+          setLoadError(false)
           setSyncError(null) // a good read means the cloud is reachable again
           setHydrated(true)
         })
         .catch(() => {
           if (!alive) return
-          setLogs(readLocal())
+          // Signed-in cloud read failed. Do NOT present the signed-out localStorage
+          // list as if it were current cloud truth (that would let a failure look
+          // like a real/empty list). Surface loadError so read-only summaries (Baby)
+          // can say "couldn't load" honestly; realtime/refetch clears it later.
+          setLoadError(true)
           setHydrated(true)
         })
       return () => {
@@ -173,7 +186,9 @@ export function LogsProvider({ children }: { children: ReactNode }) {
     }
 
     if (status !== 'loading') {
+      // Signed out: local is the legitimate source of truth, not a failure.
       setLogs(readLocal())
+      setLoadError(false)
       setSyncError(null) // signed out → no cloud to be out of sync with
       setHydrated(true)
     }
@@ -271,8 +286,9 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo(
-    () => ({ logs, hydrated, addLog, patchLog, deleteLog, clearLogs, startSleep, endSleep, syncError, clearSyncError }),
-    [logs, hydrated, familyId, syncError],
+    () => ({ logs, hydrated, loadError, addLog, patchLog, deleteLog, clearLogs, startSleep, endSleep, syncError, clearSyncError }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [logs, hydrated, loadError, familyId, syncError],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
