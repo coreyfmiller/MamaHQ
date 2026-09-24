@@ -7,16 +7,44 @@ import { useHousehold, type HouseholdPerson } from '../household'
 import { shareInvite, copyInvite, canNativeShare } from '../invite-share'
 import { Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
 
+// Local id generator so we can create a person AND generate their invite against the
+// same id in one action (savePerson would otherwise mint the id internally).
+function newPersonId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`
+}
+
 // Step 7 — the Household People surface. Shows who's in the household and each
 // person's account status (Connected / Invite pending / Not connected), and lets the
 // owner invite an account-less adult by generating a shareable join link. Minimal by
 // design: this proves + uses household membership, it is not a settings product.
 export function PeopleScreen() {
   const { closeOverlay, showToast } = useNav()
-  const { people, invitePerson, revokeInvite } = useHousehold()
+  const { people, savePerson, invitePerson, revokeInvite } = useHousehold()
   // The freshly-generated invite link, kept in memory per person so we can surface it
   // for the user to share. The link is a credential — never logged, never sent by us.
   const [inviteUrls, setInviteUrls] = useState<Record<string, string>>({})
+
+  // Create a brand-new account-less adult and immediately generate their invite link.
+  // This is what makes a one-person household NOT a dead end: without it, the only
+  // way to add an adult was the onboarding wizard, so a solo owner had nothing to
+  // invite and no way to add someone to invite. Returns the share URL on success so
+  // the caller can surface it inline.
+  const inviteNewPerson = async (displayName: string): Promise<{ ok: boolean; error?: string }> => {
+    const name = displayName.trim()
+    if (!name) return { ok: false, error: 'Enter a name first' }
+    const id = newPersonId()
+    // savePerson is fire-and-forget (optimistic). Create the person as a partner so
+    // it's an invitable adult, then generate the invite against that same id.
+    savePerson({ id, displayName: name, relationship: 'partner' })
+    const res = await invitePerson(id, undefined)
+    if (res.ok && res.url) {
+      setInviteUrls((m) => ({ ...m, [id]: res.url! }))
+      return { ok: true }
+    }
+    return { ok: false, error: res.error ?? 'Couldn’t create invite' }
+  }
 
   return (
     <Screen>
@@ -75,6 +103,10 @@ export function PeopleScreen() {
             <p className="pt-2 text-center text-[14px] text-muted-foreground">No people yet.</p>
           )}
         </div>
+
+        {/* Invite a brand-new adult. This is the entry point that makes a solo
+            household usable — create the person and generate their link in one step. */}
+        <InviteSomeoneNew onInvite={inviteNewPerson} />
 
         <p className="rounded-2xl bg-muted/60 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
           An invite link lets another adult create or sign into their own MamaHQ account and join
@@ -210,5 +242,82 @@ function StatusChip({ status, hasLink }: { status: 'connected' | 'invited' | 'no
     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
       Not invited
     </span>
+  )
+}
+
+// Add-and-invite a new adult in one step. Collapsed to a single button until tapped,
+// then a name field + "Create invite". On success the new person appears in the list
+// above (with their share/copy controls); we clear and re-collapse.
+function InviteSomeoneNew({
+  onInvite,
+}: {
+  onInvite: (displayName: string) => Promise<{ ok: boolean; error?: string }>
+}) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async () => {
+    setBusy(true)
+    setError(null)
+    const res = await onInvite(name)
+    setBusy(false)
+    if (res.ok) {
+      setName('')
+      setOpen(false)
+    } else {
+      setError(res.error ?? 'Couldn’t create invite')
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card/60 px-4 py-3.5 text-[14px] font-semibold text-foreground transition-transform active:scale-[0.99]"
+      >
+        <UserPlus className="size-4 text-sage" strokeWidth={1.75} />
+        Invite someone new
+      </button>
+    )
+  }
+
+  return (
+    <Card className="space-y-3">
+      <p className="text-[14px] font-semibold">Invite another adult</p>
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && name.trim() && !busy) submit()
+        }}
+        placeholder="Their name (e.g. Alex)"
+        className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-[15px] outline-none focus:border-primary"
+      />
+      {error && <p className="text-[13px] text-destructive">{error}</p>}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={submit}
+          disabled={busy || !name.trim()}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-primary px-3.5 py-2.5 text-[13px] font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-40"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />}
+          {busy ? 'Creating…' : 'Create invite'}
+        </button>
+        <button
+          onClick={() => {
+            setOpen(false)
+            setName('')
+            setError(null)
+          }}
+          disabled={busy}
+          className="rounded-full bg-muted px-3.5 py-2.5 text-[13px] font-semibold text-muted-foreground disabled:opacity-40"
+        >
+          Cancel
+        </button>
+      </div>
+    </Card>
   )
 }
