@@ -61,6 +61,11 @@ const STORAGE_KEY = 'mamahq.proto.grocery.v1'
 interface GroceryCtx {
   items: GroceryItem[]
   hydrated: boolean
+  /** True when the last cloud load FAILED (so aggregators like Home can show a
+   *  truthful error instead of a false "empty list"). Mirrors Tasks/Calendar.
+   *  Only meaningful when signed in with a family; local (signed-out) mode never
+   *  sets it. Cleared on a successful (re)load. */
+  loadError: boolean
   active: GroceryItem[]
   completed: GroceryItem[]
   /** Add an item. Pass canonicalItemId when it came from a catalog selection. */
@@ -91,6 +96,7 @@ interface GroceryCtx {
 const Ctx = createContext<GroceryCtx>({
   items: [],
   hydrated: false,
+  loadError: false,
   active: [],
   completed: [],
   addItem: () => {},
@@ -181,6 +187,10 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   const { me } = useHousehold()
   const [items, setItems] = useState<GroceryItem[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // Surface a cloud load failure so aggregators (Home) can distinguish "failed to
+  // load" from "genuinely empty" instead of silently showing zero items. Mirrors the
+  // Tasks/Calendar providers. Signed-out/local mode never sets this.
+  const [loadError, setLoadError] = useState(false)
   // Step 6: materialized household memory (variants) + its indexed form for
   // enrichment. Loaded once per family and refreshed after learning changes; NEVER
   // fetched per keystroke, so autocomplete/resolver stay fast + local.
@@ -198,15 +208,22 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true
     setHydrated(false)
+    setLoadError(false)
 
     if (familyId) {
       reloadCloud(familyId)
         .then(() => {
-          if (alive) setHydrated(true)
+          if (!alive) return
+          setLoadError(false)
+          setHydrated(true)
         })
         .catch(() => {
           if (!alive) return
-          setItems(readLocal())
+          // Signed-in cloud load failed. Do NOT fall back to the (signed-out)
+          // localStorage list and present it as truth — that would let a failure
+          // masquerade as a genuine list/empty. Mark loadError so the UI can say
+          // "couldn't load" honestly; realtime/refetch can clear it later.
+          setLoadError(true)
           setHydrated(true)
         })
       return () => {
@@ -215,7 +232,9 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
     }
 
     if (status !== 'loading') {
+      // Signed-out: local list is the legitimate source of truth here, not a failure.
       setItems(readLocal())
+      setLoadError(false)
       setHydrated(true)
     }
     return () => {
@@ -226,7 +245,11 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   // Realtime: another session changed the shared grocery list → refetch canonical
   // items. Only meaningful when signed in with a family (local mode has no channel).
   useRealtimeInvalidation('grocery', () => {
-    if (familyId) void reloadCloud(familyId).catch(() => {})
+    if (familyId) {
+      reloadCloud(familyId)
+        .then(() => setLoadError(false))
+        .catch(() => setLoadError(true))
+    }
   })
 
   // Mirror to localStorage only when signed out (cloud is source of truth otherwise).
@@ -518,11 +541,11 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      items, hydrated, active, completed, addItem, addResolved, editItem, completeItem, restoreItem, removeItem, clearGrocery,
+      items, hydrated, loadError, active, completed, addItem, addResolved, editItem, completeItem, restoreItem, removeItem, clearGrocery,
       householdVariants, householdDefaultFor, householdVariantForItem, setHouseholdUsual,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, hydrated, active, completed, familyId, me, householdVariants, householdMemory],
+    [items, hydrated, loadError, active, completed, familyId, me, householdVariants, householdMemory],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

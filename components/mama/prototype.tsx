@@ -28,6 +28,7 @@ import { ResetScreen } from './screens/reset'
 import { CaptureContent } from './screens/capture'
 import { TodayScreen } from './screens/today'
 import { BabyScreen } from './screens/baby'
+import { HomeScreen } from './screens/home'
 // Legacy InboxScreen intentionally no longer imported/rendered (Beta Phase 1):
 // Tell MamaHQ is the single capture surface. The legacy rule-based Inbox code
 // (components/mama/screens/inbox.tsx + inbox/commit.ts + inbox/local-extractor.ts)
@@ -61,9 +62,12 @@ function ActiveTab() {
   switch (tab) {
     case 'baby':
       return <BabyScreen />
+    case 'home':
+      // MamaHQ 2.0 — Home: canonical management surface for Grocery/Tasks/Calendar/Family.
+      return <HomeScreen />
     case 'tell':
-      // Beta Phase 1: Tell MamaHQ is the single canonical capture surface, promoted
-      // to a primary tab (replacing the legacy rule-based Inbox tab).
+      // Retained for compatibility: Tell has no bottom-nav slot in 2.0 (reached via
+      // Capture), but existing setTab('tell') callers must still resolve until PR2.
       return <TellScreen asTab />
     case 'me':
       return <MeScreen />

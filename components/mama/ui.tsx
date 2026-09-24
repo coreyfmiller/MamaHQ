@@ -1,9 +1,9 @@
 'use client'
 
 import { useRef, useState, type ReactNode } from 'react'
-import { Camera, Check, ChevronLeft, Mic, Plus, X } from 'lucide-react'
+import { AlertCircle, Camera, Check, ChevronLeft, ChevronRight, Mic, Plus, X, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Baby, House, Sparkles, User } from 'lucide-react'
+import { Baby, House, LayoutGrid, User } from 'lucide-react'
 import { useNav, type Tab } from './context'
 
 /* ---------------- Status bar ---------------- */
@@ -268,8 +268,11 @@ const leftNav: { tab: Tab; label: string; Icon: typeof House }[] = [
   { tab: 'today', label: 'Today', Icon: House },
   { tab: 'baby', label: 'Baby', Icon: Baby },
 ]
+// MamaHQ 2.0 nav: Today · Baby · + · Home · Me. Home takes the slot Tell used to
+// occupy. Tell is NOT gone — it remains reachable via the Capture sheet (+) and its
+// overlay; the `tell` Tab value stays resolvable for existing callers until PR2.
 const rightNav: { tab: Tab; label: string; Icon: typeof House }[] = [
-  { tab: 'tell', label: 'Tell', Icon: Sparkles },
+  { tab: 'home', label: 'Home', Icon: LayoutGrid },
   { tab: 'me', label: 'Me', Icon: User },
 ]
 
@@ -375,5 +378,253 @@ export function LiveDot({ label = 'Live' }: { label?: string }) {
       </span>
       {label}
     </span>
+  )
+}
+
+/* ============================================================================
+ * MamaHQ 2.0 — Summary primitives
+ *
+ * The visual grammar for information-first surfaces (Home first; Baby/Me/Today
+ * follow in later PRs). Deliberately NOT another pile of identical big white
+ * cards: a summary is a titled surface with a header row (icon + title + count +
+ * optional action), a scannable body (stat row / preview rows), and an optional
+ * footer action. Hierarchy comes from weight + grouping, not from stacking cards.
+ * ==========================================================================*/
+
+/** A small section heading with an optional right-aligned action link. */
+export function SectionHeader({
+  title,
+  icon: Icon,
+  action,
+  className,
+}: {
+  title: string
+  icon?: LucideIcon
+  action?: { label: string; onClick: () => void }
+  className?: string
+}) {
+  return (
+    <div className={cn('flex items-center justify-between px-1', className)}>
+      <div className="flex items-center gap-2">
+        {Icon && (
+          <span className="flex size-6 items-center justify-center rounded-lg bg-sage-soft text-sage">
+            <Icon className="size-[15px]" strokeWidth={2} />
+          </span>
+        )}
+        <h2 className="font-serif text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
+      </div>
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="flex items-center gap-0.5 text-[13px] font-medium text-primary transition-transform active:scale-[0.98]"
+        >
+          {action.label}
+          <ChevronRight className="size-3.5" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A composed summary surface. Header (icon + title + optional count/right slot),
+ * a body (children), and an optional footer action that opens the canonical
+ * full-feature screen. `onOpen` makes the whole surface tappable while keeping an
+ * explicit, labelled footer for discoverability + accessibility.
+ */
+export function SummarySection({
+  title,
+  icon: Icon,
+  count,
+  right,
+  onOpen,
+  openLabel = 'Open',
+  children,
+  className,
+}: {
+  title: string
+  icon?: LucideIcon
+  /** A short count/status shown next to the title (e.g. "8 items", "3 today"). */
+  count?: string
+  /** Optional custom right-side element in the header (overrides `count`). */
+  right?: ReactNode
+  onOpen?: () => void
+  openLabel?: string
+  children?: ReactNode
+  className?: string
+}) {
+  return (
+    <section
+      className={cn(
+        'overflow-hidden rounded-3xl border border-border/70 bg-card shadow-[0_1px_2px_rgba(38,50,56,0.04),0_10px_30px_-20px_rgba(38,50,56,0.18)]',
+        className,
+      )}
+    >
+      <div className="flex items-center gap-2.5 px-4 pt-3.5 pb-2">
+        {Icon && (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-sage-soft text-sage">
+            <Icon className="size-[18px]" strokeWidth={1.9} />
+          </span>
+        )}
+        <h2 className="flex-1 font-serif text-[16px] font-semibold tracking-tight">{title}</h2>
+        {right ?? (count && <span className="text-[13px] font-medium text-muted-foreground">{count}</span>)}
+      </div>
+
+      {children != null && <div className="px-4 pb-2">{children}</div>}
+
+      {onOpen && (
+        <button
+          onClick={onOpen}
+          className="flex w-full items-center justify-between border-t border-border/60 px-4 py-3 text-left transition-colors active:bg-muted/60"
+        >
+          <span className="text-[13px] font-semibold text-primary">{openLabel}</span>
+          <ChevronRight className="size-4 text-primary" />
+        </button>
+      )}
+    </section>
+  )
+}
+
+/** A compact row of labelled numbers, e.g. "3 today · 5 open". Uses a middot
+ *  separator rather than boxes so it reads as a sentence of facts, not a grid. */
+export function StatRow({
+  stats,
+  className,
+}: {
+  stats: { value: string | number; label: string }[]
+  className?: string
+}) {
+  return (
+    <p className={cn('flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13px] text-muted-foreground', className)}>
+      {stats.map((s, i) => (
+        <span key={i} className="inline-flex items-baseline gap-1">
+          {i > 0 && <span aria-hidden className="mr-1 text-muted-foreground/50">·</span>}
+          <span className="font-semibold tabular-nums text-foreground">{s.value}</span>
+          <span>{s.label}</span>
+        </span>
+      ))}
+    </p>
+  )
+}
+
+/** A single scannable preview line (e.g. a task or event). Optional leading mark
+ *  (checkbox-like circle, time, or icon) and optional trailing meta. */
+export function PreviewRow({
+  lead,
+  label,
+  meta,
+  muted = false,
+  className,
+}: {
+  lead?: ReactNode
+  label: string
+  meta?: string
+  muted?: boolean
+  className?: string
+}) {
+  return (
+    <div className={cn('flex items-center gap-2.5 py-1', className)}>
+      {lead != null && <span className="flex shrink-0 items-center justify-center">{lead}</span>}
+      <span className={cn('min-w-0 flex-1 truncate text-[14px]', muted ? 'text-muted-foreground' : 'text-foreground')}>
+        {label}
+      </span>
+      {meta && <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">{meta}</span>}
+    </div>
+  )
+}
+
+/** Status chip that never relies on colour alone — always icon + text. */
+export function StatusChip({
+  label,
+  tone = 'neutral',
+  icon: Icon,
+  className,
+}: {
+  label: string
+  tone?: 'neutral' | 'positive' | 'attention' | 'info'
+  icon?: LucideIcon
+  className?: string
+}) {
+  const tones: Record<string, string> = {
+    neutral: 'bg-muted text-muted-foreground',
+    positive: 'bg-sage-soft text-sage',
+    attention: 'bg-peach-soft text-peach',
+    info: 'bg-blush-soft text-blush',
+  }
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium',
+        tones[tone],
+        className,
+      )}
+    >
+      {Icon && <Icon className="size-3" strokeWidth={2.5} />}
+      {label}
+    </span>
+  )
+}
+
+/* ---- Honest data states: Loading ≠ Empty ≠ Failed ---- */
+
+/** Data not known yet. Never rendered as an empty/zero state. */
+export function SummaryLoading({ label = 'Loading…' }: { label?: string }) {
+  return (
+    <p className="flex items-center gap-2 py-1 text-[13px] text-muted-foreground">
+      <span className="size-3 animate-pulse rounded-full bg-muted-foreground/40" aria-hidden />
+      {label}
+    </p>
+  )
+}
+
+/** Data loaded successfully and there is genuinely nothing. Calm + optionally
+ *  actionable — never presented as an error. */
+export function SummaryEmpty({
+  label,
+  action,
+}: {
+  label: string
+  action?: { label: string; onClick: () => void }
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-1">
+      <p className="text-[13px] text-muted-foreground">{label}</p>
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="flex items-center gap-1 text-[13px] font-medium text-primary transition-transform active:scale-[0.98]"
+        >
+          <Plus className="size-3.5" strokeWidth={2.25} />
+          {action.label}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** The load failed. Truthful, not alarming; offers a retry when possible. Never
+ *  collapses into a "0 items" empty state. */
+export function SummaryError({
+  label = "Couldn't load this right now.",
+  onRetry,
+}: {
+  label?: string
+  onRetry?: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-1">
+      <p className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+        <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} />
+        {label}
+      </p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="shrink-0 text-[13px] font-medium text-primary transition-transform active:scale-[0.98]"
+        >
+          Try again
+        </button>
+      )}
+    </div>
   )
 }

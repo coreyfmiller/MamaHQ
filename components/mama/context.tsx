@@ -2,7 +2,11 @@
 
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
-export type Tab = 'today' | 'baby' | 'tell' | 'me'
+// MamaHQ 2.0 nav: Today · Baby · + · Home · Me. `tell` is retained as a resolvable
+// Tab value (existing callers still setTab('tell')) but no longer has a bottom-nav
+// slot — Tell is reached via Capture (+) and its overlay. The tab value is removed
+// in PR2 once all callers route through Capture.
+export type Tab = 'today' | 'baby' | 'home' | 'tell' | 'me'
 
 export type Overlay =
   | 'capture'
