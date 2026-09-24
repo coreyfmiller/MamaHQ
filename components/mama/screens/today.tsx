@@ -2,22 +2,20 @@
 
 import { useState } from 'react'
 import {
-  BookOpen,
   CalendarDays,
   ChevronRight,
   Moon,
   ShoppingCart,
-  Sparkles,
-  Square,
   Check,
   Loader2,
   AlertCircle,
   AlertTriangle,
   Baby as BabyIcon,
-  ListChecks,
   Clock,
   HeartHandshake,
-  Users,
+  Sun,
+  Smile,
+  Star,
 } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, dayNumber } from '../profile'
@@ -30,36 +28,42 @@ import {
   elapsed,
   toLocalInput,
   fromLocalInput,
-  type LogKind,
 } from '../logs'
 import { NameAvatar } from '../name-avatar'
-import { CategoryChip } from '../event-meta'
-import type { Category } from '@/lib/mama-data'
-import { pickAffirmation } from '@/lib/affirmations'
 import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
 import { firstNinetyState } from '@/lib/first90'
 import { useGrocery } from '../grocery'
-import { useCalendar } from '../calendar'
+import { useCalendar, type CalendarEvent } from '../calendar'
 import { useTasks } from '../tasks'
 import { useCare } from '../care'
 import { useHousehold } from '../household'
 import { useAuth } from '../auth'
+import { useMom, dayKey, type Mood } from '../mom'
 import {
   buildTodayModel,
-  isSoloHousehold,
+  localDayKey,
   type TodayModel,
   type DomainState,
   type AttentionItem,
 } from '@/lib/today/model'
 import { BottomNav, Card, CardLabel, LiveDot, Screen, Scroll, StatusBar } from '../ui'
 
+// ── Today (MamaHQ 2.0) ────────────────────────────────────────────────────────
+//
+// "What matters today?" — an ADAPTIVE page, not a dashboard. A quiet day is short;
+// a busy day expands. Empty domains disappear rather than render empty cards.
+//
+// The deterministic engine (lib/today/model.ts, buildTodayModel — 79 tests) is REUSED
+// unchanged. This file is a presentation/IA redesign only. Ordering favors: action →
+// time → current Baby context → secondary (grocery) → Mom.
+//
+// Hierarchy: Header → Needs your attention → Your day (+ To do today) → Baby glance
+// (End Sleep preserved) → Grocery → Coming up → For you.
+
 /* ======================================================================== */
-/* Provider → projection adapter                                            */
+/* Provider → model adapter (unchanged engine)                              */
 /* ======================================================================== */
 
-// Map a provider's (hydrated, available, loadError) into the model's DomainState.
-// A signed-out/unavailable domain is treated as 'ok' + empty (nothing to show),
-// which is truthful: there is no shared state to fail at.
 function domainState(available: boolean, hydrated: boolean, loadError: boolean): DomainState {
   if (!available) return 'ok'
   if (loadError) return 'error'
@@ -67,8 +71,6 @@ function domainState(available: boolean, hydrated: boolean, loadError: boolean):
   return 'ok'
 }
 
-// Builds the Today model from live provider state. The clock ticks (useNow) so
-// overdue/today boundaries stay fresh without impure Date.now() in render.
 function useTodayModel(now: Date): TodayModel {
   const { me, people } = useHousehold()
   const { user } = useAuth()
@@ -79,8 +81,6 @@ function useTodayModel(now: Date): TodayModel {
 
   return buildTodayModel({
     mePersonId: me?.id ?? null,
-    // Auth user id — used only as a secondary signal to classify an OUTGOING care
-    // handoff I proposed (proposedByUserId), alongside fromPersonId === mePersonId.
     meUserId: user?.id ?? null,
     people: people.map((p) => ({ id: p.id, displayName: p.displayName })),
     tasks: tasksCtx.tasks.map((t) => ({
@@ -129,52 +129,27 @@ function useTodayModel(now: Date): TodayModel {
 export function TodayScreen() {
   const now = useNow(60_000)
   const model = useTodayModel(now)
-  const { profile } = useProfile()
-  const soloHousehold = useIsSoloHousehold()
 
   return (
     <Screen>
       <StatusBar />
-      <Scroll className="space-y-4 px-6 pb-4">
+      <Scroll className="px-5 pb-28">
         <Header />
 
         {model.isLoading ? (
           <TodayLoading />
-        ) : model.isEmpty ? (
-          <EmptyToday />
         ) : (
           <>
             <AttentionSection model={model} />
-            <TodayPlan model={model} />
-            <MineSection model={model} />
-            <HouseholdSection model={model} />
-            {/* Responsibility teaching state: when Mom is the only connected adult,
-                "Others are handling" can never populate, so the biggest differentiator
-                (shared, owned responsibility) is invisible. Teach it honestly — never
-                fabricate activity — and only until another adult actually connects. */}
-            {soloHousehold && !model.failedDomains.includes('tasks') && <ShareTheLoadCard />}
-            <CareSection model={model} />
-            <GroceryCard count={model.grocery.activeCount} />
-            {/* PR2 — the standalone "Tell MamaHQ" CTA was removed here: Tell is now
-                always reachable via the center + (Capture), so a dedicated giant
-                button on Today is redundant. Today itself is otherwise unchanged. */}
+            <YourDay model={model} />
+            <BabyGlance />
+            <GrocerySummary count={model.grocery.activeCount} failed={model.failedDomains.includes('grocery')} />
+            <ComingUp />
+            <ForYou />
           </>
         )}
-
-        {/* Quiet secondary editorial — never outranks operational state. */}
-        {profile && !model.isLoading && (
-          <div className="pt-1">
-            <AffirmationCard />
-            <div className="mt-3">
-              <TodaysReadButton />
-            </div>
-          </div>
-        )}
-
-        {/* Live baby-log care detail + running sleep control (persisted logs). */}
-        {!model.isLoading && <RightNow />}
       </Scroll>
-      <Footer />
+      <BottomNav active="today" />
     </Screen>
   )
 }
@@ -195,25 +170,33 @@ function Header() {
   const { me } = useHousehold()
   const { openOverlay } = useNav()
   const now = useNow(60_000)
-  // Prefer the canonical household identity for the greeting; fall back to the local
-  // profile display name only if identity isn't resolved yet.
   const myName = me?.displayName ?? profile?.momName ?? 'there'
   const babyName = profile?.babyName ?? 'Baby'
 
+  const dateLine = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  // Day N only while truthfully within the first-90 journey. Missing birth date or
+  // Beyond 90 → omit (Me → My Journey owns setup/graduation). Never fabricate.
+  let dayN: string | null = null
+  if (profile?.birthDate) {
+    const st = firstNinetyState(profile.birthDate, now)
+    if (st.withinJourney) dayN = `Day ${dayNumber(profile.birthDate, now)}`
+  }
+
   return (
-    <header className="flex items-start justify-between px-6 pt-1">
-      <div>
-        <h1 className="font-serif text-[26px] leading-tight font-semibold tracking-tight">
+    <header className="flex items-start justify-between pt-1">
+      <div className="min-w-0">
+        <h1 className="font-serif text-[25px] leading-tight font-semibold tracking-tight">
           {greeting(now)}, {myName}
         </h1>
-        <p className="mt-1 max-w-[16rem] text-[14px] leading-snug text-muted-foreground">
-          Here&apos;s what matters today.
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
+          {dateLine}
+          {dayN && <span> · <span className="font-medium text-foreground">{dayN}</span></span>}
         </p>
       </div>
       <button
         onClick={() => openOverlay('settings')}
         aria-label="Settings"
-        className="rounded-full transition-transform active:scale-95"
+        className="shrink-0 rounded-full transition-transform active:scale-95"
       >
         <NameAvatar name={babyName} photo={profile?.photo} className="size-10 text-[15px]" />
       </button>
@@ -221,82 +204,32 @@ function Header() {
   )
 }
 
-/* ======================================================================== */
-/* Loading / Empty                                                           */
-/* ======================================================================== */
-
 function TodayLoading() {
   return (
-    <div className="mt-2 space-y-3" aria-busy="true" aria-live="polite">
+    <div className="mt-4 space-y-3" aria-busy="true" aria-live="polite">
       <span className="sr-only">Loading your day…</span>
-      {[0, 1, 2].map((i) => (
+      {[0, 1].map((i) => (
         <div key={i} className="h-20 animate-pulse rounded-3xl bg-muted/60" />
       ))}
     </div>
   )
 }
 
-function EmptyToday() {
-  const { openOverlay } = useNav()
-  const soloHousehold = useIsSoloHousehold()
-  return (
-    <div className="mt-2 space-y-4">
-      <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-sm">
-        <p className="font-serif text-[19px] leading-snug font-semibold">Nothing needs your attention right now.</p>
-        <p className="mt-1.5 text-[15px] leading-relaxed text-muted-foreground">
-          When something&apos;s on your mind — a to-do, an appointment, groceries — tell MamaHQ and
-          it&apos;ll sort it into your shared household. You approve everything first.
-        </p>
-        <button
-          onClick={() => openOverlay('tell')}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-[15px] font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
-        >
-          <Sparkles className="size-4" strokeWidth={2} /> What&apos;s on your mind?
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <QuickShortcut icon={ListChecks} label="Add task" onClick={() => openOverlay('tasks')} />
-        <QuickShortcut icon={CalendarDays} label="Add event" onClick={() => openOverlay('calendar')} />
-        <QuickShortcut icon={ShoppingCart} label="Grocery" onClick={() => openOverlay('grocery')} />
-      </div>
-      {/* A fresh solo Today is the FIRST place a new user should learn MamaHQ supports
-          shared responsibility — otherwise the empty state hides the concept entirely.
-          Rendered only here (empty branch) or in the populated branch, never both, so
-          it is never duplicated. Same compact card + Invite action. */}
-      {soloHousehold && <ShareTheLoadCard />}
-    </div>
-  )
-}
-
-function QuickShortcut({ icon: Icon, label, onClick }: { icon: typeof ListChecks; label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-2 text-[14px] font-medium text-foreground transition-transform active:scale-[0.98]"
-    >
-      <span className="flex size-5 items-center justify-center rounded-full bg-sage-soft text-sage">
-        <Icon className="size-3.5" strokeWidth={2} />
-      </span>
-      {label}
-    </button>
-  )
-}
-
 /* ======================================================================== */
-/* Attention                                                                 */
+/* Needs your attention (the spine — engine unchanged)                       */
 /* ======================================================================== */
 
 function AttentionSection({ model }: { model: TodayModel }) {
   if (model.attention.length === 0) return null
   return (
-    <div>
+    <section className="mt-5">
       <CardLabel className="mb-2 px-1 text-foreground">Needs your attention</CardLabel>
       <div className="space-y-2">
         {model.attention.map((item) => (
           <AttentionRow key={`${item.kind}:${item.refId}`} item={item} />
         ))}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -327,13 +260,7 @@ function AttentionRow({ item }: { item: AttentionItem }) {
 
   const t = timeLabel(item.at)
 
-  // Per-kind icon + copy + action.
-  const config: {
-    Icon: typeof AlertCircle
-    tone: string
-    line: string
-    actions: React.ReactNode
-  } = (() => {
+  const config: { Icon: typeof AlertCircle; tone: string; line: string; actions: React.ReactNode } = (() => {
     switch (item.kind) {
       case 'care_handoff_incoming':
         return {
@@ -342,18 +269,10 @@ function AttentionRow({ item }: { item: AttentionItem }) {
           line: item.fromName ? `${item.fromName} wants to hand off care to you` : 'A care handoff is waiting for you',
           actions: (
             <div className="flex gap-2">
-              <button
-                onClick={() => run('accept', () => care.accept(item.refId))}
-                disabled={!!busy}
-                className="flex-1 rounded-full bg-primary px-3 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40"
-              >
+              <button onClick={() => run('accept', () => care.accept(item.refId))} disabled={!!busy} className="flex-1 rounded-full bg-primary px-3 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40">
                 {busy === 'accept' ? <Loader2 className="mx-auto size-3.5 animate-spin" /> : "I've got it"}
               </button>
-              <button
-                onClick={() => run('decline', () => care.decline(item.refId))}
-                disabled={!!busy}
-                className="rounded-full bg-muted px-3 py-2 text-[13px] font-semibold text-foreground disabled:opacity-40"
-              >
+              <button onClick={() => run('decline', () => care.decline(item.refId))} disabled={!!busy} className="rounded-full bg-muted px-3 py-2 text-[13px] font-semibold text-foreground disabled:opacity-40">
                 Decline
               </button>
             </div>
@@ -365,11 +284,7 @@ function AttentionRow({ item }: { item: AttentionItem }) {
           tone: 'bg-sage-soft text-sage',
           line: 'Assigned to you — accept it so it’s clearly yours',
           actions: (
-            <button
-              onClick={() => run('accept', () => tasksCtx.accept(item.refId))}
-              disabled={!!busy}
-              className="rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40"
-            >
+            <button onClick={() => run('accept', () => tasksCtx.accept(item.refId))} disabled={!!busy} className="rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40">
               {busy === 'accept' ? <Loader2 className="size-3.5 animate-spin" /> : "I've got it"}
             </button>
           ),
@@ -380,11 +295,7 @@ function AttentionRow({ item }: { item: AttentionItem }) {
           tone: 'bg-peach-soft text-peach',
           line: t ? `Overdue · was due ${t}` : 'Overdue',
           actions: (
-            <button
-              onClick={() => run('complete', () => tasksCtx.complete(item.refId))}
-              disabled={!!busy}
-              className="rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40"
-            >
+            <button onClick={() => run('complete', () => tasksCtx.complete(item.refId))} disabled={!!busy} className="rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40">
               {busy === 'complete' ? <Loader2 className="size-3.5 animate-spin" /> : 'Done'}
             </button>
           ),
@@ -395,11 +306,7 @@ function AttentionRow({ item }: { item: AttentionItem }) {
           tone: 'bg-sage-soft text-sage',
           line: t ? `Due today · ${t}` : 'Due today',
           actions: (
-            <button
-              onClick={() => run('complete', () => tasksCtx.complete(item.refId))}
-              disabled={!!busy}
-              className="rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40"
-            >
+            <button onClick={() => run('complete', () => tasksCtx.complete(item.refId))} disabled={!!busy} className="rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40">
               {busy === 'complete' ? <Loader2 className="size-3.5 animate-spin" /> : 'Done'}
             </button>
           ),
@@ -410,10 +317,7 @@ function AttentionRow({ item }: { item: AttentionItem }) {
           tone: 'bg-blue-soft/60 text-foreground',
           line: t ? `You're responsible · ${t}` : "You're responsible today",
           actions: (
-            <button
-              onClick={() => openOverlay('calendar')}
-              className="rounded-full bg-muted px-4 py-2 text-[13px] font-semibold text-foreground"
-            >
+            <button onClick={() => openOverlay('calendar')} className="rounded-full bg-muted px-4 py-2 text-[13px] font-semibold text-foreground">
               View
             </button>
           ),
@@ -439,91 +343,78 @@ function AttentionRow({ item }: { item: AttentionItem }) {
 }
 
 /* ======================================================================== */
-/* Today's plan (calendar)                                                   */
+/* Your day (calendar commitments + compact To do today)                     */
 /* ======================================================================== */
 
-function TodayPlan({ model }: { model: TodayModel }) {
+function YourDay({ model }: { model: TodayModel }) {
   const { openOverlay, composeEvent } = useNav()
   const failed = model.failedDomains.includes('calendar')
+
+  // "To do today" = my overdue / due-today tasks NOT already shown in Attention
+  // (Attention already surfaces overdue / due-today / awaiting for accepted tasks).
+  const attentionIds = new Set(model.attention.map((a) => a.refId))
+  const toDoToday = model.mine.filter(
+    (t) => (t.overdue || isDueTodayMine(t.dueAt)) && !attentionIds.has(t.id),
+  )
 
   if (failed) {
     return <DomainError label="Couldn't load today's calendar" onRetry={() => openOverlay('calendar')} />
   }
-  if (model.commitments.length === 0) return null
+  if (model.commitments.length === 0 && toDoToday.length === 0) return null
 
   return (
-    <Card className="space-y-3">
-      <div className="flex items-center justify-between">
-        <CardLabel className="text-foreground">Today&apos;s plan</CardLabel>
+    <section className="mt-6">
+      <div className="mb-2 flex items-center justify-between px-1">
+        <CardLabel className="text-foreground">Your day</CardLabel>
         <button onClick={() => openOverlay('calendar')} className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
           Calendar <ChevronRight className="size-3.5" />
         </button>
       </div>
-      <div className="space-y-2">
-        {model.commitments.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => composeEvent(c.id)}
-            className="flex w-full items-start gap-3 rounded-2xl bg-blue-soft/40 p-3 text-left transition-transform active:scale-[0.99]"
-          >
-            <span className="w-16 shrink-0 pt-0.5 text-[12px] font-semibold text-muted-foreground">
-              {c.allDay ? 'All day' : timeLabel(c.startsAt) ?? ''}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-semibold leading-tight">{c.title}</p>
-              <RoleLine
-                myRole={c.myRole}
-                responsibleName={c.responsibleName}
-                participantNames={c.participantNames}
-              />
-            </div>
-          </button>
-        ))}
-      </div>
-    </Card>
+
+      {/* Timed/all-day commitments — chronological. */}
+      {model.commitments.length > 0 && (
+        <div className="space-y-2">
+          {model.commitments.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => composeEvent(c.id)}
+              className="flex w-full items-start gap-3 rounded-2xl bg-blue-soft/40 p-3 text-left transition-transform active:scale-[0.99]"
+            >
+              <span className="w-16 shrink-0 pt-0.5 text-[12px] font-semibold text-muted-foreground">
+                {c.allDay ? 'All day' : timeLabel(c.startsAt) ?? ''}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-semibold leading-tight">{c.title}</p>
+                <RoleLine myRole={c.myRole} responsibleName={c.responsibleName} participantNames={c.participantNames} />
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* To do today — only real due-dated work, never Mom to-dos or undated tasks. */}
+      {toDoToday.length > 0 && (
+        <div className="mt-2">
+          <p className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">To do today</p>
+          <TodoTodayList tasks={toDoToday} />
+        </div>
+      )}
+    </section>
   )
 }
 
-// Honest role line: distinguishes responsible vs attending vs other; never conflates.
-function RoleLine({
-  myRole,
-  responsibleName,
-  participantNames,
-}: {
-  myRole: 'responsible' | 'attending' | 'other'
-  responsibleName: string | null
-  participantNames: string[]
-}) {
-  if (myRole === 'responsible') {
-    return <p className="text-[13px] font-medium text-sage">You&apos;re responsible</p>
-  }
-  if (myRole === 'attending') {
-    return (
-      <p className="text-[13px] text-muted-foreground">
-        {responsibleName ? `${responsibleName} is responsible · ` : ''}You&apos;re attending
-      </p>
-    )
-  }
-  // other: show who's responsible / who's involved without implying it's mine.
-  if (responsibleName) return <p className="text-[13px] text-muted-foreground">{responsibleName} is responsible</p>
-  if (participantNames.length > 0) return <p className="text-[13px] text-muted-foreground">{participantNames.join(', ')}</p>
-  return null
+function isDueTodayMine(dueAt: string | null): boolean {
+  if (!dueAt) return false
+  const now = new Date()
+  const key = localDayKey(now)
+  const d = new Date(dueAt)
+  return localDayKey(d) === key
 }
 
-/* ======================================================================== */
-/* Mine                                                                      */
-/* ======================================================================== */
-
-function MineSection({ model }: { model: TodayModel }) {
+function TodoTodayList({ tasks }: { tasks: TodayModel['mine'] }) {
   const tasksCtx = useTasks()
-  const { openOverlay, showToast } = useNav()
+  const { showToast } = useNav()
   const [busyId, setBusyId] = useState<string | null>(null)
-  const failed = model.failedDomains.includes('tasks')
-
-  if (failed) {
-    return <DomainError label="Couldn't load your tasks" onRetry={() => openOverlay('tasks')} />
-  }
-  if (model.mine.length === 0) return null
 
   const complete = async (id: string) => {
     setBusyId(id)
@@ -537,283 +428,99 @@ function MineSection({ model }: { model: TodayModel }) {
   }
 
   return (
-    <Card className="space-y-2">
-      <div className="flex items-center justify-between">
-        <CardLabel className="text-foreground">You&apos;re handling</CardLabel>
-        <button onClick={() => openOverlay('tasks')} className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
-          Tasks <ChevronRight className="size-3.5" />
-        </button>
-      </div>
-      <div className="divide-y divide-border/50">
-        {model.mine.map((t) => (
-          <div key={t.id} className="flex items-center gap-3 py-2">
-            <button
-              onClick={() => complete(t.id)}
-              disabled={busyId === t.id}
-              aria-label={`Mark "${t.title}" done`}
-              className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-transparent transition-colors hover:border-primary hover:text-primary active:bg-muted disabled:opacity-40"
-            >
-              {busyId === t.id ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" /> : <Check className="size-3.5" strokeWidth={3} />}
-            </button>
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] leading-tight">{t.title}</p>
-              <p className="text-[12px] text-muted-foreground">
-                {t.overdue ? 'Overdue' : t.dueAt ? `Due ${dueLabel(t.dueAt)}` : 'No due date'}
-                {t.acceptance === 'accepted' ? ' · You’ve got it' : ''}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  )
-}
-
-function dueLabel(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-}
-
-/* ======================================================================== */
-/* Household — someone else is handling it                                   */
-/* ======================================================================== */
-
-function HouseholdSection({ model }: { model: TodayModel }) {
-  const { openOverlay } = useNav()
-  if (model.failedDomains.includes('tasks')) return null // error already shown in Mine
-  if (model.household.length === 0) return null
-
-  return (
-    <Card className="space-y-3">
-      <CardLabel className="text-foreground">Others are handling</CardLabel>
-      <div className="space-y-2.5">
-        {model.household.map((h) => (
-          <div key={h.personId}>
-            <p className="text-[14px] font-semibold">{h.personName}</p>
-            <div className="mt-0.5 space-y-0.5">
-              {h.tasks.map((t) => (
-                <p key={t.id} className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-                  <span className="size-1 rounded-full bg-muted-foreground/50" />
-                  {t.title}
-                  {t.acceptance === 'accepted' && <span className="text-sage"> · has it</span>}
-                </p>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <button onClick={() => openOverlay('people')} className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
-        Household <ChevronRight className="size-3.5" />
-      </button>
-    </Card>
-  )
-}
-
-// True when the current user is the ONLY connected adult in the household — i.e. no
-// OTHER person is linked to an authenticated account. Derived from durable household
-// truth (accountStatus === 'connected'), never from display text or pending invites:
-// a person who was merely invited (not yet joined) does NOT count, so the teaching
-// state stays literally true ("when another adult joins…") until someone actually
-// accepts. Signed-out/unhydrated households are treated as solo (nothing to show yet).
-function useIsSoloHousehold(): boolean {
-  const { people, me, hydrated } = useHousehold()
-  if (!hydrated) return false
-  // Pure predicate (lib/today/model) so the teaching-state condition is testable
-  // without React. Signed-out/unhydrated households are treated as solo (handled above).
-  return isSoloHousehold(people, me?.id ?? null)
-}
-
-// The responsibility teaching state. Calm, compact, truthful: it explains the
-// capability that "Others are handling" will show once another adult connects, and
-// offers a single action into the EXISTING Household/People surface. It fabricates no
-// tasks and no household activity, and disappears entirely once a second adult joins.
-function ShareTheLoadCard() {
-  const { openOverlay } = useNav()
-  return (
-    <Card className="space-y-2.5">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sage">
-          <Users className="size-[18px]" strokeWidth={1.75} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-semibold leading-tight">Share the load</p>
-          <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
-            When another adult joins MamaHQ, you&apos;ll both see who&apos;s handling what — and you can
-            hand things off so it&apos;s not all on you.
-          </p>
-        </div>
-      </div>
-      <div className="pl-12">
-        <button
-          onClick={() => openOverlay('people')}
-          className="rounded-full bg-muted px-4 py-2 text-[13px] font-semibold text-foreground transition-transform active:scale-[0.98]"
-        >
-          Invite someone
-        </button>
-      </div>
-    </Card>
-  )
-}
-
-/* ======================================================================== */
-/* Care                                                                      */
-/* ======================================================================== */
-
-function CareSection({ model }: { model: TodayModel }) {
-  const { openOverlay } = useNav()
-  const { profile } = useProfile()
-  const failed = model.failedDomains.includes('care')
-  const c = model.care
-  const babyName = profile?.babyName ?? 'Baby'
-
-  if (failed) {
-    return <DomainError label="Couldn't load care status" onRetry={() => openOverlay('careHandoff')} />
-  }
-
-  // Only render the care summary card when there's something real to say.
-  const hasHolder = !!c.holderName
-  const hasContext = !!(c.context.lastFeed || c.context.lastDiaper || c.context.lastNap)
-  if (!hasHolder && !hasContext && !c.outgoingPendingToName) return null
-
-  return (
-    <Card className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <CardLabel className="text-foreground">{babyName}</CardLabel>
-        <button onClick={() => openOverlay('careHandoff')} className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
-          Care <ChevronRight className="size-3.5" />
-        </button>
-      </div>
-
-      {hasHolder && (
-        <p className="text-[14px]">
-          <span className="font-medium">Care right now: </span>
-          {c.iHoldCare ? <span className="text-sage font-semibold">You have {babyName}</span> : `${c.holderName} has ${babyName}`}
-        </p>
-      )}
-
-      {/* Truthful pending state — NEVER "X has the baby" until they accept. */}
-      {c.outgoingPendingToName && (
-        <p className="text-[13px] text-muted-foreground">
-          Waiting for {c.outgoingPendingToName} to accept the handoff
-        </p>
-      )}
-
-      {hasContext && (
-        <div className="space-y-0.5 text-[13px] text-muted-foreground">
-          {c.context.lastFeed && <p>Last feed · {timeLabel(c.context.lastFeed.at)}{c.context.lastFeed.detail ? ` · ${c.context.lastFeed.detail}` : ''}</p>}
-          {c.context.lastDiaper && <p>Last diaper · {timeLabel(c.context.lastDiaper.at)}{c.context.lastDiaper.detail ? ` · ${c.context.lastDiaper.detail}` : ''}</p>}
-          {c.context.lastNap && (
-            <p>
-              {c.context.lastNap.inProgress
-                ? `Sleeping since ${timeLabel(c.context.lastNap.start)}`
-                : `Last sleep · ${timeLabel(c.context.lastNap.start)}${c.context.lastNap.durationLabel ? ` · ${c.context.lastNap.durationLabel}` : ''}`}
+    <Card className="divide-y divide-border/50 py-1">
+      {tasks.map((t) => (
+        <div key={t.id} className="flex items-center gap-3 py-2">
+          <button
+            onClick={() => complete(t.id)}
+            disabled={busyId === t.id}
+            aria-label={`Mark "${t.title}" done`}
+            className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-transparent transition-colors hover:border-primary hover:text-primary active:bg-muted disabled:opacity-40"
+          >
+            {busyId === t.id ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" /> : <Check className="size-3.5" strokeWidth={3} />}
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-[14.5px] leading-tight">{t.title}</p>
+            <p className="text-[12px] text-muted-foreground">
+              {t.overdue ? 'Overdue' : t.dueAt ? `Due ${timeLabel(t.dueAt) ?? 'today'}` : 'Due today'}
             </p>
-          )}
+          </div>
         </div>
-      )}
+      ))}
     </Card>
   )
 }
 
-/* ======================================================================== */
-/* Grocery + Tell + shared bits                                              */
-/* ======================================================================== */
-
-function GroceryCard({ count }: { count: number }) {
-  const { openOverlay } = useNav()
-  if (count === 0) return null // restrained: no card when the list is empty
-  return (
-    <button
-      onClick={() => openOverlay('grocery')}
-      className="flex w-full items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-3.5 text-left shadow-sm transition-transform active:scale-[0.99]"
-    >
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-sage-soft text-sage">
-        <ShoppingCart className="size-5" strokeWidth={1.75} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[15px] font-semibold leading-tight">Grocery</p>
-        <p className="text-[13px] text-muted-foreground">
-          {count} thing{count === 1 ? '' : 's'} on the list
-        </p>
-      </div>
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-    </button>
-  )
-}
-
-// A restrained, retryable per-domain error — never disguised as empty.
-function DomainError({ label, onRetry }: { label: string; onRetry: () => void }) {
-  return (
-    <Card className="flex items-center gap-3">
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-peach-soft text-peach">
-        <AlertTriangle className="size-[18px]" strokeWidth={1.75} />
-      </span>
-      <p className="min-w-0 flex-1 text-[14px] text-foreground">{label}</p>
-      <button onClick={onRetry} className="rounded-full bg-muted px-3.5 py-1.5 text-[13px] font-semibold text-foreground">
-        Open
-      </button>
-    </Card>
-  )
-}
-
-function Footer() {
-  return <BottomNav active="today" />
+function RoleLine({
+  myRole,
+  responsibleName,
+  participantNames,
+}: {
+  myRole: 'responsible' | 'attending' | 'other'
+  responsibleName: string | null
+  participantNames: string[]
+}) {
+  if (myRole === 'responsible') return <p className="text-[13px] font-medium text-sage">You&apos;re responsible</p>
+  if (myRole === 'attending') {
+    return (
+      <p className="text-[13px] text-muted-foreground">
+        {responsibleName ? `${responsibleName} is responsible · ` : ''}You&apos;re attending
+      </p>
+    )
+  }
+  if (responsibleName) return <p className="text-[13px] text-muted-foreground">{responsibleName} is responsible</p>
+  if (participantNames.length > 0) return <p className="text-[13px] text-muted-foreground">{participantNames.join(', ')}</p>
+  return null
 }
 
 /* ======================================================================== */
-/* Live baby-log detail + running sleep (persisted logs) — retained          */
+/* Baby glance (concise; End Sleep preserved)                                */
 /* ======================================================================== */
 
 const RUNAWAY_HOURS = 10
 
-function RightNow() {
-  const { logs } = useLogs()
-  const now = useNow()
-  const sleeping = activeSleep(logs)
-  const hasAny = logs.length > 0
-  if (!hasAny && !sleeping) return null // nothing logged → CareSection already covers holder
+function BabyGlance() {
+  const { logs, hydrated, loadError } = useLogs()
+  const { openOverlay, setTab } = useNav()
+  const now = useNow(30_000)
 
-  const rows: { category: Category; label: string; kind: LogKind }[] = [
-    { category: 'feed', label: 'Last feed', kind: 'feed' },
-    { category: 'sleep', label: sleeping ? 'Sleeping' : 'Last sleep', kind: 'sleep' },
-    { category: 'diaper', label: 'Last diaper', kind: 'diaper' },
-  ]
-
-  const sleepValue = (last: ReturnType<typeof lastOfKind>) => {
-    if (sleeping) return `${elapsed(sleeping.createdAt, null, now)} so far`
-    if (last?.endedAt) return `${elapsed(last.createdAt, last.endedAt)} · ${timeAgo(last.endedAt, now)}`
-    return last ? timeAgo(last.createdAt, now) : 'Nothing logged yet'
+  if (loadError) {
+    return (
+      <section className="mt-6">
+        <DomainError label="Couldn't load Baby's activity" onRetry={() => openOverlay('quicklog')} />
+      </section>
+    )
   }
+  if (!hydrated || logs.length === 0) return null // nothing to say → stay silent
+
+  const sleeping = activeSleep(logs)
+  const lastFeed = lastOfKind(logs, 'feed')
+
+  let line: string
+  if (sleeping) line = `Sleeping · ${elapsed(sleeping.createdAt, null, now)}`
+  else if (lastFeed) line = `Last feed · ${timeAgo(lastFeed.createdAt, now)}`
+  else line = 'Recent activity logged'
 
   return (
-    <>
-      <Card className="space-y-1">
-        <div className="mb-2 flex items-center justify-between">
-          <CardLabel className="text-foreground">Recent care detail</CardLabel>
-          {(hasAny || sleeping) && <LiveDot />}
+    <section className="mt-6">
+      <button
+        onClick={() => setTab('baby')}
+        className="flex w-full items-center gap-3 rounded-2xl bg-muted/40 px-4 py-3 text-left ring-1 ring-border/50 transition-colors active:bg-muted"
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-soft text-blue">
+          <Moon className="size-[18px]" strokeWidth={2} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Baby</p>
+          <p className="text-[15px] font-semibold leading-tight">{line}</p>
         </div>
-        <div className="divide-y divide-border/60">
-          {rows.map((row) => {
-            const last = lastOfKind(logs, row.kind)
-            const value =
-              row.kind === 'sleep'
-                ? sleepValue(last)
-                : last
-                  ? timeAgo(last.createdAt, now)
-                  : 'Nothing logged yet'
-            return (
-              <div key={row.label} className="flex items-center gap-3.5 py-2.5">
-                <CategoryChip category={row.category} />
-                <div className="min-w-0">
-                  <p className="text-[15px] font-semibold leading-tight">{row.label}</p>
-                  <p className="text-[13px] text-muted-foreground">{value}</p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </Card>
+        {sleeping && <LiveDot />}
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground/70" />
+      </button>
+
+      {/* End Sleep — the ONLY place to end an active sleep (QuickLog can't). Preserved. */}
       {sleeping && <SleepControl sleepId={sleeping.id} startISO={sleeping.createdAt} now={now} />}
-    </>
+    </section>
   )
 }
 
@@ -831,7 +538,7 @@ function SleepControl({ sleepId, startISO, now }: { sleepId: string; startISO: s
     const wakeISO = fromLocalInput(wake)
     const valid = new Date(wakeISO).getTime() > new Date(startISO).getTime()
     return (
-      <Card className="mt-3 space-y-3 border-primary/30 bg-primary/5">
+      <Card className="mt-2 space-y-3 border-primary/30 bg-primary/5">
         <p className="text-[15px] font-semibold">When did {babyName} wake up?</p>
         <input
           type="datetime-local"
@@ -844,17 +551,10 @@ function SleepControl({ sleepId, startISO, now }: { sleepId: string; startISO: s
           {valid ? `Slept ${elapsed(startISO, wakeISO)}` : 'Wake time must be after they fell asleep.'}
         </p>
         <div className="flex gap-2">
-          <button
-            onClick={() => setConfirming(false)}
-            className="flex-1 rounded-full bg-muted py-3 text-[14px] font-semibold text-foreground transition-transform active:scale-[0.98]"
-          >
+          <button onClick={() => setConfirming(false)} className="flex-1 rounded-full bg-muted py-3 text-[14px] font-semibold text-foreground transition-transform active:scale-[0.98]">
             Cancel
           </button>
-          <button
-            onClick={() => valid && endSleep(sleepId, wakeISO)}
-            disabled={!valid}
-            className="flex-1 rounded-full bg-primary py-3 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-40"
-          >
+          <button onClick={() => valid && endSleep(sleepId, wakeISO)} disabled={!valid} className="flex-1 rounded-full bg-primary py-3 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-40">
             Save
           </button>
         </div>
@@ -862,103 +562,199 @@ function SleepControl({ sleepId, startISO, now }: { sleepId: string; startISO: s
     )
   }
 
-  if (runaway) {
-    return (
-      <Card className="mt-3 space-y-3 border-peach/40 bg-peach-soft/40">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-2xl bg-peach-soft text-peach">
-            <Moon className="size-[18px]" strokeWidth={1.75} />
-          </span>
-          <div>
-            <p className="text-[15px] font-semibold leading-tight">Is {babyName} still asleep?</p>
-            <p className="text-[13px] text-muted-foreground">
-              This sleep has been running {elapsed(startISO, null, now)}.
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setConfirming(true)}
-            className="flex-1 rounded-full bg-primary py-3 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-[0.98]"
-          >
-            They woke up
-          </button>
-          <button
-            onClick={() => {
-              /* keep counting */
-            }}
-            className="flex-1 rounded-full bg-card py-3 text-[14px] font-semibold text-foreground ring-1 ring-border transition-transform active:scale-[0.98]"
-          >
-            Still asleep
-          </button>
-        </div>
-      </Card>
-    )
-  }
-
   return (
-    <button
-      onClick={() => {
-        setWake(toLocalInput(new Date().toISOString()))
-        setConfirming(true)
-      }}
-      className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3.5 text-[15px] font-semibold text-foreground shadow-sm transition-transform active:scale-[0.99]"
-    >
-      <Square className="size-4 fill-current" strokeWidth={0} />
-      Stop sleep · {elapsed(startISO, null, now)}
-    </button>
-  )
-}
-
-/* ======================================================================== */
-/* Quiet editorial (secondary)                                               */
-/* ======================================================================== */
-
-function AffirmationCard() {
-  const { profile } = useProfile()
-  const now = useNow(60_000)
-  if (!profile) return null
-  const day = dayNumber(profile.birthDate, now)
-  const text = pickAffirmation(day, now)
-  return (
-    <div className="rounded-3xl bg-sage-soft/50 px-5 py-4">
-      <p className="whitespace-pre-line font-serif text-[16px] leading-relaxed text-foreground/90">{text}</p>
+    <div className="mt-2 flex items-center gap-2">
+      <button
+        onClick={() => endSleep(sleepId)}
+        className="flex-1 rounded-full bg-primary py-2.5 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
+      >
+        End sleep
+      </button>
+      <button
+        onClick={() => setConfirming(true)}
+        className="rounded-full bg-muted px-4 py-2.5 text-[14px] font-semibold text-foreground transition-transform active:scale-[0.99]"
+      >
+        {runaway ? 'Fix time' : 'Set wake time'}
+      </button>
     </div>
   )
 }
 
-function TodaysReadButton() {
+/* ======================================================================== */
+/* Grocery (secondary, conditional)                                          */
+/* ======================================================================== */
+
+function GrocerySummary({ count, failed }: { count: number; failed: boolean }) {
   const { openOverlay } = useNav()
-  const { profile } = useProfile()
-  const now = useNow(60_000)
-  if (!profile) return null
-  // Beta Phase 4 — only offer "Today's read" while within the 1–90 day journey. After
-  // Day 90 there is no read for today; we don't pretend the Day 90 piece is today's.
-  const j = firstNinetyState(profile.birthDate, now)
-  if (!j.hasReadToday) return null
-  const read = pickDailyRead(j.day)
-  const mins = readMinutes(read)
+  if (failed) {
+    return (
+      <section className="mt-6">
+        <DomainError label="Couldn't load your grocery list" onRetry={() => openOverlay('grocery')} />
+      </section>
+    )
+  }
+  if (count === 0) return null
   return (
     <button
-      onClick={() => openOverlay('read')}
-      className="flex w-full items-center gap-3.5 rounded-2xl border border-border/70 bg-card p-3.5 text-left shadow-sm transition-transform active:scale-[0.99]"
+      onClick={() => openOverlay('grocery')}
+      className="mt-6 flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left ring-1 ring-border/60 transition-transform active:scale-[0.99]"
     >
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-sage-soft text-sage">
-        <BookOpen className="size-5" strokeWidth={1.75} />
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sage">
+        <ShoppingCart className="size-[18px]" strokeWidth={1.9} />
       </span>
       <div className="min-w-0 flex-1">
-        {/* Subtle journey framing so MamaHQ feels like it's intentionally walking Mom
-            through the first 90 days. Uses the SAME authoritative journey-day state as
-            everything else; only rendered within Days 1–90 (hasReadToday gates it). */}
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-sage">
-          Day {j.day} of your first 90
-        </p>
-        <p className="truncate text-[15px] font-semibold leading-tight">{read.title}</p>
-        <p className="text-[13px] text-muted-foreground">
-          {read.category} &middot; {mins} min read
-        </p>
+        <p className="text-[15px] font-semibold leading-tight">Grocery</p>
+        <p className="text-[13px] text-muted-foreground">{count} thing{count === 1 ? '' : 's'} on your list</p>
       </div>
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
     </button>
+  )
+}
+
+/* ======================================================================== */
+/* Coming up (next 1–3 days, excluding today)                                */
+/* ======================================================================== */
+
+function comingUpWhen(e: CalendarEvent): string {
+  const rel = (d: Date): string => {
+    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+    const diff = Math.round((startOfDay(d) - startOfDay(new Date())) / 86_400_000)
+    if (diff === 1) return 'Tomorrow'
+    if (diff > 1 && diff < 7) return d.toLocaleDateString(undefined, { weekday: 'long' })
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+  const clock = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (e.allDay) {
+    if (!e.startDate) return 'All day'
+    const [y, m, d] = e.startDate.split('-').map(Number)
+    return `${rel(new Date(y, (m ?? 1) - 1, d ?? 1))} · All day`
+  }
+  if (!e.startsAt) return ''
+  const start = new Date(e.startsAt)
+  return `${rel(start)} · ${clock(start)}`
+}
+
+function ComingUp() {
+  const { composeEvent } = useNav()
+  const { upcoming, hydrated, available, loadError } = useCalendar()
+  const now = useNow(60_000)
+
+  if (!available || loadError || !hydrated) return null // errors surface in Your day
+
+  const todayKey = localDayKey(now)
+  const in3Days = now.getTime() + 3 * 86_400_000
+  const next = upcoming
+    .filter((e) => {
+      const startMs = e.allDay
+        ? (e.startDate ? new Date(e.startDate + 'T00:00:00').getTime() : 0)
+        : (e.startsAt ? new Date(e.startsAt).getTime() : 0)
+      const key = e.allDay ? (e.startDate ?? '') : (e.startsAt ? localDayKey(new Date(e.startsAt)) : '')
+      return key !== todayKey && startMs <= in3Days // strictly future days, within ~3 days
+    })
+    .slice(0, 3)
+
+  if (next.length === 0) return null
+
+  return (
+    <section className="mt-6">
+      <CardLabel className="mb-1.5 px-1 text-foreground">Coming up</CardLabel>
+      <ul className="space-y-1.5">
+        {next.map((e) => (
+          <li key={e.id}>
+            <button onClick={() => composeEvent(e.id)} className="flex w-full items-center gap-3 text-left">
+              <span className="w-28 shrink-0 text-[12.5px] font-medium tabular-nums text-muted-foreground">{comingUpWhen(e)}</span>
+              <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">{e.title}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+/* ======================================================================== */
+/* For you (small: mood nudge + today's read)                                */
+/* ======================================================================== */
+
+const moodOptions: { id: Mood; label: string; Icon: typeof Sun }[] = [
+  { id: 'tired', label: 'Tired', Icon: Moon },
+  { id: 'okay', label: 'Okay', Icon: Sun },
+  { id: 'good', label: 'Good', Icon: Smile },
+  { id: 'great', label: 'Great', Icon: Star },
+]
+
+function ForYou() {
+  const { openOverlay } = useNav()
+  const { profile } = useProfile()
+  const { state, hydrated, setTodayMood } = useMom()
+  const now = useNow(60_000)
+
+  const moodAnswered = hydrated && !!state.moodByDay[dayKey(now)]
+
+  // Today's read only within the first-90 journey (Me owns the full journey).
+  let read: ReturnType<typeof pickDailyRead> | null = null
+  if (profile?.birthDate) {
+    const st = firstNinetyState(profile.birthDate, now)
+    if (st.withinJourney) read = pickDailyRead(dayNumber(profile.birthDate, now))
+  }
+
+  // Nothing to offer → stay silent.
+  if (moodAnswered && !read) return null
+
+  return (
+    <section className="mt-6">
+      <CardLabel className="mb-2 px-1 text-foreground">For you</CardLabel>
+
+      {!moodAnswered && (
+        <div className="rounded-2xl bg-sage-soft/40 px-4 py-3 ring-1 ring-border/40">
+          <p className="text-[14px] font-semibold">How are you today?</p>
+          <div className="mt-2 flex gap-2">
+            {moodOptions.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setTodayMood(m.id)}
+                aria-label={m.label}
+                className="flex flex-1 flex-col items-center gap-1 rounded-xl border border-border/70 bg-card py-2 text-muted-foreground transition-colors active:bg-muted"
+              >
+                <m.Icon className="size-[18px]" strokeWidth={1.75} />
+                <span className="text-[11.5px]">{m.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {read && (
+        <button
+          onClick={() => openOverlay('read')}
+          className={`flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left ring-1 ring-border/60 transition-transform active:scale-[0.99] ${!moodAnswered ? 'mt-2' : ''}`}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Today&apos;s read</p>
+            <p className="truncate text-[14.5px] font-semibold leading-tight">{read.title}</p>
+            <p className="text-[12px] text-muted-foreground">{readMinutes(read)} min · {read.category}</p>
+          </div>
+          <ChevronRight className="size-4 shrink-0 text-primary" />
+        </button>
+      )}
+    </section>
+  )
+}
+
+/* ======================================================================== */
+/* Shared                                                                    */
+/* ======================================================================== */
+
+function DomainError({ label, onRetry }: { label: string; onRetry: () => void }) {
+  return (
+    <Card className="flex items-center gap-3">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-peach-soft text-peach">
+        <AlertTriangle className="size-[18px]" strokeWidth={1.75} />
+      </span>
+      <p className="min-w-0 flex-1 text-[14px] text-foreground">{label}</p>
+      <button onClick={onRetry} className="rounded-full bg-muted px-3.5 py-1.5 text-[13px] font-semibold text-foreground">
+        Open
+      </button>
+    </Card>
   )
 }
