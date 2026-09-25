@@ -12,6 +12,7 @@ import { useInbox } from '../inbox/store'
 import { usePartner } from '../partner'
 import { useAuth } from '../auth'
 import { clearFamilyData } from '@/lib/supabase/data'
+import { resetConfirmationMatches, RESET_CONFIRM_WORD } from '@/lib/reset-confirm'
 import { TopBar } from '../ui'
 
 /**
@@ -38,11 +39,14 @@ export function ResetScreen() {
   const { familyId } = useAuth()
 
   const babyName = (profile?.babyName ?? '').trim()
+  const hasBaby = babyName.length > 0
   const [acknowledged, setAcknowledged] = useState(false)
   const [typed, setTyped] = useState('')
 
-  // Case-insensitive exact match, ignoring surrounding whitespace.
-  const matches = typed.trim().toLowerCase() === babyName.toLowerCase() && babyName.length > 0
+  // Confirmation gate (pure, in lib/reset-confirm): with a baby, type the baby's name
+  // (case-insensitive, trimmed); with NO baby, type the literal word RESET. Either way
+  // the destructive button stays disabled until this matches.
+  const matches = resetConfirmationMatches(hasBaby, babyName, typed)
 
   const [busy, setBusy] = useState(false)
 
@@ -129,14 +133,22 @@ export function ResetScreen() {
           <div className="mt-8">
             <label className="block">
               <span className="mb-1.5 block px-1 text-[13px] font-medium text-muted-foreground">
-                Type <strong className="text-foreground">{babyName || 'the baby&apos;s name'}</strong> to confirm
+                {hasBaby ? (
+                  <>
+                    Type <strong className="text-foreground">{babyName}</strong> to confirm
+                  </>
+                ) : (
+                  <>
+                    Type <strong className="text-foreground">{RESET_CONFIRM_WORD}</strong> to confirm
+                  </>
+                )}
               </span>
               <input
                 // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}
-                placeholder={babyName}
+                placeholder={hasBaby ? babyName : RESET_CONFIRM_WORD}
                 autoCapitalize="none"
                 autoCorrect="off"
                 className="w-full rounded-2xl border border-border bg-card px-4 py-3.5 text-[16px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-destructive"
@@ -148,7 +160,7 @@ export function ResetScreen() {
               disabled={!matches || busy}
               className="mt-5 w-full rounded-2xl bg-destructive py-4 text-[15px] font-semibold text-white transition-transform active:scale-[0.99] disabled:opacity-40"
             >
-              {busy ? 'Clearing…' : 'Clear this baby & logs'}
+              {busy ? 'Clearing…' : hasBaby ? 'Clear this baby & logs' : 'Clear my data'}
             </button>
             <button
               onClick={closeOverlay}

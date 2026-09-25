@@ -77,6 +77,9 @@ jobs:
       - name: Log duplicate-submission guard tests (Beta Phase 5)
         run: pnpm run test:log-dedupe
 
+      - name: Reset confirmation gate tests (Start Over)
+        run: pnpm run test:reset-confirm
+
       - name: TypeScript
         run: pnpm run typecheck
 

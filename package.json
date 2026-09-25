@@ -28,13 +28,14 @@
     "test:today": "node scripts/test-today.ts",
     "test:first90": "node scripts/test-first90.ts",
     "test:log-dedupe": "node scripts/test-log-dedupe.ts",
+    "test:reset-confirm": "node scripts/test-reset-confirm.ts",
     "test:identity": "node scripts/test-identity.ts",
     "test:onboarding-partner": "node scripts/test-onboarding-partner.ts",
     "test:bootstrap": "node scripts/test-bootstrap.ts",
     "test:db-all": "node scripts/test-db-completion.ts && node scripts/test-security.ts && node scripts/test-household.ts && node scripts/test-membership.ts && node scripts/test-tasks.ts && node scripts/test-handoff.ts && node scripts/test-calendar.ts && node scripts/test-notifications.ts && node scripts/test-tell-security.ts && node scripts/test-identity.ts && node scripts/test-onboarding-partner.ts && node scripts/test-bootstrap.ts",
     "db:reset": "supabase db reset",
     "db:verify": "node scripts/db/run-db-tests.ts",
-    "verify": "npm run catalog:validate && npm run test:grocery-search && npm run test:grocery-resolver && npm run test:grocery-actions && npm run test:tell && npm run test:today && npm run test:first90 && npm run test:log-dedupe && npm run typecheck && npm run lint",
+    "verify": "npm run catalog:validate && npm run test:grocery-search && npm run test:grocery-resolver && npm run test:grocery-actions && npm run test:tell && npm run test:today && npm run test:first90 && npm run test:log-dedupe && npm run test:reset-confirm && npm run typecheck && npm run lint",
     "verify:all": "npm run verify && npm run db:verify"
   },
   "dependencies": {
