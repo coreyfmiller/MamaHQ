@@ -30,6 +30,11 @@ export function NotificationsScreen() {
   const { available, hydrated, notifications, unreadCount, markRead, markAllRead } = useNotifications()
   const now = useNow(60_000)
 
+  // NOTE (MamaHQ 2.0): care-domain notifications are already filtered out by the
+  // NotificationsProvider (care handoff is retired from the visible UX), so this
+  // surface only ever receives task/calendar notifications. The care→careHandoff
+  // entry in DOMAIN_OVERLAY is dormant and unreachable here.
+
   const open = (n: AppNotification) => {
     if (!n.readAt) void markRead(n.id)
     // Navigate to the relevant domain surface. Replace the notification overlay.
@@ -116,7 +121,7 @@ export function NotificationsScreen() {
 
         <p className="rounded-2xl bg-muted/60 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
           Notifications point you to what matters — they aren&apos;t the source of truth. Opening
-          one takes you to Tasks, Care, or the Calendar, where the real state lives.
+          one takes you to Tasks or the Calendar, where the real state lives.
         </p>
       </Scroll>
     </Screen>

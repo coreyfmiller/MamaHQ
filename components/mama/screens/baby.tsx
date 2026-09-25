@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Image from 'next/image'
-import { ChevronRight, Hand as HandIcon, Plus, Moon, AlertCircle, Loader2 } from 'lucide-react'
+import { ChevronRight, Plus, Moon, AlertCircle, Loader2 } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, ageLabel, dayNumber } from '../profile'
 import { firstNinetyState } from '@/lib/first90'
@@ -17,8 +17,6 @@ import {
   timeAgo,
   isSameDay,
 } from '../logs'
-import { useHousehold } from '../household'
-import { useCare } from '../care'
 import { useMemories } from '../memories'
 import { NameAvatar } from '../name-avatar'
 import { CategoryChip } from '../event-meta'
@@ -133,9 +131,6 @@ function Header({ onLog }: { onLog: () => void }) {
 function RightNow() {
   const now = useNow(30_000)
   const { logs } = useLogs()
-  const { openOverlay } = useNav()
-  const { holderPersonId, pending, available, hydrated: careHydrated } = useCare()
-  const { people, me } = useHousehold()
 
   const asleep = activeSleep(logs)
   const lastFeed = lastOfKind(logs, 'feed')
@@ -155,28 +150,10 @@ function RightNow() {
     statusText = `Last: ${title} · ${timeAgo(latest.createdAt, now)}`
   }
 
-  // Care line — truthful holder / pending, never implied acceptance.
-  const nameOf = (id: string | null): string => {
-    if (!id) return 'No one yet'
-    const p = people.find((x) => x.id === id)
-    if (!p) return 'Someone'
-    return me && p.id === me.id ? 'You' : p.displayName
-  }
-  let careText: string | null = null
-  if (available && careHydrated) {
-    if (pending) {
-      careText = `Handoff pending → ${nameOf(pending.toPersonId)}`
-    } else if (holderPersonId) {
-      const who = nameOf(holderPersonId)
-      careText = who === 'You' ? 'You have Baby' : `${who} has Baby`
-    }
-  }
-
-  // Hand off is only meaningful when there's another connected adult to hand to.
-  const eligibleOther = people.some(
-    (p) => (!me || p.id !== me.id) && p.accountStatus === 'connected',
-  )
-
+  // NOTE (MamaHQ 2.0): the Care / "who has Baby" handoff line was RETIRED from the
+  // Baby UX (product decision — explicit care-handoff added administrative overhead
+  // without MVP value). The care provider + backend remain dormant (see useCare /
+  // careHandoff overlay); Baby's Right Now is now purely current baby activity.
   return (
     <section className="mt-4 rounded-2xl bg-muted/40 ring-1 ring-border/50">
       <div className="flex items-center gap-3 px-4 py-3.5">
@@ -186,30 +163,6 @@ function RightNow() {
           <p className="text-[16px] font-semibold leading-tight">{statusText}</p>
         </div>
       </div>
-
-      {careText && (
-        <>
-          <div className="h-px bg-border/60" aria-hidden />
-          <button
-            onClick={() => openOverlay('careHandoff')}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-foreground/[0.03]"
-          >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sage-soft text-sage">
-              <HandIcon className="size-[18px]" strokeWidth={2} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Care</p>
-              <p className="text-[15px] font-semibold leading-tight">{careText}</p>
-            </div>
-            {eligibleOther && !pending && (
-              <span className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
-                Hand off <ChevronRight className="size-3.5" />
-              </span>
-            )}
-            {(pending || !eligibleOther) && <ChevronRight className="size-4 text-muted-foreground/60" />}
-          </button>
-        </>
-      )}
     </section>
   )
 }
