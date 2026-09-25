@@ -10,7 +10,6 @@ import {
   Loader2,
   AlertCircle,
   AlertTriangle,
-  Baby as BabyIcon,
   Clock,
   HeartHandshake,
   Sun,
@@ -220,12 +219,17 @@ function TodayLoading() {
 /* ======================================================================== */
 
 function AttentionSection({ model }: { model: TodayModel }) {
-  if (model.attention.length === 0) return null
+  // MamaHQ 2.0: care handoff is RETIRED from the visible UX. buildTodayModel still
+  // computes 'care_handoff_incoming' items (dormant, tested), but we filter them out
+  // here so care state can no longer make Today appear busy. The care backend/domain
+  // is intentionally left intact for possible post-beta revival.
+  const items = model.attention.filter((a) => a.kind !== 'care_handoff_incoming')
+  if (items.length === 0) return null
   return (
     <section className="mt-5">
       <CardLabel className="mb-2 px-1 text-foreground">Needs your attention</CardLabel>
       <div className="space-y-2">
-        {model.attention.map((item) => (
+        {items.map((item) => (
           <AttentionRow key={`${item.kind}:${item.refId}`} item={item} />
         ))}
       </div>
@@ -240,7 +244,6 @@ function timeLabel(iso: string | null): string | null {
 
 function AttentionRow({ item }: { item: AttentionItem }) {
   const tasksCtx = useTasks()
-  const care = useCare()
   const { openOverlay, showToast } = useNav()
   const [busy, setBusy] = useState<null | string>(null)
 
@@ -262,22 +265,10 @@ function AttentionRow({ item }: { item: AttentionItem }) {
 
   const config: { Icon: typeof AlertCircle; tone: string; line: string; actions: React.ReactNode } = (() => {
     switch (item.kind) {
-      case 'care_handoff_incoming':
-        return {
-          Icon: BabyIcon,
-          tone: 'bg-blush/30 text-blush',
-          line: item.fromName ? `${item.fromName} wants to hand off care to you` : 'A care handoff is waiting for you',
-          actions: (
-            <div className="flex gap-2">
-              <button onClick={() => run('accept', () => care.accept(item.refId))} disabled={!!busy} className="flex-1 rounded-full bg-primary px-3 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40">
-                {busy === 'accept' ? <Loader2 className="mx-auto size-3.5 animate-spin" /> : "I've got it"}
-              </button>
-              <button onClick={() => run('decline', () => care.decline(item.refId))} disabled={!!busy} className="rounded-full bg-muted px-3 py-2 text-[13px] font-semibold text-foreground disabled:opacity-40">
-                Decline
-              </button>
-            </div>
-          ),
-        }
+      // NOTE (MamaHQ 2.0): 'care_handoff_incoming' is intentionally NOT handled here —
+      // care handoff is retired from the visible UX and AttentionSection filters these
+      // items out before render, so this row never receives one. The fallback below
+      // keeps the return type total without resurrecting any care UI.
       case 'task_awaiting_acceptance':
         return {
           Icon: HeartHandshake,
@@ -322,6 +313,10 @@ function AttentionRow({ item }: { item: AttentionItem }) {
             </button>
           ),
         }
+      default:
+        // Unreachable in the 2.0 UX (care_handoff_incoming is filtered upstream);
+        // keeps the return total without rendering any care-handoff affordance.
+        return { Icon: AlertCircle, tone: 'bg-muted text-muted-foreground', line: '', actions: null }
     }
   })()
 

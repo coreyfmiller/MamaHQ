@@ -153,7 +153,11 @@ export function NotificationsProvider({
         void load()
           .then(() => {
             if (payload.eventType === 'INSERT' && payload.new) {
-              onArriveRef.current?.(fromRow(payload.new))
+              const arrived = fromRow(payload.new)
+              // MamaHQ 2.0: care handoff is retired from the visible UX — never raise
+              // an arrival toast for a care-domain notification (the row is still
+              // stored; it's just not surfaced). Dormant, revivable post-beta.
+              if (arrived.domain !== 'care') onArriveRef.current?.(arrived)
             }
           })
           .catch(() => {})
@@ -196,20 +200,32 @@ export function NotificationsProvider({
     await load().catch(() => {})
   }
 
-  const unreadCount = useMemo(() => notifications.filter((n) => !n.readAt).length, [notifications])
+  // MamaHQ 2.0: care handoff is retired from the visible UX. We still FETCH/STORE all
+  // notifications (backend dormant, not deleted), but the provider only EXPOSES
+  // non-care notifications so every consumer (Notification Center, the Me bell badge,
+  // arrival toast) is consistently care-free. UI-layer filtering only — no backend or
+  // schema change; care notifications revive by removing this one filter.
+  const visibleNotifications = useMemo(
+    () => notifications.filter((n) => n.domain !== 'care'),
+    [notifications],
+  )
+  const unreadCount = useMemo(
+    () => visibleNotifications.filter((n) => !n.readAt).length,
+    [visibleNotifications],
+  )
 
   const value = useMemo<NotificationsCtx>(
     () => ({
       hydrated,
       available: Boolean(user && familyId),
-      notifications,
+      notifications: visibleNotifications,
       unreadCount,
       markRead,
       markAllRead,
       refresh,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hydrated, user, familyId, notifications, unreadCount],
+    [hydrated, user, familyId, visibleNotifications, unreadCount],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
