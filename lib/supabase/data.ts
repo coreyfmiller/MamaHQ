@@ -331,6 +331,20 @@ export async function setMyDisplayNameRpc(familyId: string, displayName: string)
   return data as string
 }
 
+// "Start over" identity reset (0016). Resets the CALLER'S OWN canonical
+// HouseholdPerson name back to the 'Me' bootstrap placeholder so client first-run
+// routing (useHousehold().firstRun) resolves to 'creator' and real onboarding shows
+// again — without signing out. Trusted SECURITY DEFINER RPC: self-scoped from the
+// authenticated account, so it can only ever reset the caller's own identity.
+// Idempotent. Returns the canonical person id.
+export async function resetMyIdentityRpc(familyId: string): Promise<string> {
+  const { data, error } = await supabaseBrowser().rpc('reset_my_identity', {
+    p_family_id: familyId,
+  })
+  if (error) throw error
+  return data as string
+}
+
 export async function insertHouseholdPerson(
   row: Partial<DbHouseholdPerson> & { id: string; family_id: string; display_name: string },
 ): Promise<void> {

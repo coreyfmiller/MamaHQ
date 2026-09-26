@@ -76,6 +76,11 @@ interface HouseholdCtx {
    *  goes through the SECURITY DEFINER `set_my_display_name` RPC so it can only ever
    *  rename my own person. Returns ok/error. */
   renameMe: (displayName: string) => Promise<{ ok: boolean; error?: string }>
+  /** "Start over" — reset MY OWN canonical identity back to the 'Me' bootstrap
+   *  placeholder via the SECURITY DEFINER `reset_my_identity` RPC, then refetch so
+   *  `firstRun` recomputes to 'creator' and real onboarding shows again (no sign-out
+   *  needed). Self-scoped: only ever resets the current user's own person. */
+  resetMe: () => Promise<{ ok: boolean; error?: string }>
 }
 
 const Ctx = createContext<HouseholdCtx>({
@@ -89,6 +94,7 @@ const Ctx = createContext<HouseholdCtx>({
   invitePerson: async () => ({ ok: false }),
   revokeInvite: async () => {},
   renameMe: async () => ({ ok: false }),
+  resetMe: async () => ({ ok: false }),
 })
 
 export function useHousehold() {
@@ -306,6 +312,20 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // "Start over" — reset my own canonical identity to the 'Me' placeholder, then
+  // refetch so `firstRun` recomputes (→ 'creator') and Stage routes to onboarding.
+  // Self-scoped through the trusted RPC; never touches anyone else's person.
+  const resetMe: HouseholdCtx['resetMe'] = async () => {
+    if (!familyId) return { ok: false, error: 'not signed in' }
+    try {
+      await db.resetMyIdentityRpc(familyId)
+      await loadHousehold(familyId)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'could not reset your profile' }
+    }
+  }
+
   const clearHousehold = () => {
     setLocalPeople([])
     writeLocal([])
@@ -356,7 +376,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   // than guessed.
 
   const value = useMemo(
-    () => ({ people, hydrated, me, firstRun, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe }),
+    () => ({ people, hydrated, me, firstRun, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe, resetMe }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [people, hydrated, me, firstRun, familyId],
   )

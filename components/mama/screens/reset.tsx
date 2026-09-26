@@ -11,6 +11,7 @@ import { useAppointments } from '../appointments'
 import { useInbox } from '../inbox/store'
 import { usePartner } from '../partner'
 import { useAuth } from '../auth'
+import { useHousehold } from '../household'
 import { clearFamilyData } from '@/lib/supabase/data'
 import { resetConfirmationMatches, RESET_CONFIRM_WORD } from '@/lib/reset-confirm'
 import { TopBar } from '../ui'
@@ -26,6 +27,14 @@ import { TopBar } from '../ui'
  *   2. Typing the baby's name EXACTLY to confirm.
  *   3. A final destructive button that only enables once the name matches.
  * There is no single-tap path to data loss.
+ *
+ * Start over means START OVER — and lands the user back in real onboarding while
+ * KEEPING them signed in. After clearing data, we reset the caller's own canonical
+ * identity to the 'Me' bootstrap placeholder via the trusted reset_my_identity RPC
+ * (0016). That makes useHousehold().firstRun resolve to 'creator', so Stage routes
+ * straight into onboarding. We do NOT forge the placeholder through set_my_display_name
+ * (that RPC writes REAL names; abusing it would invert the identity contract), and we
+ * do NOT sign the user out (no need to re-authenticate for a start-over).
  */
 export function ResetScreen() {
   const { closeOverlay, showToast } = useNav()
@@ -37,6 +46,7 @@ export function ResetScreen() {
   const { clearInbox } = useInbox()
   const { clearPartner } = usePartner()
   const { familyId } = useAuth()
+  const { resetMe } = useHousehold()
 
   const babyName = (profile?.babyName ?? '').trim()
   const hasBaby = babyName.length > 0
@@ -79,15 +89,27 @@ export function ResetScreen() {
         setBusy(false)
       }
     }
+    // Reset MY canonical identity back to the 'Me' placeholder (staying signed in),
+    // so firstRun recomputes to 'creator' and Stage routes into real onboarding. Only
+    // meaningful when signed in with a family; the signed-out/demo path has no cloud
+    // identity and simply returns to the (now empty) local app.
+    let identityOk = true
+    if (familyId) {
+      setBusy(true)
+      const res = await resetMe()
+      setBusy(false)
+      identityOk = res.ok
+      if (!res.ok) console.warn('reset identity', res.error)
+    }
     showToast(
-      cloudOk
-        ? 'Your baby profile and logs were cleared'
+      cloudOk && identityOk
+        ? 'Starting fresh — let’s set things up'
         : "Cleared on this device — some cloud data couldn't be reached",
     )
-    // This clears the baby profile + logs, not your household identity — so you return
-    // to the (now empty) app, where Today shows the first-run nudge. first-run routing
-    // is derived from authoritative identity (useHousehold().firstRun), and your
-    // identity still stands. Re-establishing a baby is done from the normal add flow.
+    // Close the overlay. When identity was reset, firstRun is now 'creator' and Stage
+    // renders onboarding underneath; the user never leaves the session. If the cloud
+    // identity reset failed, we still close (local data is gone) and the user can set
+    // their name again from Settings → Account.
     closeOverlay()
   }
 
