@@ -12,9 +12,6 @@ import {
   AlertTriangle,
   Clock,
   HeartHandshake,
-  Sun,
-  Smile,
-  Star,
 } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, dayNumber } from '../profile'
@@ -30,6 +27,7 @@ import {
 } from '../logs'
 import { NameAvatar } from '../name-avatar'
 import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
+import { pickAffirmation } from '@/lib/affirmations'
 import { firstNinetyState } from '@/lib/first90'
 import { useGrocery } from '../grocery'
 import { useCalendar, type CalendarEvent } from '../calendar'
@@ -37,7 +35,7 @@ import { useTasks } from '../tasks'
 import { useCare } from '../care'
 import { useHousehold } from '../household'
 import { useAuth } from '../auth'
-import { useMom, dayKey, type Mood } from '../mom'
+import { useMom, dayKey } from '../mom'
 import {
   buildTodayModel,
   localDayKey,
@@ -139,6 +137,15 @@ export function TodayScreen() {
           <TodayLoading />
         ) : (
           <>
+            {/* Truthful quiet-day line — quiet supporting text, not a card. Only when
+                the deterministic model has established emptiness (model.isEmpty requires
+                every domain loaded OK with nothing relevant), so it never appears while
+                loading or when a domain failed. 'For you' still renders below it. */}
+            {model.isEmpty && (
+              <p className="mt-3 px-1 text-[14px] text-muted-foreground">
+                Nothing needs your attention right now.
+              </p>
+            )}
             <AttentionSection model={model} />
             <YourDay model={model} />
             <BabyGlance />
@@ -671,58 +678,60 @@ function ComingUp() {
 /* For you (small: mood nudge + today's read)                                */
 /* ======================================================================== */
 
-const moodOptions: { id: Mood; label: string; Icon: typeof Sun }[] = [
-  { id: 'tired', label: 'Tired', Icon: Moon },
-  { id: 'okay', label: 'Okay', Icon: Sun },
-  { id: 'good', label: 'Good', Icon: Smile },
-  { id: 'great', label: 'Great', Icon: Star },
-]
-
 function ForYou() {
-  const { openOverlay } = useNav()
+  const { openOverlay, setTab } = useNav()
   const { profile } = useProfile()
-  const { state, hydrated, setTodayMood } = useMom()
+  const { state, hydrated } = useMom()
   const now = useNow(60_000)
 
   const moodAnswered = hydrated && !!state.moodByDay[dayKey(now)]
 
-  // Today's read only within the first-90 journey (Me owns the full journey).
+  // First90 content only within the 1–90 journey (Me owns the full journey). One
+  // existing time-appropriate affirmation (pickAffirmation picks morning/noon/night)
+  // + the existing daily read. Beyond Day 90 / no birth date → neither.
   let read: ReturnType<typeof pickDailyRead> | null = null
+  let affirmation: string | null = null
   if (profile?.birthDate) {
     const st = firstNinetyState(profile.birthDate, now)
-    if (st.withinJourney) read = pickDailyRead(dayNumber(profile.birthDate, now))
+    if (st.withinJourney) {
+      const day = dayNumber(profile.birthDate, now)
+      read = pickDailyRead(day)
+      affirmation = pickAffirmation(day, now)
+    }
   }
 
-  // Nothing to offer → stay silent.
-  if (moodAnswered && !read) return null
+  // Nothing to offer → stay silent (mood answered, and no active-journey content).
+  if (moodAnswered && !read && !affirmation) return null
 
   return (
     <section className="mt-6">
       <CardLabel className="mb-2 px-1 text-foreground">For you</CardLabel>
 
+      {/* Mood: Me owns the actual check-in. Today shows only a compact nudge that
+          routes to the Me tab; it never writes a mood and disappears once answered. */}
       {!moodAnswered && (
-        <div className="rounded-2xl bg-sage-soft/40 px-4 py-3 ring-1 ring-border/40">
-          <p className="text-[14px] font-semibold">How are you today?</p>
-          <div className="mt-2 flex gap-2">
-            {moodOptions.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setTodayMood(m.id)}
-                aria-label={m.label}
-                className="flex flex-1 flex-col items-center gap-1 rounded-xl border border-border/70 bg-card py-2 text-muted-foreground transition-colors active:bg-muted"
-              >
-                <m.Icon className="size-[18px]" strokeWidth={1.75} />
-                <span className="text-[11.5px]">{m.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <button
+          onClick={() => setTab('me')}
+          className="flex w-full items-center justify-between rounded-2xl bg-sage-soft/40 px-4 py-3 text-left ring-1 ring-border/40 transition-transform active:scale-[0.99]"
+        >
+          <span className="text-[14px] font-semibold text-foreground">How are you feeling today?</span>
+          <span className="flex shrink-0 items-center gap-0.5 text-[13px] font-medium text-primary">
+            Check in <ChevronRight className="size-3.5" />
+          </span>
+        </button>
+      )}
+
+      {/* One quiet existing affirmation — restrained editorial, not a card. */}
+      {affirmation && (
+        <p className={`whitespace-pre-line px-1 text-[14px] italic leading-relaxed text-muted-foreground ${!moodAnswered ? 'mt-3' : ''}`}>
+          {affirmation}
+        </p>
       )}
 
       {read && (
         <button
           onClick={() => openOverlay('read')}
-          className={`flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left ring-1 ring-border/60 transition-transform active:scale-[0.99] ${!moodAnswered ? 'mt-2' : ''}`}
+          className={`flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left ring-1 ring-border/60 transition-transform active:scale-[0.99] ${(!moodAnswered || affirmation) ? 'mt-3' : ''}`}
         >
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Today&apos;s read</p>
