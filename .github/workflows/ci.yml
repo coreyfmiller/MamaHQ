@@ -79,6 +79,8 @@ jobs:
 
       - name: Reset confirmation gate tests (Start Over)
         run: pnpm run test:reset-confirm
+      - name: First-run onboarding completeness tests
+        run: pnpm run test:onboarding
 
       - name: TypeScript
         run: pnpm run typecheck

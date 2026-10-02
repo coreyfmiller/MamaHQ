@@ -1,9 +1,10 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { fetchBaby, upsertBaby } from '@/lib/supabase/data'
 import { journeyDay } from '@/lib/first90'
+import { babyRowFromProfile, profileFromBabyRow } from '@/lib/onboarding'
 
 export type Feeding = 'breast' | 'bottle' | 'both'
 
@@ -23,16 +24,33 @@ interface ProfileCtx {
   profile: Profile | null
   /** True until we've read localStorage, so we don't flash onboarding on reload. */
   hydrated: boolean
-  saveProfile: (p: Profile) => void
+  /** True when signed in and the canonical Baby read FAILED, so we can't tell whether
+   *  Baby exists. First-run routing must not re-ask for Baby in that state. */
+  loadFailed: boolean
+  /** Persist the Baby profile. When signed in this awaits the canonical `babies`
+   *  write and only updates state on success, so callers (onboarding) can block on
+   *  real persistence. Re-saves update the SAME row (never a duplicate Baby). */
+  saveProfile: (p: Profile) => Promise<{ ok: boolean; error?: string }>
   clearProfile: () => void
 }
 
 const Ctx = createContext<ProfileCtx>({
   profile: null,
   hydrated: false,
-  saveProfile: () => {},
+  loadFailed: false,
+  saveProfile: async () => ({ ok: false }),
   clearProfile: () => {},
 })
+
+function newBabyId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : // RFC4122-ish v4 fallback (the column is uuid-typed).
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+      })
+}
 
 export function useProfile() {
   return useContext(Ctx)
@@ -59,12 +77,18 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const { familyId, status } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
+  // The canonical babies row id, once known (read, or assigned on first save). Writes
+  // carry it so a retry/re-save upserts the SAME row instead of inserting a duplicate.
+  const babyIdRef = useRef<string | null>(null)
 
   // Load the profile from the right source: cloud when we have a family, local
   // otherwise. Re-runs when auth resolves so signing in swaps to the cloud copy.
   useEffect(() => {
     let alive = true
     setHydrated(false)
+    setLoadFailed(false)
+    babyIdRef.current = null
 
     // Signed in with a family → read the baby row from Supabase.
     if (familyId) {
@@ -72,16 +96,11 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         .then((baby) => {
           if (!alive) return
           if (baby) {
+            babyIdRef.current = baby.id
             // momName isn't on the baby row; preserve it from the local copy if we
             // have one (same device), else a friendly default.
             const localMom = readLocal()?.momName
-            setProfile({
-              momName: localMom ?? 'Mama',
-              babyName: baby.name,
-              birthDate: baby.birth_date,
-              feeding: (baby.feeding ?? 'both') as Feeding,
-              photo: baby.photo ?? undefined,
-            })
+            setProfile(profileFromBabyRow(baby, localMom ?? 'Mama'))
           } else {
             // Signed in with NO cloud baby → this is a genuine first run. The cloud
             // is the source of truth when signed in, so ignore any stale localStorage
@@ -94,8 +113,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         .catch(() => {
           if (!alive) return
           // On a fetch error we can't confirm cloud state; fall back to local so the
-          // app still works, but don't fabricate a profile.
+          // app still works, but don't fabricate a profile. loadFailed tells first-run
+          // routing not to re-ask for Baby (which could write a duplicate row).
           setProfile(readLocal())
+          setLoadFailed(true)
           setHydrated(true)
         })
       return () => {
@@ -113,30 +134,37 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     }
   }, [familyId, status])
 
-  const saveProfile = (p: Profile) => {
-    setProfile(p)
-    // Always keep a local copy (offline + signed-out). When signed in, also write cloud.
-    writeLocal(p)
+  const saveProfile: ProfileCtx['saveProfile'] = async (p) => {
     if (familyId) {
-      upsertBaby({
-        family_id: familyId,
-        name: p.babyName,
-        birth_date: p.birthDate,
-        feeding: p.feeding,
-        photo: p.photo ?? null,
-      }).catch((err) => console.warn('MamaHQ: could not save baby to cloud', err))
+      // Signed in: the canonical babies row is the source of truth. Await it and only
+      // reflect the change once it persisted (truthful first-run completion).
+      const id = babyIdRef.current ?? newBabyId()
+      try {
+        await upsertBaby(babyRowFromProfile(familyId, id, p))
+      } catch (err) {
+        console.warn('MamaHQ: could not save baby to cloud', err)
+        return { ok: false, error: err instanceof Error ? err.message : 'could not save Baby' }
+      }
+      babyIdRef.current = id
+      setLoadFailed(false)
     }
+    setProfile(p)
+    // Always keep a local copy (offline + signed-out).
+    writeLocal(p)
+    return { ok: true }
   }
 
   const clearProfile = () => {
     setProfile(null)
     writeLocal(null)
+    babyIdRef.current = null
     // Cloud baby rows are cleared by the reset flow (deletes family data) separately.
   }
 
   const value = useMemo(
-    () => ({ profile, hydrated, saveProfile, clearProfile }),
-    [profile, hydrated, familyId],
+    () => ({ profile, hydrated, loadFailed, saveProfile, clearProfile }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [profile, hydrated, loadFailed, familyId],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
