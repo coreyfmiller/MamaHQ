@@ -6,6 +6,14 @@
 //
 // The day number is sequencing metadata (the collection can show or omit it).
 // Read time is estimated from word count at ~200 wpm.
+//
+// TEMPORAL INVARIANT (see docs/FIRST90_TEMPORAL_RULES.md). A read for day N can be
+// opened at ANY hour of the in-progress local calendar day N — there is NO morning/
+// noon/night guarantee here (unlike affirmations). So a read must not assert a time of
+// day ("this morning", "tonight") or that day N is finished; at most N−1 days are
+// complete. Present-tense framing is safe. body[]/prompt are user-facing prose ONLY —
+// never put authoring/editorial notes in them (they render verbatim in the Read
+// overlay). The test-first90-temporal guard enforces both rules.
 
 export interface DailyRead {
   day: number
@@ -238,7 +246,7 @@ export const ALL_READS: DailyRead[] = [
     category: 'Worth Knowing',
     title: 'The Routine Isn\'t Broken. Today Is Just Different.',
     body: [
-      'Yesterday worked. Today doesn\'t.',
+      'Something that worked reliably has suddenly stopped working.',
       'It is tempting to treat every change as evidence that you did something wrong.',
       'But babies change, and family rhythms change with them. Something useful yesterday may be less useful today. A routine can support your family without becoming a test your family has to pass.',
       'Think rhythm, not perfection.',
@@ -1239,15 +1247,6 @@ export const ALL_READS: DailyRead[] = [
       'Notice something you do not want to forget. Take a picture if you want one. Do something kind for yourself.',
       'Then keep living.',
       'MamaHQ is here for what comes next too.',
-      'Post-audit product notes',
-      'Hide the machinery — The 90-day sequence is for relevance and personalization. Avoid “ten days left,” “halfway,” “finish the journey,” or other program language.',
-      'Use natural milestones — One week, two weeks, one month, six weeks, two months, and the transition around three months can feel meaningful. Arbitrary tens should not become celebrations.',
-      'Content should become action — Where appropriate, connect an article to a small product action: save a question, assign ownership, add a reminder, create a leaving-home checklist, save a boundary response, or put something on a shared list.',
-      'Do not optimize Mom into a better household manager — The product should redistribute, automate, remember, simplify, or eliminate work. The goal is not to help Mom carry more efficiently.',
-      'Partner content must be contextual — Only surface partner-specific content when relevant. Use “partner or support person” when possible and never imply every mother has an available co-parent.',
-      'Clinical content needs a verified layer — Store authoritative source, jurisdiction, review status, and last-reviewed date. AI may summarize verified guidance but should not invent the underlying recommendation.',
-      'Avoid fake intimacy — Personalization should come from things Mom actually told MamaHQ. Remember and return meaningful information rather than manufacturing familiarity.',
-      'Protect variety — The collection should rotate emotional support, practical systems, mental load, identity, relationships, boundaries, safety, and reflection so the feed never feels like 90 versions of the same reassurance.',
     ],
     prompt: undefined,
   },

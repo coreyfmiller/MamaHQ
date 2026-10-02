@@ -1,6 +1,19 @@
 // MamaHQ — The First 90 Days affirmations. 90 days × 3 slots (morning/noon/night).
 // Shown as a quiet card on Today, keyed to the baby's day number and time of day.
 // Content is intentionally gentle and never medical advice.
+//
+// TEMPORAL INVARIANT (see docs/FIRST90_TEMPORAL_RULES.md). Day N is displayed for the
+// ENTIRE in-progress local calendar day N (00:00–23:59). At any moment at most N−1
+// days are COMPLETE. So:
+//   * Do NOT state day N (or its week/month) is finished — "made it through Day N",
+//     "your first week is complete", "N days down". Shown WHILE the user is inside N.
+//   * morning (slot < 12:00) must not assume today's events have happened.
+//   * noon (12:00–17:59) may note part of the day passed, not that specific events did.
+//   * night (≥ 18:00) begins up to ~6h before midnight — acknowledge lateness, but do
+//     NOT declare day N over. Day 90 night is the deliberate end-of-program exception.
+// A bare present-tense label ("Day N", "Two months.", "N days in") is SAFE; a
+// completion verb bound to the current unit is NOT. The test-first90-temporal guard
+// enforces the dangerous forms; keep the warm present-tense prose.
 
 export type Slot = 'morning' | 'noon' | 'night'
 
@@ -15,7 +28,7 @@ export const AFFIRMATIONS: Record<number, DayAffirmations> = {
   1: {
     morning: "Everything is new today.\nYou don't need to know how to do all of this.\nYou only need to begin.",
     noon: 'Someone is taking care of your baby.\nMake sure someone is taking care of you, too.\nWater. Food. Rest. Help.',
-    night: "You made it through Day 1.\nWhatever wasn't done can wait.\nYou were there. That's enough.",
+    night: "You're at the end of your first day.\nWhatever wasn't done can wait.\nYou were there. That's enough.",
   },
   2: {
     morning: "Today doesn't need a plan.\nTake it one feed, one cuddle, one hour at a time.",
@@ -45,7 +58,7 @@ export const AFFIRMATIONS: Record<number, DayAffirmations> = {
   7: {
     morning: 'One week.\nSeven days ago, you had never done this before.\nLook at you now.',
     noon: "Before you think about everything still to do,\nnotice everything you've already done.",
-    night: "Your first week is complete.\nYou don't need to grade it.\nYou lived it.",
+    night: "You're closing out your first week.\nYou don't need to grade it.\nYou're living it.",
   },
   8: {
     morning: 'You are learning your baby.\nYour baby is learning you.\nGive both of you time.',
@@ -80,7 +93,7 @@ export const AFFIRMATIONS: Record<number, DayAffirmations> = {
   14: {
     morning: "Two weeks.\nYou're still at the beginning.\nGive yourself beginning-level expectations.",
     noon: 'Before you take care of the next thing,\ncheck in with yourself.',
-    night: 'Fourteen days of learning, adapting and showing up.\nThat deserves gentleness tonight.',
+    night: 'Two weeks in — learning, adapting and showing up.\nThat deserves gentleness tonight.',
   },
   15: {
     morning: 'There is no prize for doing everything yourself.',
@@ -160,7 +173,7 @@ export const AFFIRMATIONS: Record<number, DayAffirmations> = {
   30: {
     morning: 'One month.\nThink about how much was unfamiliar thirty days ago.',
     noon: "Pause and notice something you've learned about your baby \u2014\nand something you've learned about yourself.",
-    night: 'You made it through your first month.\nNot perfectly.\nFor real.',
+    night: 'A month in.\nNot perfectly.\nFor real.',
   },
   31: {
     morning: "You don't need everyone's advice.",
@@ -210,7 +223,7 @@ export const AFFIRMATIONS: Record<number, DayAffirmations> = {
   40: {
     morning: 'Forty days of showing up.',
     noon: "You don't need a dramatic milestone today.\nBeing here is enough.",
-    night: "Forty sunsets since everything changed.\nYou're still here.",
+    night: "Forty days in since everything changed.\nYou're still here.",
   },
   41: {
     morning: 'Your boundaries matter.',
@@ -233,7 +246,7 @@ export const AFFIRMATIONS: Record<number, DayAffirmations> = {
     night: 'Your unfinished list is not an emergency.',
   },
   45: {
-    morning: 'Halfway through the First 90 Days.',
+    morning: 'Look how far into this you already are.',
     noon: 'Forty-five days ago, so much of this was unknown.\nLook at what feels familiar now.',
     night: "You may not notice how much you've changed.\nBut you have.",
   },
@@ -309,7 +322,7 @@ export const AFFIRMATIONS: Record<number, DayAffirmations> = {
   },
   60: {
     morning: 'Two months.',
-    noon: 'You have spent sixty days adapting to a life\nthat changed overnight.',
+    noon: 'Sixty days in, adapting to a life\nthat changed overnight.',
     night: "You aren't the same person who started.\nYou weren't supposed to be.",
   },
   61: {
@@ -359,7 +372,7 @@ export const AFFIRMATIONS: Record<number, DayAffirmations> = {
   },
   70: {
     morning: 'Seventy days.',
-    noon: "You've spent seventy days learning a person\nwho couldn't tell you what they needed.",
+    noon: "Seventy days in, learning a person\nwho couldn't tell you what they needed.",
     night: 'Give yourself credit for all the listening you\u2019ve done without words.',
   },
   71: {
