@@ -4,7 +4,8 @@ import { useEffect, type ReactNode } from 'react'
 import { PrototypeProvider, useNav } from './context'
 import { AuthProvider, useAuth } from './auth'
 import { SignInScreen } from './screens/sign-in'
-import { ProfileProvider } from './profile'
+import { ProfileProvider, useProfile } from './profile'
+import { resolveSetupRoute } from '@/lib/onboarding'
 import { useHousehold } from './household'
 import { LogsProvider, useLogs } from './logs'
 import { MomProvider } from './mom'
@@ -91,6 +92,7 @@ function AuthGate({ children }: { children: ReactNode }) {
 function Stage() {
   const { overlay, closeOverlay, toast, onboardingDismissed } = useNav()
   const { firstRun, hydrated } = useHousehold()
+  const { profile, hydrated: profileHydrated, loadFailed: profileLoadFailed } = useProfile()
 
   // Beta Phase 2 — first-run routing is driven by AUTHORITATIVE household identity
   // (useHousehold().firstRun), not by device-local profile/baby presence. This is
@@ -102,7 +104,21 @@ function Stage() {
   //     and losing localStorage can't make them look new.
   // firstRun is null until we've hydrated the household + resolved the current
   // person; show a calm loading state rather than guessing (never flash onboarding).
-  if (!hydrated || firstRun === null) {
+  //
+  // MamaHQ 2.0 first-run household setup: name → Baby name + birthday → Today. The
+  // step is resolved from PERSISTED data only (canonical person name + canonical Baby
+  // row), so partial setups resume at the right step, established households go
+  // straight in, and Start Over naturally lands back at step 1. See lib/onboarding.ts.
+  const route = resolveSetupRoute({
+    firstRun,
+    householdHydrated: hydrated,
+    profileHydrated,
+    profileLoadFailed,
+    profile,
+    partnerJoinDismissed: onboardingDismissed,
+  })
+
+  if (route === 'loading') {
     return (
       <div className="grid h-full place-items-center bg-background text-muted-foreground">
         <span className="text-sm">Loading…</span>
@@ -110,14 +126,9 @@ function Stage() {
     )
   }
 
-  // A first-run flow, once entered, owns the screen until it explicitly hands off
-  // (onboardingDismissed). This prevents the mid-flow identity write — which flips
-  // firstRun to 'done' — from tearing the remaining optional steps away. A returning
-  // user is 'done' from the start and has never dismissed, so they go straight in.
-  if (!onboardingDismissed) {
-    if (firstRun === 'creator') return <OnboardingScreen />
-    if (firstRun === 'partner') return <PartnerJoinScreen />
-  }
+  if (route === 'name') return <OnboardingScreen step="name" />
+  if (route === 'baby') return <OnboardingScreen step="baby" />
+  if (route === 'partner-join') return <PartnerJoinScreen />
 
   return (
     <>
