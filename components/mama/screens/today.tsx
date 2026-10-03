@@ -22,13 +22,13 @@ import {
   activeSleep,
   timeAgo,
   elapsed,
-  toLocalInput,
-  fromLocalInput,
 } from '../logs'
 import { NameAvatar } from '../name-avatar'
+import { SleepControl } from '../sleep-control'
 import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
 import { pickAffirmation } from '@/lib/affirmations'
 import { firstNinetyState } from '@/lib/first90'
+import { isMomSpaceOwner } from '@/lib/household-role'
 import { useGrocery } from '../grocery'
 import { useCalendar, type CalendarEvent } from '../calendar'
 import { useTasks } from '../tasks'
@@ -114,7 +114,9 @@ function useTodayModel(now: Date): TodayModel {
     careContext: care.buildContext(),
     careState: domainState(care.available, care.hydrated, care.loadError),
     groceryActiveCount: grocery.active.length,
-    groceryState: domainState(true, grocery.hydrated, false),
+    // PR6: pass the REAL grocery loadError so a failed list can never count as
+    // "0 items" or let the model claim a quiet day.
+    groceryState: domainState(true, grocery.hydrated, grocery.loadError),
     now,
   })
 }
@@ -146,6 +148,9 @@ export function TodayScreen() {
                 Nothing needs your attention right now.
               </p>
             )}
+            {/* PR6: a failed Tasks read was computed by the model but never shown —
+                Attention + To-do silently vanished. Say so (with Retry) instead. */}
+            {model.failedDomains.includes('tasks') && <TasksFailed />}
             <AttentionSection model={model} />
             <YourDay model={model} />
             <BabyGlance />
@@ -350,6 +355,7 @@ function AttentionRow({ item }: { item: AttentionItem }) {
 
 function YourDay({ model }: { model: TodayModel }) {
   const { openOverlay, composeEvent } = useNav()
+  const cal = useCalendar()
   const failed = model.failedDomains.includes('calendar')
 
   // "To do today" = my overdue / due-today tasks NOT already shown in Attention
@@ -360,7 +366,11 @@ function YourDay({ model }: { model: TodayModel }) {
   )
 
   if (failed) {
-    return <DomainError label="Couldn't load today's calendar" onRetry={() => openOverlay('calendar')} />
+    return (
+      <section className="mt-6">
+        <DomainError label="Couldn't load today's calendar" onRetry={() => void cal.refresh().catch(() => {})} />
+      </section>
+    )
   }
   if (model.commitments.length === 0 && toDoToday.length === 0) return null
 
@@ -479,17 +489,17 @@ function RoleLine({
 /* Baby glance (concise; End Sleep preserved)                                */
 /* ======================================================================== */
 
-const RUNAWAY_HOURS = 10
 
 function BabyGlance() {
-  const { logs, hydrated, loadError } = useLogs()
-  const { openOverlay, setTab } = useNav()
+  const { logs, hydrated, loadError, retry } = useLogs()
+  const { setTab } = useNav()
   const now = useNow(30_000)
 
   if (loadError) {
     return (
       <section className="mt-6">
-        <DomainError label="Couldn't load Baby's activity" onRetry={() => openOverlay('quicklog')} />
+        {/* PR6: Retry actually re-reads the logs (it used to open Quick Log). */}
+        <DomainError label="Couldn't load Baby's activity" onRetry={retry} />
       </section>
     )
   }
@@ -520,65 +530,9 @@ function BabyGlance() {
         <ChevronRight className="size-4 shrink-0 text-muted-foreground/70" />
       </button>
 
-      {/* End Sleep — the ONLY place to end an active sleep (QuickLog can't). Preserved. */}
+      {/* End Sleep — shared SleepControl (also on Baby → Right now, PR6). */}
       {sleeping && <SleepControl sleepId={sleeping.id} startISO={sleeping.createdAt} now={now} />}
     </section>
-  )
-}
-
-function SleepControl({ sleepId, startISO, now }: { sleepId: string; startISO: string; now: Date }) {
-  const { endSleep } = useLogs()
-  const { profile } = useProfile()
-  const [confirming, setConfirming] = useState(false)
-  const [wake, setWake] = useState(() => toLocalInput(new Date().toISOString()))
-
-  const hours = (now.getTime() - new Date(startISO).getTime()) / 3_600_000
-  const runaway = hours >= RUNAWAY_HOURS
-  const babyName = profile?.babyName ?? 'Baby'
-
-  if (confirming) {
-    const wakeISO = fromLocalInput(wake)
-    const valid = new Date(wakeISO).getTime() > new Date(startISO).getTime()
-    return (
-      <Card className="mt-2 space-y-3 border-primary/30 bg-primary/5">
-        <p className="text-[15px] font-semibold">When did {babyName} wake up?</p>
-        <input
-          type="datetime-local"
-          value={wake}
-          min={toLocalInput(startISO)}
-          onChange={(e) => setWake(e.target.value)}
-          className="w-full rounded-2xl border border-border bg-card px-4 py-3 text-[15px] text-foreground outline-none focus:border-primary"
-        />
-        <p className="text-[13px] font-medium text-muted-foreground">
-          {valid ? `Slept ${elapsed(startISO, wakeISO)}` : 'Wake time must be after they fell asleep.'}
-        </p>
-        <div className="flex gap-2">
-          <button onClick={() => setConfirming(false)} className="flex-1 rounded-full bg-muted py-3 text-[14px] font-semibold text-foreground transition-transform active:scale-[0.98]">
-            Cancel
-          </button>
-          <button onClick={() => valid && endSleep(sleepId, wakeISO)} disabled={!valid} className="flex-1 rounded-full bg-primary py-3 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-40">
-            Save
-          </button>
-        </div>
-      </Card>
-    )
-  }
-
-  return (
-    <div className="mt-2 flex items-center gap-2">
-      <button
-        onClick={() => endSleep(sleepId)}
-        className="flex-1 rounded-full bg-primary py-2.5 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-[0.99]"
-      >
-        End sleep
-      </button>
-      <button
-        onClick={() => setConfirming(true)}
-        className="rounded-full bg-muted px-4 py-2.5 text-[14px] font-semibold text-foreground transition-transform active:scale-[0.99]"
-      >
-        {runaway ? 'Fix time' : 'Set wake time'}
-      </button>
-    </div>
   )
 }
 
@@ -588,10 +542,11 @@ function SleepControl({ sleepId, startISO, now }: { sleepId: string; startISO: s
 
 function GrocerySummary({ count, failed }: { count: number; failed: boolean }) {
   const { openOverlay } = useNav()
+  const { retry } = useGrocery()
   if (failed) {
     return (
       <section className="mt-6">
-        <DomainError label="Couldn't load your grocery list" onRetry={() => openOverlay('grocery')} />
+        <DomainError label="Couldn't load your grocery list" onRetry={retry} />
       </section>
     )
   }
@@ -681,10 +636,19 @@ function ComingUp() {
 function ForYou() {
   const { openOverlay, setTab } = useNav()
   const { profile } = useProfile()
-  const { state, hydrated } = useMom()
+  const { state, hydrated, loadError } = useMom()
+  const { familyId } = useAuth()
+  const { me } = useHousehold()
   const now = useNow(60_000)
 
-  const moodAnswered = hydrated && !!state.moodByDay[dayKey(now)]
+  // PR6: only nudge "How are you feeling?" when we actually KNOW today's mood is
+  // unanswered (loaded, not failed) — never as a false prompt after a failed read —
+  // and only for Mom (the household owner). Mood is family-scoped, so a partner's
+  // check-in would overwrite Mom's; partners aren't nudged to do that.
+  const isMom = isMomSpaceOwner({ signedIn: !!familyId, role: me?.role })
+  const moodKnown = hydrated && !loadError
+  const moodAnswered = moodKnown && !!state.moodByDay[dayKey(now)]
+  const showMoodPrompt = isMom && moodKnown && !moodAnswered
 
   // First90 content only within the 1–90 journey (Me owns the full journey). One
   // existing time-appropriate affirmation (pickAffirmation picks morning/noon/night)
@@ -701,7 +665,7 @@ function ForYou() {
   }
 
   // Nothing to offer → stay silent (mood answered, and no active-journey content).
-  if (moodAnswered && !read && !affirmation) return null
+  if (!showMoodPrompt && !read && !affirmation) return null
 
   return (
     <section className="mt-6">
@@ -709,7 +673,7 @@ function ForYou() {
 
       {/* Mood: Me owns the actual check-in. Today shows only a compact nudge that
           routes to the Me tab; it never writes a mood and disappears once answered. */}
-      {!moodAnswered && (
+      {showMoodPrompt && (
         <button
           onClick={() => setTab('me')}
           className="flex w-full items-center justify-between rounded-2xl bg-sage-soft/40 px-4 py-3 text-left ring-1 ring-border/40 transition-transform active:scale-[0.99]"
@@ -723,7 +687,7 @@ function ForYou() {
 
       {/* One quiet existing affirmation — restrained editorial, not a card. */}
       {affirmation && (
-        <p className={`whitespace-pre-line px-1 text-[14px] italic leading-relaxed text-muted-foreground ${!moodAnswered ? 'mt-3' : ''}`}>
+        <p className={`whitespace-pre-line px-1 text-[14px] italic leading-relaxed text-muted-foreground ${showMoodPrompt ? 'mt-3' : ''}`}>
           {affirmation}
         </p>
       )}
@@ -731,7 +695,7 @@ function ForYou() {
       {read && (
         <button
           onClick={() => openOverlay('read')}
-          className={`flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left ring-1 ring-border/60 transition-transform active:scale-[0.99] ${(!moodAnswered || affirmation) ? 'mt-3' : ''}`}
+          className={`flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3 text-left ring-1 ring-border/60 transition-transform active:scale-[0.99] ${(showMoodPrompt || affirmation) ? 'mt-3' : ''}`}
         >
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">Today&apos;s read</p>
@@ -749,6 +713,15 @@ function ForYou() {
 /* Shared                                                                    */
 /* ======================================================================== */
 
+function TasksFailed() {
+  const { retry } = useTasks()
+  return (
+    <section className="mt-6">
+      <DomainError label="Couldn't load your tasks" onRetry={retry} />
+    </section>
+  )
+}
+
 function DomainError({ label, onRetry }: { label: string; onRetry: () => void }) {
   return (
     <Card className="flex items-center gap-3">
@@ -756,8 +729,8 @@ function DomainError({ label, onRetry }: { label: string; onRetry: () => void })
         <AlertTriangle className="size-[18px]" strokeWidth={1.75} />
       </span>
       <p className="min-w-0 flex-1 text-[14px] text-foreground">{label}</p>
-      <button onClick={onRetry} className="rounded-full bg-muted px-3.5 py-1.5 text-[13px] font-semibold text-foreground">
-        Open
+      <button onClick={onRetry} className="rounded-full bg-muted px-3.5 py-2 text-[13px] font-semibold text-foreground">
+        Try again
       </button>
     </Card>
   )

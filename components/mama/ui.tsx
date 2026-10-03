@@ -8,11 +8,28 @@ import { useNav, type Tab } from './context'
 
 /* ---------------- Status bar ---------------- */
 
+// PR6 — the fake "9:41" status bar is decoration for the DESKTOP phone mock only
+// (the sm: frame in prototype.tsx). On a real phone the OS already draws a status
+// bar, so we render just a small safe-area-aware top spacer instead. Either way it is
+// hidden from assistive tech (it was being read aloud as "9:41").
 export function StatusBar({ dark = false }: { dark?: boolean }) {
   const color = dark ? 'text-white' : 'text-foreground'
   const bar = dark ? 'bg-white' : 'bg-foreground'
   return (
-    <div className={cn('flex items-center justify-between px-7 pt-4 pb-2', color)}>
+    <>
+      <div
+        aria-hidden="true"
+        className="shrink-0 sm:hidden"
+        style={{ height: 'max(env(safe-area-inset-top, 0px), 0.75rem)' }}
+      />
+      <StatusBarMock color={color} bar={bar} dark={dark} />
+    </>
+  )
+}
+
+function StatusBarMock({ color, bar, dark }: { color: string; bar: string; dark: boolean }) {
+  return (
+    <div aria-hidden="true" className={cn('hidden items-center justify-between px-7 pt-4 pb-2 sm:flex', color)}>
       <span className="text-[15px] font-semibold tracking-tight">9:41</span>
       <div className="flex items-center gap-1.5">
         <div className="flex items-end gap-[2px]">
@@ -352,7 +369,7 @@ export function BottomNav({ active }: { active: Tab }) {
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onWheel={onWheel}
-          aria-label="Capture — speak, snap, type or log"
+          aria-label="Capture"
           className="flex size-16 shrink-0 touch-none flex-col items-center justify-center gap-0.5 rounded-full bg-primary text-primary-foreground shadow-[0_12px_28px_-8px_var(--primary)] transition-transform active:scale-95"
         >
           <Plus className="size-6" strokeWidth={2.25} />

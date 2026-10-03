@@ -44,6 +44,8 @@ export interface AppNotification {
 
 interface NotificationsCtx {
   hydrated: boolean
+  /** PR6 — the last inbox read failed. */
+  loadError: boolean
   available: boolean
   notifications: AppNotification[]
   unreadCount: number
@@ -57,6 +59,7 @@ interface NotificationsCtx {
 
 const Ctx = createContext<NotificationsCtx>({
   hydrated: false,
+  loadError: false,
   available: false,
   notifications: [],
   unreadCount: 0,
@@ -95,6 +98,8 @@ export function NotificationsProvider({
   const { user, familyId, status } = useAuth()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // PR6 — the inbox read failed: the UI must not say "You're all caught up".
+  const [loadError, setLoadError] = useState(false)
 
   // Keep the latest onArrive without resubscribing the channel. Updated inside an
   // effect (never during render) so the compiler's refs rule is satisfied.
@@ -104,14 +109,21 @@ export function NotificationsProvider({
   })
 
   const load = async () => {
-    const rows = await db.fetchNotifications()
-    setNotifications(rows.map(fromRow))
+    try {
+      const rows = await db.fetchNotifications()
+      setNotifications(rows.map(fromRow))
+      setLoadError(false)
+    } catch (e) {
+      setLoadError(true)
+      throw e
+    }
   }
 
   // Fetch canonical inbox whenever the signed-in user (or their family) changes.
   useEffect(() => {
     let alive = true
     setHydrated(false)
+    setLoadError(false)
     if (user && familyId) {
       load()
         .catch((e) => console.warn('notifications load', e))
@@ -217,6 +229,7 @@ export function NotificationsProvider({
   const value = useMemo<NotificationsCtx>(
     () => ({
       hydrated,
+      loadError,
       available: Boolean(user && familyId),
       notifications: visibleNotifications,
       unreadCount,
@@ -225,7 +238,7 @@ export function NotificationsProvider({
       refresh,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hydrated, user, familyId, visibleNotifications, unreadCount],
+    [hydrated, loadError, user, familyId, visibleNotifications, unreadCount],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

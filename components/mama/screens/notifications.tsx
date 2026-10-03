@@ -4,7 +4,7 @@ import { Bell, Calendar as CalIcon, CheckCheck, ListChecks, Baby as BabyIcon } f
 import { useNav } from '../context'
 import { useNotifications, type AppNotification, type NotificationDomain } from '../notifications'
 import { timeAgo, useNow } from '../logs'
-import { Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
+import { Card, Screen, Scroll, StatusBar, TopBar, SummaryError } from '../ui'
 
 // Step 11 — the Notification Center. A minimal in-app surface: a newest-first list of
 // the current user's durable notifications, unread emphasis, mark-one / mark-all
@@ -19,26 +19,28 @@ const DOMAIN_ICON: Record<NotificationDomain, typeof ListChecks> = {
 }
 
 // Where a notification navigates. Simple domain routing (no deep-link framework).
-const DOMAIN_OVERLAY: Record<NotificationDomain, 'tasks' | 'careHandoff' | 'calendar'> = {
+// PR6: care handoff is retired from the 2.0 UI, so a care notification (already
+// filtered out by the provider) has NO destination — it can never reopen care UI.
+const DOMAIN_OVERLAY: Record<NotificationDomain, 'tasks' | 'calendar' | null> = {
   task: 'tasks',
-  care: 'careHandoff',
+  care: null,
   calendar: 'calendar',
 }
 
 export function NotificationsScreen() {
   const { closeOverlay, openOverlay } = useNav()
-  const { available, hydrated, notifications, unreadCount, markRead, markAllRead } = useNotifications()
+  const { available, hydrated, loadError, refresh, notifications, unreadCount, markRead, markAllRead } = useNotifications()
   const now = useNow(60_000)
 
   // NOTE (MamaHQ 2.0): care-domain notifications are already filtered out by the
   // NotificationsProvider (care handoff is retired from the visible UX), so this
-  // surface only ever receives task/calendar notifications. The care→careHandoff
-  // entry in DOMAIN_OVERLAY is dormant and unreachable here.
+  // surface only ever receives task/calendar notifications.
 
   const open = (n: AppNotification) => {
     if (!n.readAt) void markRead(n.id)
     // Navigate to the relevant domain surface. Replace the notification overlay.
-    openOverlay(DOMAIN_OVERLAY[n.domain])
+    const dest = DOMAIN_OVERLAY[n.domain]
+    if (dest) openOverlay(dest)
   }
 
   return (
@@ -52,7 +54,12 @@ export function NotificationsScreen() {
               Notifications <Bell className="size-5 text-sage" strokeWidth={1.75} />
             </h1>
             <p className="mt-1 text-[14px] text-muted-foreground">
-              {unreadCount > 0 ? `${unreadCount} unread` : 'You’re all caught up.'}
+              {/* PR6: only claim "all caught up" once the inbox actually loaded. */}
+              {unreadCount > 0
+                ? `${unreadCount} unread`
+                : available && hydrated && !loadError
+                  ? 'You’re all caught up.'
+                  : '\u00a0'}
             </p>
           </div>
           {unreadCount > 0 && (
@@ -72,6 +79,8 @@ export function NotificationsScreen() {
               attention.
             </p>
           </Card>
+        ) : loadError ? (
+          <SummaryError label="Couldn't load your notifications." onRetry={() => void refresh()} />
         ) : !hydrated ? (
           <p className="py-6 text-center text-[14px] text-muted-foreground">Loading…</p>
         ) : notifications.length === 0 ? (

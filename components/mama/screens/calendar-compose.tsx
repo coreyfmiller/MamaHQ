@@ -138,12 +138,12 @@ export function CalendarComposeScreen() {
               <div>
                 <CardLabel className="mb-1.5">Date</CardLabel>
                 <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[14px] outline-none focus:border-primary" />
+                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[16px] outline-none focus:border-primary" />
               </div>
               <div>
                 <CardLabel className="mb-1.5">End date (optional, for multi-day)</CardLabel>
                 <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[14px] outline-none focus:border-primary" />
+                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[16px] outline-none focus:border-primary" />
               </div>
             </div>
           ) : (
@@ -151,12 +151,12 @@ export function CalendarComposeScreen() {
               <div>
                 <CardLabel className="mb-1.5">Starts</CardLabel>
                 <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[14px] outline-none focus:border-primary" />
+                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[16px] outline-none focus:border-primary" />
               </div>
               <div>
                 <CardLabel className="mb-1.5">Ends (optional)</CardLabel>
                 <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)}
-                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[14px] outline-none focus:border-primary" />
+                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[16px] outline-none focus:border-primary" />
               </div>
             </div>
           )}
@@ -197,12 +197,12 @@ export function CalendarComposeScreen() {
           <div>
             <CardLabel className="mb-1.5">Location (optional)</CardLabel>
             <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Dr. Smith Dental"
-              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[14px] outline-none placeholder:text-muted-foreground/60 focus:border-primary" />
+              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[16px] outline-none placeholder:text-muted-foreground/60 focus:border-primary" />
           </div>
           <div>
             <CardLabel className="mb-1.5">Notes (optional)</CardLabel>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              className="w-full resize-none rounded-xl border border-border bg-card px-3 py-2 text-[14px] outline-none placeholder:text-muted-foreground/60 focus:border-primary" />
+              className="w-full resize-none rounded-xl border border-border bg-card px-3 py-2 text-[16px] outline-none placeholder:text-muted-foreground/60 focus:border-primary" />
           </div>
         </Card>
 

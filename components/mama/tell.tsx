@@ -5,7 +5,6 @@ import { useAuth } from './auth'
 import { useHousehold } from './household'
 import { useGrocery } from './grocery'
 import { useCalendar } from './calendar'
-import { useCare } from './care'
 import { executeProposal, type ExecuteContext } from '@/lib/tell/execute'
 import type {
   TellInterpretation,
@@ -101,7 +100,6 @@ export function TellProvider({ children }: { children: ReactNode }) {
   const { people } = useHousehold()
   const grocery = useGrocery()
   const calendar = useCalendar()
-  const care = useCare()
 
   const [phase, setPhase] = useState<TellPhase>('idle')
   const [draft, setDraft] = useState('')
@@ -196,8 +194,6 @@ export function TellProvider({ children }: { children: ReactNode }) {
           next = { ...next, assignee: { raw: displayName, personId, displayName } }
         } else if (next.kind === 'CALENDAR_CREATE' && field === 'responsible') {
           next = { ...next, responsible: { raw: displayName, personId, displayName } }
-        } else if (next.kind === 'CARE_HANDOFF_PROPOSE' && field === 'recipient') {
-          next = { ...next, recipient: { raw: displayName, personId, displayName } }
         }
         return recomputeStatus(next)
       }),
@@ -255,7 +251,6 @@ export function TellProvider({ children }: { children: ReactNode }) {
     // Nudge the local actor's providers to reflect new truth immediately (other
     // sessions get it via Step 11 realtime; grocery/tasks also refetch on realtime).
     void calendar.refresh().catch(() => {})
-    void care.refresh().catch(() => {})
   }
 
   const reset = () => {

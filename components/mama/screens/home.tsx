@@ -314,11 +314,14 @@ function AgendaDay({ label, events, emptyHint }: { label: string; events: Calend
  * Shared household data — no private/lock UI. */
 function FamilyRow() {
   const { openOverlay } = useNav()
-  const { people, hydrated, me } = useHousehold()
+  const { people, hydrated, loadError, me } = useHousehold()
 
   const others = people.filter((p) => !me || p.id !== me.id)
+  // PR6: a failed household read must never read as "Just you for now".
+  const soloInvite = hydrated && !loadError && others.length === 0
 
   const summary = () => {
+    if (loadError) return 'Couldn’t load your family right now.'
     if (!hydrated) return 'Loading…'
     if (others.length === 0) return 'Just you for now.'
     const connected = others.filter((p) => p.accountStatus === 'connected').length
@@ -344,7 +347,7 @@ function FamilyRow() {
           <p className="truncate text-[13px] text-muted-foreground">{summary()}</p>
         </div>
         <span className="flex items-center gap-0.5 text-[13px] font-medium text-primary">
-          {hydrated && others.length === 0 ? 'Invite' : 'Manage'}
+          {soloInvite ? 'Invite' : 'Manage'}
           <ChevronRight className="size-3.5" />
         </span>
       </button>

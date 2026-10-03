@@ -17,6 +17,9 @@ import {
 } from 'lucide-react'
 import { useNav } from '../context'
 import { useProfile, dayNumber } from '../profile'
+import { useAuth } from '../auth'
+import { useHousehold } from '../household'
+import { isMomSpaceOwner, meSectionCopy, type MeSectionCopy } from '@/lib/household-role'
 import { firstNinetyState } from '@/lib/first90'
 import { pickDailyRead, readMinutes } from '@/lib/daily-reads'
 import { pickAffirmation } from '@/lib/affirmations'
@@ -92,7 +95,28 @@ export function MeScreen() {
  * via useMom → mom_moods. */
 function CheckIn() {
   const { state, setTodayMood, hydrated, loadError } = useMom()
+  const view = useMeView()
   const today = state.moodByDay[dayKey()] ?? null
+
+  // PR6 — mood is ONE family-scoped row per day (Mom's). A partner sees it read-only
+  // and can never overwrite it.
+  if (view.ready && !view.isOwner) {
+    const label = moodOptions.find((m) => m.id === today)?.label
+    return (
+      <section className="mt-5">
+        <h2 className="px-1 font-serif text-[17px] font-semibold">{view.momLabel}&apos;s check-in</h2>
+        <p className="mt-2 px-1 text-[13.5px] text-muted-foreground">
+          {loadError
+            ? "Couldn't load the check-in."
+            : !hydrated
+              ? 'Loading…'
+              : label
+                ? `Today: ${label}. Only ${view.momLabel} can change her check-in.`
+                : `${view.momLabel} hasn't checked in today. Only she can set her check-in.`}
+        </p>
+      </section>
+    )
+  }
 
   return (
     <section className="mt-5">
@@ -101,7 +125,7 @@ function CheckIn() {
         <p className="mt-2 flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
           <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} /> Couldn&apos;t load your check-in.
         </p>
-      ) : !hydrated ? (
+      ) : !hydrated || !view.ready ? (
         <p className="mt-2 flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin" /> Loading…
         </p>
@@ -136,10 +160,10 @@ function CheckIn() {
  * existing first90 engine, daily-reads, affirmations, and read/beyond90 overlays. */
 function MyJourney() {
   const { openOverlay } = useNav()
-  const { profile, hydrated } = useProfile()
+  const { profile, hydrated, loadFailed } = useProfile()
   const now = useNow(60_000)
 
-  // The section ALWAYS renders (never silently disappears). Three truthful states:
+  // The section ALWAYS renders (never silently disappears). Truthful states:
   //   • profile not hydrated yet → compact loading line
   //   • no birth date on file    → compact setup prompt (no invented Day number)
   //   • have a birth date        → within-journey Day N, or Beyond 90
@@ -156,9 +180,21 @@ function MyJourney() {
     )
   }
 
+  // PR6: a FAILED Baby read is not "no birthday" — never show the setup prompt then.
+  if (loadFailed) {
+    return (
+      <section className="mt-6">
+        {header}
+        <p role="alert" className="flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+          <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} /> Couldn&apos;t load your journey right now.
+        </p>
+      </section>
+    )
+  }
+
   if (!profile?.birthDate) {
-    // Missing the one input the journey needs — guide to set it in Settings rather
-    // than removing the section or fabricating a day.
+    // Missing the one input the journey needs — open Settings, where the Baby
+    // details editor opens expanded (PR6) to add it. No fabricated day.
     return (
       <section className="mt-6">
         {header}
@@ -171,7 +207,7 @@ function MyJourney() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-semibold leading-tight">Start your first 90 days</p>
-            <p className="text-[13px] text-muted-foreground">Add Baby&apos;s birth date to see your day-by-day journey.</p>
+            <p className="text-[13px] text-muted-foreground">Add Baby&apos;s birthday in Settings to see your day-by-day journey.</p>
           </div>
           <ChevronRight className="size-4 text-muted-foreground" />
         </button>
@@ -246,12 +282,15 @@ function TodaysRead() {
  * household" note — never a privacy/lock claim. */
 function MyToDos() {
   const { state, hydrated, loadError, addTask, toggleTask, removeTask } = useMom()
+  const view = useMeView()
   return (
     <MomItemsSection
-      title="My to-dos"
-      note="Shared with household"
+      title={view.copy.todosTitle}
+      note={view.copy.editable ? 'Shared with household' : undefined}
+      partnerNote={view.copy.partnerNote}
+      editable={view.copy.editable}
       items={state.tasks}
-      hydrated={hydrated}
+      hydrated={hydrated && view.ready}
       loadError={loadError}
       emptyLabel="Nothing here yet."
       addLabel="Add a to-do"
@@ -268,11 +307,13 @@ function MyToDos() {
  * mom_items kind='question'. Appointment prep, NOT a general notes/journal system. */
 function DoctorQuestions() {
   const { state, hydrated, loadError, addQuestion, toggleQuestion, removeQuestion } = useMom()
+  const view = useMeView()
   return (
     <MomItemsSection
-      title="Questions for my doctor"
+      title={view.copy.questionsTitle}
+      editable={view.copy.editable}
       items={state.questions}
-      hydrated={hydrated}
+      hydrated={hydrated && view.ready}
       loadError={loadError}
       emptyLabel="No questions saved yet."
       addLabel="Add a question"
@@ -292,6 +333,8 @@ function DoctorQuestions() {
 function MomItemsSection({
   title,
   note,
+  partnerNote,
+  editable = true,
   items,
   hydrated,
   loadError,
@@ -305,6 +348,10 @@ function MomItemsSection({
 }: {
   title: string
   note?: string
+  /** PR6 — shown to a partner viewing Mom's shared items read-only. */
+  partnerNote?: string | null
+  /** PR6 — false for a partner: no add/toggle/remove of Mom's items. */
+  editable?: boolean
   items: MomItem[]
   hydrated: boolean
   loadError: boolean
@@ -337,18 +384,25 @@ function MomItemsSection({
         // Populated → grouped surface.
         <Card className="space-y-1 p-4">
           <div className="divide-y divide-border/50">
-            {items.map((it) => (
-              <ItemRow key={it.id} item={it} onToggle={() => onToggle(it.id)} onRemove={() => onRemove(it.id)} />
-            ))}
+            {items.map((it) =>
+              editable ? (
+                <ItemRow key={it.id} item={it} onToggle={() => onToggle(it.id)} onRemove={() => onRemove(it.id)} />
+              ) : (
+                <ReadOnlyItemRow key={it.id} item={it} />
+              ),
+            )}
           </div>
-          <AddInline label={addLabel} placeholder={addPlaceholder} onAdd={onAdd} />
+          {editable && <AddInline label={addLabel} placeholder={addPlaceholder} onAdd={onAdd} />}
         </Card>
       ) : (
         // Empty → light, out-of-the-way treatment (no big card).
         <div className="px-1">
           <p className="text-[13.5px] text-muted-foreground">{emptyLabel}</p>
-          <AddInline label={addLabel} placeholder={addPlaceholder} onAdd={onAdd} />
+          {editable && <AddInline label={addLabel} placeholder={addPlaceholder} onAdd={onAdd} />}
         </div>
+      )}
+      {!editable && partnerNote && (
+        <p className="mt-1.5 px-1 text-[12px] leading-relaxed text-muted-foreground">{partnerNote}</p>
       )}
     </section>
   )
@@ -504,6 +558,29 @@ function ErrorLine({ label, onRetry }: { label: string; onRetry?: () => void }) 
   )
 }
 
+// PR6 — a partner's read-only view of one of Mom's shared items (no toggle/remove).
+function ReadOnlyItemRow({ item }: { item: MomItem }) {
+  return (
+    <div className="flex items-center gap-3 py-2">
+      <CheckBox checked={item.done} />
+      <span className={`text-[15px] ${item.done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.text}</span>
+    </div>
+  )
+}
+
+// PR6 — who is viewing Me? Mom (household owner) gets the editable Me; a joined
+// member sees Mom's family-scoped items read-only, labelled as hers. While the
+// household is still loading we don't guess (sections show loading).
+function useMeView(): { ready: boolean; isOwner: boolean; momLabel: string; copy: MeSectionCopy } {
+  const { familyId } = useAuth()
+  const { me, people, hydrated } = useHousehold()
+  const ready = !familyId || hydrated
+  const isOwner = isMomSpaceOwner({ signedIn: !!familyId, role: me?.role })
+  const momName = people.find((p) => p.role === 'owner')?.displayName
+  const copy = meSectionCopy({ isOwner, momName })
+  return { ready, isOwner, momLabel: (momName ?? '').trim() || 'Mom', copy }
+}
+
 function ItemRow({ item, onToggle, onRemove }: { item: MomItem; onToggle: () => void; onRemove: () => void }) {
   return (
     <div className="group flex items-center gap-3 py-2">
@@ -559,7 +636,7 @@ function AddInline({ label, placeholder, onAdd }: { label: string; placeholder: 
         }}
         onBlur={() => (text.trim() ? submit() : setOpen(false))}
         placeholder={placeholder}
-        className="flex-1 rounded-xl border border-border bg-card px-3 py-2 text-[15px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+        className="flex-1 rounded-xl border border-border bg-card px-3 py-2 text-[16px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
       />
       <button onClick={submit} className="rounded-xl bg-primary px-3.5 py-2 text-[14px] font-semibold text-primary-foreground transition-transform active:scale-95">
         Add
