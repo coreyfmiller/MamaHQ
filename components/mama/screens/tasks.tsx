@@ -5,7 +5,7 @@ import { ListChecks, Plus, RotateCcw, Clock, ChevronDown, Check, Hand } from 'lu
 import { useNav } from '../context'
 import { useHousehold, type HouseholdPerson } from '../household'
 import { useTasks, type Task } from '../tasks'
-import { Card, CardLabel, CheckBox, Screen, Scroll, Segmented, StatusBar, TopBar } from '../ui'
+import { Card, CardLabel, CheckBox, Screen, Scroll, Segmented, StatusBar, TopBar, SummaryError } from '../ui'
 
 // Step 8 — the Tasks surface. A household RESPONSIBILITY list, not a project
 // manager. It answers three questions at a glance: what needs doing, who owns it,
@@ -18,7 +18,7 @@ const UNASSIGNED = '__unassigned__'
 
 export function TasksScreen() {
   const { closeOverlay, showToast } = useNav()
-  const { available, hydrated, open, completed, mine, mePersonId, create, assign, complete, reopen, accept, relinquish } =
+  const { available, hydrated, loadError, retry, open, completed, mine, mePersonId, create, assign, complete, reopen, accept, relinquish } =
     useTasks()
   const { people, me } = useHousehold()
   const [view, setView] = useState<View>('open')
@@ -58,8 +58,7 @@ export function TasksScreen() {
           </h1>
           <p className="mt-1 text-[15px] leading-relaxed text-muted-foreground">
             Shared household responsibilities. Get it out of your head and give it an owner —
-            when someone owns it, you don&apos;t have to keep carrying it. (For a personal
-            reminder just for you, use My to-dos on Me.)
+            when someone owns it, you don&apos;t have to keep carrying it.
           </p>
         </header>
 
@@ -91,7 +90,10 @@ export function TasksScreen() {
               ]}
             />
 
-            {!hydrated ? (
+            {/* PR6: Loading ≠ Empty ≠ Failed. */}
+            {loadError ? (
+              <SummaryError label="Couldn't load tasks." onRetry={retry} />
+            ) : !hydrated ? (
               <p className="py-6 text-center text-[14px] text-muted-foreground">Loading…</p>
             ) : list.length === 0 ? (
               <EmptyState view={view} />
@@ -181,7 +183,7 @@ function QuickAdd({
             if (e.key === 'Enter') submit()
           }}
           placeholder="Add a task, e.g. Take garbage out"
-          className="flex-1 rounded-xl border border-border bg-card px-3 py-2.5 text-[15px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+          className="flex-1 rounded-xl border border-border bg-card px-3 py-2.5 text-[16px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
         />
         <button
           onClick={submit}
@@ -212,7 +214,7 @@ function QuickAdd({
               type="datetime-local"
               value={due}
               onChange={(e) => setDue(e.target.value)}
-              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[14px] text-foreground outline-none focus:border-primary"
+              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[16px] text-foreground outline-none focus:border-primary"
             />
           </div>
         </div>

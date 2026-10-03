@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabase/client'
+import { safeNextPath } from '@/lib/safe-redirect'
 
 // Auth callback that completes sign-in for EVERY Supabase redirect shape:
 //  - PKCE email links land with ?code=...          → exchangeCodeForSession
@@ -16,7 +17,8 @@ export default function AuthCallbackPage() {
     const supabase = supabaseBrowser()
     const url = new URL(window.location.href)
     const params = url.searchParams
-    const next = params.get('next') ?? '/app'
+    // PR6: never redirect to an attacker-supplied URL — same-origin app paths only.
+    const next = safeNextPath(params.get('next'))
 
     const finish = () => {
       window.location.replace(next)

@@ -37,6 +37,8 @@ interface LogsCtx {
    *  than a false "nothing logged yet" empty. Mirrors Tasks/Calendar/Grocery/Care.
    *  Only meaningful when signed in; signed-out local mode never sets it. */
   loadError: boolean
+  /** PR6 — re-attempt a failed cloud read (Retry on Baby/Today error states). */
+  retry: () => void
   addLog: (entry: Omit<LogEntry, 'id' | 'createdAt'> & { createdAt?: string }) => LogEntry
   /** Edit fields on an existing log (e.g. correct a stop time). */
   patchLog: (id: string, patch: Partial<Omit<LogEntry, 'id'>>) => void
@@ -67,6 +69,7 @@ const Ctx = createContext<LogsCtx>({
   logs: [],
   hydrated: false,
   loadError: false,
+  retry: () => {},
   addLog: () => ({ id: '', kind: 'feed', createdAt: '' }),
   patchLog: () => {},
   deleteLog: () => {},
@@ -152,6 +155,17 @@ export function LogsProvider({ children }: { children: ReactNode }) {
     }
   }
   const clearSyncError = () => setSyncError(null)
+
+  const retry = () => {
+    if (!familyId) return
+    db.fetchLogs(familyId)
+      .then((rows) => {
+        setLogs(rows.map(fromDb))
+        setLoadError(false)
+        setSyncError(null)
+      })
+      .catch(() => setLoadError(true))
+  }
 
   // Load from the right source when auth resolves: cloud (family) or local.
   useEffect(() => {
@@ -286,7 +300,7 @@ export function LogsProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo(
-    () => ({ logs, hydrated, loadError, addLog, patchLog, deleteLog, clearLogs, startSleep, endSleep, syncError, clearSyncError }),
+    () => ({ logs, hydrated, loadError, retry, addLog, patchLog, deleteLog, clearLogs, startSleep, endSleep, syncError, clearSyncError }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [logs, hydrated, loadError, familyId, syncError],
   )

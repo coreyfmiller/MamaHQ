@@ -46,6 +46,7 @@ function route(over: Partial<SetupRouteInput>) {
     profileLoadFailed: false,
     profile: COMPLETE,
     partnerJoinDismissed: false,
+    role: 'owner',
     ...over,
   })
 }
@@ -87,9 +88,56 @@ function route(over: Partial<SetupRouteInput>) {
   // ...but a missing NAME still routes to the name step (that's identity, not Baby).
   eq(route({ firstRun: 'creator', profile: null, profileLoadFailed: true }), 'name', 'Baby read failed + no name → name')
 
-  // Existing invited-partner flow is preserved; after it hands off, Baby completeness applies.
-  eq(route({ firstRun: 'partner' }), 'partner-join', 'joined partner, placeholder name → partner-join')
-  eq(route({ firstRun: 'partner', partnerJoinDismissed: true }), 'app', 'partner handed off, Baby exists → app')
+  // Existing invited-partner flow is preserved.
+  eq(route({ firstRun: 'partner', role: 'member' }), 'partner-join', 'joined partner, placeholder name → partner-join')
+  eq(route({ firstRun: 'partner', role: 'member', partnerJoinDismissed: true }), 'app', 'partner handed off, Baby exists → app')
+}
+
+// ==========================================================================
+// PR6 — partner join routing
+// ==========================================================================
+{
+  // The join flow, once entered, stays mounted while the partner's name save flips
+  // firstRun to 'done' — the welcome step is no longer torn away.
+  eq(
+    route({ firstRun: 'done', role: 'member', partnerJoinStarted: true }),
+    'partner-join',
+    'partner join started + name saved (firstRun done) → STILL partner-join (welcome visible)',
+  )
+  // Even if the household has no Baby yet, the latch keeps the welcome on screen…
+  eq(
+    route({ firstRun: 'done', role: 'member', partnerJoinStarted: true, profile: null }),
+    'partner-join',
+    'partner join started, household has no Baby → still partner-join, not Baby step',
+  )
+  // …and after handing off, a joined member never lands on the OWNER's Baby step.
+  eq(
+    route({ firstRun: 'done', role: 'member', partnerJoinStarted: true, partnerJoinDismissed: true, profile: null }),
+    'app',
+    'partner handed off, household has no Baby → app (never the owner Baby step)',
+  )
+  eq(route({ firstRun: 'done', role: 'member', profile: null }), 'app', 'established member, no Baby → app')
+  eq(route({ firstRun: 'done', role: null, profile: null }), 'app', 'unresolved role, no Baby → app (not guessed as owner)')
+  // The latch beats loading so a refetch mid-flow can't flash a spinner over it.
+  eq(
+    route({ householdHydrated: false, firstRun: null, role: 'member', partnerJoinStarted: true }),
+    'partner-join',
+    'partner join started + household refetching → stays partner-join',
+  )
+  // Without the latch, the pre-PR6 behaviour is what tore the welcome away.
+  eq(route({ firstRun: 'done', role: 'member', partnerJoinStarted: false }), 'app', 'no latch → app (documents the old tear-down)')
+}
+
+// ==========================================================================
+// PR6 — owner onboarding still works exactly as before
+// ==========================================================================
+{
+  eq(route({ firstRun: 'creator', role: 'owner', profile: null }), 'name', 'owner: no name → name step')
+  eq(route({ firstRun: 'done', role: 'owner', profile: null }), 'baby', 'owner: name saved, no Baby → Baby step')
+  eq(route({ firstRun: 'done', role: 'owner', profile: { babyName: 'Emma', birthDate: '' } }), 'baby', 'owner: no birthday → Baby step')
+  eq(route({ firstRun: 'done', role: 'owner' }), 'app', 'owner: complete → app')
+  // The owner is never caught by the partner latch (it's only set on partner-join).
+  eq(route({ firstRun: 'creator', role: 'owner', partnerJoinStarted: false, profile: null }), 'name', 'owner unaffected by partner latch')
 }
 
 // ==========================================================================

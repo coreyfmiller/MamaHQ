@@ -8,7 +8,8 @@ import { useLogs, activeSleep, elapsed, toLocalInput, fromLocalInput, type LogKi
 import { CategoryChip } from '../event-meta'
 
 const options: { kind: LogKind; category: Category; title: string; sub: string }[] = [
-  { kind: 'feed', category: 'feed', title: 'Feed', sub: 'Bottle \u00b7 Nursing \u00b7 Other' },
+  // PR6: the feed step only records an amount (oz) — don't advertise Nursing it can't log.
+  { kind: 'feed', category: 'feed', title: 'Feed', sub: 'Log an amount' },
   { kind: 'sleep', category: 'sleep', title: 'Sleep', sub: 'Start now or log a past sleep' },
   { kind: 'diaper', category: 'diaper', title: 'Diaper', sub: 'Wet \u00b7 Dirty \u00b7 Mixed' },
   { kind: 'pumping', category: 'pumping', title: 'Pumping', sub: 'Track your session' },
@@ -249,7 +250,7 @@ function SleepDetail({
     <div className="space-y-2.5">
       {running ? (
         <p className="rounded-2xl bg-muted/60 px-4 py-3 text-[14px] text-muted-foreground">
-          A sleep is already running. Stop it from the Today screen.
+          A sleep is already running. End it from Baby or Today.
         </p>
       ) : (
         <button

@@ -17,6 +17,27 @@
 // at the right step, and Start Over (which deletes the family's Baby row and resets the
 // caller's name to the placeholder) naturally lands back at step 1.
 
+/** The bootstrap placeholder names the server gives a connected person before the
+ *  human sets a real name: owner → 'Me' (ensure_owner_person), invited member →
+ *  'Member' (accept_household_invitation). A canonical name EQUAL to one of these
+ *  (trimmed, case-sensitive) means "identity not set yet". */
+export const BOOTSTRAP_PLACEHOLDER_NAMES: ReadonlySet<string> = new Set(['Me', 'Member'])
+
+export function isBootstrapPlaceholder(name: string | null | undefined): boolean {
+  return !!name && BOOTSTRAP_PLACEHOLDER_NAMES.has(name.trim())
+}
+
+/**
+ * PR6 — the placeholder collision. Saving exactly "Me" or "Member" as your name would
+ * be indistinguishable from "not set yet", so first-run would silently loop on the
+ * name step. Rather than loop, we say why and ask for another form of the name. Only
+ * the exact reserved spelling collides ("me", "Mel", "Memb" etc. are fine).
+ */
+export function placeholderNameError(name: string): string | null {
+  if (!isBootstrapPlaceholder(name)) return null
+  return `“${name.trim()}” is reserved by MamaHQ. Please use your first name or a nickname.`
+}
+
 /** The tab the app lands on once first-run setup completes. */
 export const ONBOARDING_COMPLETE_TAB = 'today' as const
 
@@ -95,6 +116,14 @@ export interface SetupRouteInput {
   profile: { babyName?: string | null; birthDate?: string | null } | null
   /** The invited-partner join flow handed off this session. */
   partnerJoinDismissed: boolean
+  /** PR6 — the partner join flow was ENTERED this session (session latch). Once
+   *  entered it owns the screen until the partner taps through, even though saving
+   *  their name flips firstRun to 'done' mid-flow. */
+  partnerJoinStarted?: boolean
+  /** PR6 — the caller's membership role. Baby setup is the OWNER's first-run step; a
+   *  joined member is never routed through it. Unknown (null/undefined) is treated as
+   *  NOT the owner for this purpose. */
+  role?: 'owner' | 'member' | null
 }
 
 /**
@@ -109,11 +138,16 @@ export interface SetupRouteInput {
  * than a briefly degraded app.
  */
 export function resolveSetupRoute(i: SetupRouteInput): SetupRoute {
+  // A partner join flow already on screen stays on screen until handed off (PR6):
+  // the mid-flow name save must not unmount the welcome step.
+  if (i.partnerJoinStarted && !i.partnerJoinDismissed) return 'partner-join'
   if (!i.householdHydrated || i.firstRun === null || !i.profileHydrated) return 'loading'
   if (i.firstRun === 'creator') return 'name'
   if (i.firstRun === 'partner' && !i.partnerJoinDismissed) return 'partner-join'
   if (i.profileLoadFailed) return 'app'
-  if (!isBabySetupComplete(i.profile)) return 'baby'
+  // Baby setup is the owner's step. A joined member (or an unresolved role) goes
+  // straight in — never through the owner's Baby onboarding.
+  if (!isBabySetupComplete(i.profile)) return i.role === 'owner' ? 'baby' : 'app'
   return 'app'
 }
 

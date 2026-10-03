@@ -6,7 +6,6 @@ import {
   ShoppingCart,
   ListChecks,
   Calendar as CalIcon,
-  Baby as BabyIcon,
   X,
   Check,
   Loader2,
@@ -26,14 +25,12 @@ const KIND_ICON: Record<ResolvedProposal['kind'], LucideIcon> = {
   GROCERY_ADD: ShoppingCart,
   TASK_CREATE: ListChecks,
   CALENDAR_CREATE: CalIcon,
-  CARE_HANDOFF_PROPOSE: BabyIcon,
 }
 
 const KIND_LABEL: Record<ResolvedProposal['kind'], string> = {
   GROCERY_ADD: 'Add to Grocery',
   TASK_CREATE: 'Add task',
   CALENDAR_CREATE: 'Add to Calendar',
-  CARE_HANDOFF_PROPOSE: 'Ask to take over care',
 }
 
 // PR2 — Tell is a Capture capability rendered as an overlay (opened from the center
@@ -53,7 +50,7 @@ export function TellScreen() {
             Tell MamaHQ <Sparkles className="size-5 text-sage" strokeWidth={1.75} />
           </h1>
           <p className="mt-1 text-[15px] leading-relaxed text-muted-foreground">
-            Get it out of your head. Groceries, a task, something on the calendar — say it however
+            Get it out of your head. Groceries, a task, something on the calendar — type it however
             it comes out and MamaHQ will sort it. You approve everything.
           </p>
         </header>
@@ -111,7 +108,7 @@ function Composer() {
         rows={3}
         maxLength={2000}
         placeholder="Need diapers, we're low on milk, James has soccer pickup Thursday at 6…"
-        className="w-full resize-none rounded-2xl border border-border bg-card px-4 py-3 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+        className="w-full resize-none rounded-2xl border border-border bg-card px-4 py-3 text-[16px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary"
       />
       {/* Honest AI disclosure at the point of entry (Beta Launch Fixes): the user
           should know AI reads what they type BEFORE they submit, and that nothing is
@@ -302,14 +299,6 @@ function ProposalBody({ proposal }: { proposal: ResolvedProposal }) {
           )}
         </div>
       )
-    case 'CARE_HANDOFF_PROPOSE':
-      return (
-        <p className="text-[15px] font-semibold leading-tight">
-          {proposal.recipient?.displayName
-            ? `Ask ${proposal.recipient.displayName} to take over`
-            : 'Ask someone to take over'}
-        </p>
-      )
   }
 }
 
@@ -384,7 +373,7 @@ function IssueEditor({ proposal, issue }: { proposal: ResolvedProposal; issue: P
           aria-label="Event date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="rounded-lg border border-border bg-card px-2 py-1 text-[13px]"
+          className="rounded-lg border border-border bg-card px-2 py-1 text-[16px]"
         />
       )}
       <input
@@ -392,7 +381,7 @@ function IssueEditor({ proposal, issue }: { proposal: ResolvedProposal; issue: P
         aria-label="Event time"
         value={time}
         onChange={(e) => setTime(e.target.value)}
-        className="rounded-lg border border-border bg-card px-2 py-1 text-[13px]"
+        className="rounded-lg border border-border bg-card px-2 py-1 text-[16px]"
       />
       <button
         onClick={apply}

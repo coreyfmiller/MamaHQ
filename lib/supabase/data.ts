@@ -1104,64 +1104,18 @@ export async function deleteCalendarEventRpc(eventId: string): Promise<void> {
 }
 
 /* ---------------- Family-wide wipe (for "Start over") ---------------- */
-
-// Deletes all of a family's data rows. Ordered so FK children go before parents.
-// The family/membership rows themselves are kept (the account stays; onboarding restarts).
-export async function clearFamilyData(familyId: string): Promise<void> {
-  const sb = supabaseBrowser()
-  // appointment_questions cascade from appointments, but delete explicitly to be safe.
-  const tables = [
-    'appointment_questions',
-    'appointments',
-    'logs',
-    'mom_items',
-    'mom_moods',
-    'memories',
-    'captures',
-    'partner_contacts',
-    // Tasks (Step 8): task_events reference tasks (cascade) + household_people
-    // (SET NULL). Listed for FK ordering (children before people), but note these
-    // two tables block direct client DELETE (RLS: RPC-only writes; task_events is
-    // historical truth). So — exactly like household_invitations below — this delete
-    // is RLS-filtered to zero rows and does not error; it does not actually wipe
-    // tasks/events. A hard reset would need a dedicated trusted RPC.
-    'task_events',
-    'tasks',
-    // Calendar (Step 10): participants cascade from calendar_events. Like
-    // tasks/care/handoff, these are RPC-only writes (no direct-DELETE policy —
-    // deletion is centralized in delete_calendar_event), so this client DELETE is
-    // RLS-filtered to zero rows and does not error; it does not actually wipe them.
-    // Listed for FK ordering. A hard reset would use a dedicated trusted path.
-    'calendar_event_participants',
-    'calendar_events',
-    // Care handoff (Step 9): care_handoffs + care_responsibility reference babies +
-    // household_people (SET NULL). Like tasks/task_events these are RPC-only writes
-    // (no delete policy), so this client DELETE is RLS-filtered to zero rows and
-    // does not error — it does not actually wipe them. Listed for FK ordering.
-    'care_handoffs',
-    'care_responsibility',
-    // Invitations (Step 7) reference household_people (SET NULL). Also RPC-only
-    // writes (no delete policy) — this delete is a no-op that does not error.
-    'household_invitations',
-    // Household memory (Step 6): observations reference household_items +
-    // purchase_events; delete the ledger, then variants, before purchases/items.
-    'household_item_observations',
-    'household_items',
-    // purchase_events references grocery_items (SET NULL), grocery_items references
-    // household_people (SET NULL) — delete children first to keep it clean.
-    'purchase_events',
-    'grocery_items',
-    // household_people are wiped too; the owner's connected person is re-created
-    // deterministically by ensure_family() on the next sign-in bootstrap.
-    'household_people',
-    'babies',
-  ]
-  for (const t of tables) {
-    const { error } = await sb.from(t).delete().eq('family_id', familyId)
-    if (error) throw error
-  }
+// Owner-only, single-transaction Start Over (0017 reset_family_data). The database
+// is authoritative: a joined member calling this is rejected server-side ("only the
+// household owner can start over") regardless of what the UI shows. It clears the
+// Baby, logs, appointments/questions, Mom's mood/to-dos/questions, memories,
+// captures, partner contact, grocery + household memory and ACCOUNT-LESS people,
+// keeps linked identities (owner + joined members), leaves RPC-only shared records
+// (tasks, calendar, invitations, notifications) in place, and resets the owner's own
+// name to the 'Me' placeholder so first-run routing returns to onboarding.
+export async function resetFamilyDataRpc(familyId: string): Promise<void> {
+  const { error } = await supabaseBrowser().rpc('reset_family_data', { p_family_id: familyId })
+  if (error) throw error
 }
-
 /* ---------------------------- Notifications (Step 11) ---------------------------- */
 
 // A durable, RECIPIENT-SCOPED attention record. RLS ensures the browser only ever

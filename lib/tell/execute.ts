@@ -21,7 +21,7 @@ import { resolveGroceryPhrase } from '@/lib/grocery/resolver/resolve'
 import { resolveGroceryAction } from '@/lib/grocery/actions/resolve-action'
 import { planGroceryAction } from '@/lib/grocery/actions/execute-action'
 import type { ActiveGroceryItem } from '@/lib/grocery/actions/types'
-import type { ResolvedProposal, ResolvedGroceryAdd, ResolvedTaskCreate, ResolvedCalendarCreate, ResolvedCareHandoff } from './contract.ts'
+import type { ResolvedProposal, ResolvedGroceryAdd, ResolvedTaskCreate, ResolvedCalendarCreate } from './contract.ts'
 import { isReady } from './contract.ts'
 
 export interface ExecuteResult {
@@ -114,20 +114,6 @@ async function executeCalendar(p: ResolvedCalendarCreate, ctx: ExecuteContext): 
   return { ok: true, outcome: 'created', message: `“${p.title}” added to the Calendar` }
 }
 
-async function executeCareHandoff(p: ResolvedCareHandoff, ctx: ExecuteContext): Promise<ExecuteResult> {
-  const toId = p.recipient?.personId ?? null
-  if (!toId || !ctx.validPersonIds.has(toId)) {
-    return { ok: false, message: 'Couldn’t send the care handoff — that person is no longer in this household.' }
-  }
-  // Trusted propose only. It NEVER transfers care or marks acceptance; the recipient
-  // must accept from their own account. The one-pending DB constraint makes a retry
-  // safe. Context is intentionally empty here (a deterministic summary is added by
-  // the care provider path when initiated from the Care screen).
-  await db.proposeCareHandoffRpc(ctx.familyId, toId, {})
-  const name = p.recipient?.displayName ?? 'them'
-  return { ok: true, outcome: 'created', message: `Care handoff sent to ${name} — they still need to accept` }
-}
-
 // Dispatch one confirmed, ready proposal to its trusted domain operation.
 export async function executeProposal(p: ResolvedProposal, ctx: ExecuteContext): Promise<ExecuteResult> {
   if (!isReady(p)) {
@@ -140,8 +126,8 @@ export async function executeProposal(p: ResolvedProposal, ctx: ExecuteContext):
       return executeTask(p, ctx)
     case 'CALENDAR_CREATE':
       return executeCalendar(p, ctx)
-    case 'CARE_HANDOFF_PROPOSE':
-      return executeCareHandoff(p, ctx)
+    // PR6: no care-handoff case — CARE_HANDOFF_PROPOSE no longer exists in the
+    // contract, so Tell can never reach propose_care_handoff.
     default: {
       // Exhaustiveness guard: an unknown kind is never executed.
       const _never: never = p

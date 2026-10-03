@@ -4,7 +4,8 @@ import { useMemo, useRef, useState } from 'react'
 import { Plus, Minus, ShoppingCart, RotateCcw, Trash2, Check, Star } from 'lucide-react'
 import { useNav } from '../context'
 import { useGrocery, type GroceryItem, type ApplyOutcome } from '../grocery'
-import { CheckBox, Screen, Scroll, StatusBar, TopBar } from '../ui'
+import { CheckBox, Screen, Scroll, StatusBar, TopBar, SummaryLoading, SummaryError } from '../ui'
+import { loadState } from '@/lib/load-state'
 import { searchGrocery } from '@/lib/grocery/search/search'
 import { SHOPPING_CATEGORY_LABELS } from '@/lib/grocery/search/labels'
 import { resolveGroceryPhrase } from '@/lib/grocery/resolver/resolve'
@@ -20,7 +21,8 @@ import type { ValidatedGroceryAction } from '@/lib/grocery/actions/types'
  */
 export function GroceryScreen() {
   const { closeOverlay, showToast } = useNav()
-  const { active, completed, addResolved, editItem, completeItem, restoreItem, removeItem, householdVariantForItem, setHouseholdUsual } = useGrocery()
+  const { active, completed, hydrated, loadError, retry, addResolved, editItem, completeItem, restoreItem, removeItem, householdVariantForItem, setHouseholdUsual } = useGrocery()
+  const listState = loadState({ hydrated, loadError, count: active.length })
 
   // Feedback for a resolved add outcome (toast for the common cases). Step 6: when
   // household memory filled blanks (e.g. "milk" → your usual 2% 4L), add a subtle
@@ -49,8 +51,12 @@ export function GroceryScreen() {
 
         <AddRow addResolved={addResolved} onFeedback={feedback} />
 
-        {/* Active list */}
-        {active.length === 0 ? (
+        {/* Active list — PR6: Loading ≠ Empty ≠ Failed. */}
+        {listState === 'loading' ? (
+          <SummaryLoading label="Loading your list…" />
+        ) : listState === 'failed' ? (
+          <SummaryError label="Couldn't load your grocery list." onRetry={retry} />
+        ) : listState === 'empty' ? (
           <p className="pt-2 text-center text-[14px] text-muted-foreground">
             Nothing on the list right now.
           </p>
@@ -78,7 +84,7 @@ export function GroceryScreen() {
         )}
 
         {/* Bought (completed) */}
-        {completed.length > 0 && (
+        {listState !== 'failed' && completed.length > 0 && (
           <div className="space-y-2 pt-2">
             <p className="px-1 text-[13px] font-semibold tracking-wide text-muted-foreground">
               Bought

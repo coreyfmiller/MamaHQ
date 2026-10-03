@@ -21,6 +21,7 @@ import { useMemories } from '../memories'
 import { NameAvatar } from '../name-avatar'
 import { CategoryChip } from '../event-meta'
 import { BottomNav, Screen, Scroll, Segmented, StatusBar } from '../ui'
+import { SleepControl } from '../sleep-control'
 
 // ── Baby (MamaHQ 2.0) ─────────────────────────────────────────────────────────
 //
@@ -77,8 +78,28 @@ export function BabyScreen() {
             ]}
           />
           <div className="mt-4">
-            {tab === 'timeline' && <Timeline />}
-            {tab === 'patterns' && <Patterns />}
+            {/* PR6: Timeline + Patterns are derived from logs — never render their
+                empty/zero states while logs are loading or after a failed read (the
+                status above already says which). */}
+            {tab !== 'memories' && (loadError || !hydrated) ? (
+              <p className="flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+                {loadError ? (
+                  <>
+                    <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} />
+                    {tab === 'timeline' ? 'Timeline unavailable until activity loads.' : 'Patterns unavailable until activity loads.'}
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" /> Loading…
+                  </>
+                )}
+              </p>
+            ) : (
+              <>
+                {tab === 'timeline' && <Timeline />}
+                {tab === 'patterns' && <Patterns />}
+              </>
+            )}
             {tab === 'memories' && <MemoriesPreview />}
           </div>
         </section>
@@ -152,8 +173,8 @@ function RightNow() {
 
   // NOTE (MamaHQ 2.0): the Care / "who has Baby" handoff line was RETIRED from the
   // Baby UX (product decision — explicit care-handoff added administrative overhead
-  // without MVP value). The care provider + backend remain dormant (see useCare /
-  // careHandoff overlay); Baby's Right Now is now purely current baby activity.
+  // without MVP value). The care backend remains dormant; Baby's Right Now is purely
+  // current baby activity.
   return (
     <section className="mt-4 rounded-2xl bg-muted/40 ring-1 ring-border/50">
       <div className="flex items-center gap-3 px-4 py-3.5">
@@ -163,6 +184,13 @@ function RightNow() {
           <p className="text-[16px] font-semibold leading-tight">{statusText}</p>
         </div>
       </div>
+      {/* PR6 — end the active sleep right here (the SAME shared SleepControl Today
+          uses; one sleep system). */}
+      {asleep && (
+        <div className="px-4 pb-3.5">
+          <SleepControl sleepId={asleep.id} startISO={asleep.createdAt} now={now} />
+        </div>
+      )}
     </section>
   )
 }
@@ -428,7 +456,19 @@ function Patterns() {
  * Memories flow. */
 function MemoriesPreview() {
   const { openOverlay } = useNav()
-  const { memories, hydrated } = useMemories()
+  const { memories, hydrated, loadError, retry } = useMemories()
+
+  // PR6: a failed read is not "no memories yet".
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-2xl bg-muted/40 px-4 py-3 ring-1 ring-border/40">
+        <p className="flex items-center gap-1.5 text-[13.5px] text-muted-foreground">
+          <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} /> Couldn&apos;t load memories.
+        </p>
+        <button onClick={retry} className="shrink-0 text-[13px] font-medium text-primary">Try again</button>
+      </div>
+    )
+  }
 
   if (!hydrated) {
     return (
@@ -491,10 +531,14 @@ function LoadingBlock() {
 }
 
 function LoadFailed() {
+  const { retry } = useLogs()
   return (
     <div className="mt-4 flex items-center gap-2.5 rounded-2xl bg-peach-soft/40 px-4 py-3.5 ring-1 ring-peach/30">
       <AlertCircle className="size-4 shrink-0 text-peach" strokeWidth={2} />
-      <p className="text-[14px] text-foreground">Couldn&apos;t load Baby&apos;s activity right now.</p>
+      <p className="min-w-0 flex-1 text-[14px] text-foreground">Couldn&apos;t load Baby&apos;s activity right now.</p>
+      <button onClick={retry} className="shrink-0 rounded-full bg-muted px-3.5 py-2 text-[13px] font-semibold text-foreground">
+        Try again
+      </button>
     </div>
   )
 }

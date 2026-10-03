@@ -15,6 +15,7 @@
 import { rawInterpretationSchema } from '../lib/tell/contract.ts'
 import { resolveInterpretation, type CanonicalPerson, type ResolveContext } from '../lib/tell/resolve.ts'
 import type { RawInterpretation } from '../lib/tell/contract.ts'
+import { TELL_SYSTEM_PROMPT } from '../lib/tell/prompt.ts'
 
 let passed = 0
 let failed = 0
@@ -220,17 +221,35 @@ const V = 1
   ok(!!p && p.status === 'ready', 'all-day with date is ready')
 }
 
-/* ============================ CARE HANDOFF: connected only ============================ */
+/* ============================ CARE HANDOFF: RETIRED (PR6) ============================ */
+// Care handoff is retired from MamaHQ 2.0. A model that still emits
+// CARE_HANDOFF_PROPOSE (e.g. for "ask James to take over") must be REJECTED by the
+// contract — never resolved into a reviewable/executable proposal.
 {
   const r = interpret({ version: V, proposals: [{ type: 'CARE_HANDOFF_PROPOSE', toRef: 'James' }] }, [MOM, JAMES])
-  const p = r.valid && r.result.proposals[0]
-  ok(!!p && p.kind === 'CARE_HANDOFF_PROPOSE' && p.recipient?.personId === 'p-james' && p.status === 'ready', 'handoff to a connected account is ready')
+  ok(!r.valid, 'CARE_HANDOFF_PROPOSE is rejected by the contract (no handoff proposal)')
 }
 {
-  // Account-less recipient can't receive a handoff (they can't accept).
-  const r = interpret({ version: V, proposals: [{ type: 'CARE_HANDOFF_PROPOSE', toRef: 'Grandma' }] }, [MOM, GRANDMA])
-  const p = r.valid && r.result.proposals[0]
-  ok(!!p && p.issues.some((i) => i.code === 'recipient_not_connected'), 'account-less handoff recipient → recipient_not_connected')
+  // Mixed payload: one valid task + a smuggled handoff → whole payload rejected
+  // (fail-safe), so the handoff can never ride along with a legitimate action.
+  const r = interpret(
+    { version: V, proposals: [{ type: 'TASK_CREATE', title: 'Buy wipes' }, { type: 'CARE_HANDOFF_PROPOSE', toRef: 'James' }] },
+    [MOM, JAMES],
+  )
+  ok(!r.valid, 'a handoff smuggled alongside a valid task is rejected')
+}
+{
+  // The supported path for "ask James to take over": an unsupported note, no action.
+  const r = interpret(
+    { version: V, proposals: [], unsupported: [{ text: 'Ask James to take over', reason: 'MamaHQ can’t hand off baby care' }] },
+    [MOM, JAMES],
+  )
+  ok(r.valid && r.result.proposals.length === 0 && r.result.unsupported.length === 1, '"ask James to take over" → unsupported note, zero proposals')
+}
+{
+  // The prompt no longer advertises a care-handoff action and routes it to unsupported.
+  ok(!TELL_SYSTEM_PROMPT.includes('CARE_HANDOFF_PROPOSE'), 'system prompt does not offer CARE_HANDOFF_PROPOSE')
+  ok(/hand off baby care/i.test(TELL_SYSTEM_PROMPT), 'system prompt routes take-over requests to unsupported')
 }
 
 /* ============================ UNSUPPORTED + INJECTION ============================ */

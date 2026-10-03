@@ -32,3 +32,7 @@ supabase/.temp/
 supabase/.env
 # Local test env for the DB/security suites (never commit real or local secrets)
 .env.test.local
+
+# Supabase CLI console output (e.g. db push logs) - never commit
+sb-push.txt
+supabase-*.log

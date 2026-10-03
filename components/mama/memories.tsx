@@ -17,7 +17,13 @@ const STORAGE_KEY = 'mamahq.proto.memories.v1'
 interface MemoriesCtx {
   memories: Memory[]
   hydrated: boolean
-  addMemory: (photo: string, caption: string) => void
+  /** PR6 — the signed-in cloud read failed (never shown as an empty album). */
+  loadError: boolean
+  retry: () => void
+  /** Resolves ok only once the memory actually persisted (signed in) — so the UI
+   *  never says "Saved" for a write that failed. On failure the optimistic row is
+   *  rolled back. */
+  addMemory: (photo: string, caption: string) => Promise<{ ok: boolean }>
   removeMemory: (id: string) => void
   clearMemories: () => void
 }
@@ -25,7 +31,9 @@ interface MemoriesCtx {
 const Ctx = createContext<MemoriesCtx>({
   memories: [],
   hydrated: false,
-  addMemory: () => {},
+  loadError: false,
+  retry: () => {},
+  addMemory: async () => ({ ok: false }),
   removeMemory: () => {},
   clearMemories: () => {},
 })
@@ -60,21 +68,30 @@ export function MemoriesProvider({ children }: { children: ReactNode }) {
   const { familyId, status } = useAuth()
   const [memories, setMemories] = useState<Memory[]>([])
   const [hydrated, setHydrated] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+
+  const loadCloud = async (fid: string) => {
+    const rows = await db.fetchMemories(fid)
+    setMemories(rows.map((r) => ({ id: r.id, photo: r.photo, caption: r.caption ?? '', createdAt: r.created_at })))
+  }
 
   useEffect(() => {
     let alive = true
     setHydrated(false)
+    setLoadError(false)
 
     if (familyId) {
-      db.fetchMemories(familyId)
-        .then((rows) => {
+      loadCloud(familyId)
+        .then(() => {
           if (!alive) return
-          setMemories(rows.map((r) => ({ id: r.id, photo: r.photo, caption: r.caption ?? '', createdAt: r.created_at })))
           setHydrated(true)
         })
         .catch(() => {
           if (!alive) return
-          setMemories(readLocal())
+          // PR6 — do NOT present this device's local copy as the household album
+          // after a failed cloud read; say "couldn't load" truthfully instead.
+          setMemories([])
+          setLoadError(true)
           setHydrated(true)
         })
       return () => {
@@ -96,17 +113,30 @@ export function MemoriesProvider({ children }: { children: ReactNode }) {
     writeLocal(memories)
   }, [memories, hydrated, familyId])
 
-  const addMemory: MemoriesCtx['addMemory'] = (photo, caption) => {
+  const retry = () => {
+    if (!familyId) return
+    loadCloud(familyId)
+      .then(() => setLoadError(false))
+      .catch(() => setLoadError(true))
+  }
+
+  const addMemory: MemoriesCtx['addMemory'] = async (photo, caption) => {
     const m: Memory = { id: newId(), photo, caption: caption.trim(), createdAt: new Date().toISOString() }
     setMemories((prev) => [m, ...prev])
-    if (familyId) {
-      db.insertMemory({
+    if (!familyId) return { ok: true }
+    try {
+      await db.insertMemory({
         id: m.id,
         family_id: familyId,
         photo: m.photo,
         caption: m.caption || null,
         created_at: m.createdAt,
-      }).catch((e) => console.warn('memory sync', e))
+      })
+      return { ok: true }
+    } catch (e) {
+      console.warn('memory sync', e)
+      setMemories((prev) => prev.filter((x) => x.id !== m.id))
+      return { ok: false }
     }
   }
 
@@ -121,8 +151,9 @@ export function MemoriesProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo(
-    () => ({ memories, hydrated, addMemory, removeMemory, clearMemories }),
-    [memories, hydrated, familyId],
+    () => ({ memories, hydrated, loadError, retry, addMemory, removeMemory, clearMemories }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [memories, hydrated, loadError, familyId],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
