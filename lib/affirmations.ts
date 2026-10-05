@@ -9,7 +9,7 @@
 //     "your first week is complete", "N days down". Shown WHILE the user is inside N.
 //   * morning (slot < 12:00) must not assume today's events have happened.
 //   * noon (12:00–17:59) may note part of the day passed, not that specific events did.
-//   * night (≥ 18:00) begins up to ~6h before midnight — acknowledge lateness, but do
+//   * night (≥ 20:00) begins up to ~4h before midnight — acknowledge lateness, but do
 //     NOT declare day N over. Day 90 night is the deliberate end-of-program exception.
 // A bare present-tense label ("Day N", "Two months.", "N days in") is SAFE; a
 // completion verb bound to the current unit is NOT. The test-first90-temporal guard
@@ -484,11 +484,16 @@ const BEYOND: DayAffirmations = {
   night: 'Another day of quiet, invisible care.\nRest now. MamaHQ is still here. \uD83E\uDD0D',
 }
 
-/** Time-of-day slot from the hour: morning < 12, noon < 18, else night. */
+/** The local hour at which the 'night' affirmation slot begins. Night runs 20:00
+ *  (8pm) → 23:59 so night lines read as genuinely "near the end of the day"; the
+ *  6–8pm window stays in the (time-neutral) noon slot. */
+export const NIGHT_SLOT_START_HOUR = 20
+
+/** Time-of-day slot from the local hour: morning < 12, noon 12–19, night >= 20. */
 export function slotForHour(now: Date = new Date()): Slot {
   const h = now.getHours()
   if (h < 12) return 'morning'
-  if (h < 18) return 'noon'
+  if (h < NIGHT_SLOT_START_HOUR) return 'noon'
   return 'night'
 }
 

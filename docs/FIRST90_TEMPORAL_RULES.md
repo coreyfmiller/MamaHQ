@@ -19,13 +19,14 @@ finished.**
 
 ## Time-of-day slots (affirmations only)
 
-`slotForHour` uses the **local hour**: `morning` < 12:00, `noon` 12:00–17:59,
-`night` ≥ 18:00. Re-evaluated live (`useNow`).
+`slotForHour` uses the **local hour**: `morning` < 12:00, `noon` 12:00–19:59,
+`night` ≥ 20:00. Re-evaluated live (`useNow`).
 
 - **morning** must not assume today's events have happened yet.
 - **noon** may acknowledge part of the day has passed, but not that specific events
-  occurred.
-- **night** begins as early as 18:00 — up to ~6 hours before midnight. It may
+  occurred. (This slot now covers the 18:00–20:00 early-evening window, so noon lines
+  must stay time-neutral enough to read at 7pm — they are.)
+- **night** begins at 20:00 — up to ~4 hours before midnight. It may
   acknowledge lateness but must **not** declare Day N over.
 - **Daily reads have NO slot guarantee** — a read can be opened at any hour of Day N.
   A read must not assert a time of day or that the user's clock-day went a certain way.
