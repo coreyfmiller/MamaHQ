@@ -11,7 +11,7 @@
 //      SAFE forms ("made it through 13 days" on Day 14, present-tense labels like
 //      "Two months.", "N days in") are deliberately NOT flagged.
 //   2. a night affirmation declaring its OWN day/week/month complete (night can begin
-//      at 18:00, up to ~6h before midnight). Day 90 night is the end-of-program
+//      at 20:00, up to ~4h before midnight). Day 90 night is the end-of-program
 //      exception.
 //   3. authoring/editorial notes leaking into user-facing read body/prompt.
 //   4. a daily read asserting a time of day ("this morning", "tonight", "yesterday",
@@ -22,7 +22,7 @@
 //
 //   node scripts/test-first90-temporal.ts   (npm run test:first90-temporal)
 
-import { AFFIRMATIONS, type Slot } from '../lib/affirmations.ts'
+import { AFFIRMATIONS, slotForHour, NIGHT_SLOT_START_HOUR, type Slot } from '../lib/affirmations.ts'
 import { ALL_READS, type DailyRead } from '../lib/daily-reads.ts'
 
 let passed = 0
@@ -197,6 +197,25 @@ for (const r of ALL_READS) {
   }
   // Day 90 night SHOULD still celebrate the completed program (sanity: exemption real).
   ok(norm(AFFIRMATIONS[90].night).includes('first 90 days'), 'Day 90 night: end-of-program celebration preserved')
+}
+
+// ==========================================================================
+// Time-of-day slot boundaries — night begins at 8pm so night lines read as genuinely
+// "near the end of the day"; 6–8pm stays in the (time-neutral) noon slot.
+// ==========================================================================
+{
+  const at = (h: number) => slotForHour(new Date(2026, 9, 2, h, 0, 0))
+  const slotEq = (h: number, want: Slot) => ok(at(h) === want, `${h}:00 → ${want} (got ${at(h)})`)
+  ok(NIGHT_SLOT_START_HOUR === 20, `night slot starts at 20:00 (got ${NIGHT_SLOT_START_HOUR})`)
+  slotEq(0, 'morning') // just-after-midnight is morning, not night
+  slotEq(8, 'morning')
+  slotEq(11, 'morning')
+  slotEq(12, 'noon')
+  slotEq(17, 'noon')
+  slotEq(18, 'noon') // 6pm — no longer night
+  slotEq(19, 'noon') // 7pm — no longer night
+  slotEq(20, 'night') // 8pm
+  slotEq(23, 'night')
 }
 
 // ==========================================================================
