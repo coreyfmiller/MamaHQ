@@ -21,6 +21,7 @@ import {
   admin, anonClient, createUser, makeRunner, assert, assertEqual, errorContains, cleanupUsers,
   type Client, type TestUser,
 } from './db/harness.ts'
+import { resolveSetupRoute, isBootstrapPlaceholder } from '../lib/onboarding.ts'
 
 const A = admin()
 const { test, finish } = makeRunner('Ownership & Privilege Hardening')
@@ -233,6 +234,41 @@ async function main() {
     assertEqual((await membership(fam, partner.id))?.role, 'member', 'partner membership kept')
     assertEqual((await membership(fam, mom.id))?.role, 'owner', 'owner membership kept')
     assertEqual(await ownerOf(fam), mom.id, 'ownership unchanged')
+  })
+
+  // Regression: after Start Over the PERSISTED owner name must be the recognized
+  // placeholder, so onboarding resolves to the NAME step from canonical data — and
+  // then name → Baby → app proceeds normally.
+  const routeFromDb = async () => {
+    const { data: p } = await mom.client.from('household_people').select('display_name').eq('family_id', fam).eq('user_id', mom.id).maybeSingle()
+    const { data: b } = await mom.client.from('babies').select('name,birth_date').eq('family_id', fam).limit(1).maybeSingle()
+    const name = (p as { display_name: string } | null)?.display_name ?? null
+    const baby = b as { name: string; birth_date: string } | null
+    return resolveSetupRoute({
+      firstRun: isBootstrapPlaceholder(name) ? 'creator' : 'done',
+      householdHydrated: true,
+      profileHydrated: true,
+      profileLoadFailed: false,
+      profile: baby ? { babyName: baby.name, birthDate: baby.birth_date } : null,
+      partnerJoinDismissed: false,
+      role: 'owner',
+    })
+  }
+
+  await test('after Start Over, onboarding (from persisted data) resolves to the NAME step', async () => {
+    assertEqual(await routeFromDb(), 'name', 'route after reset')
+  })
+
+  await test('after Start Over, saving a new name advances to the Baby step', async () => {
+    const { error } = await mom.client.rpc('set_my_display_name', { p_family_id: fam, p_display_name: 'Sam' })
+    assert(!error, `rename failed: ${error?.message}`)
+    assertEqual(await routeFromDb(), 'baby', 'route after new name')
+  })
+
+  await test('after Start Over, completing Baby setup advances to the app (Today)', async () => {
+    const { error } = await mom.client.from('babies').insert({ family_id: fam, name: 'Noah', birth_date: '2026-09-28' })
+    assert(!error, `baby insert failed: ${error?.message}`)
+    assertEqual(await routeFromDb(), 'app', 'route after Baby setup')
   })
 
   // ========================================================================

@@ -16,6 +16,7 @@ import { resetFamilyDataRpc } from '@/lib/supabase/data'
 import {
   resetConfirmationMatches,
   canStartOver,
+  runStartOver,
   RESET_CONFIRM_WORD,
   START_OVER_OWNER_ONLY,
 } from '@/lib/reset-confirm'
@@ -51,7 +52,7 @@ export function ResetScreen() {
   const { clearInbox } = useInbox()
   const { clearPartner } = usePartner()
   const { familyId } = useAuth()
-  const { resetMe, me } = useHousehold()
+  const { refresh, me } = useHousehold()
   // PR6 — owner-only. The DB (0017 reset_family_data) is authoritative; this only
   // avoids offering a joined member an action the server will refuse.
   const mayStartOver = canStartOver({ signedIn: !!familyId, role: me?.role })
@@ -70,52 +71,39 @@ export function ResetScreen() {
 
   const doReset = async () => {
     if (!matches || busy || !mayStartOver) return
-    // Clear the cloud family data FIRST through the owner-only, single-transaction
-    // RPC (0017). If the server refuses or fails, nothing local is cleared and we say
-    // so — we never wipe this device while the household data stays put.
+    setBusy(true)
+    // runStartOver (lib/reset-confirm): owner-only transactional reset_family_data RPC
+    // (clears Baby/logs/etc. AND resets my canonical name to the 'Me' placeholder) →
+    // re-read canonical household people → clear on-device copies. The household
+    // re-read happens BEFORE local data is cleared, so the router goes straight to
+    // the onboarding NAME step — never via a stale name to the Baby step. If the
+    // server reset fails, nothing is cleared.
     // Truthfulness: shared RPC-only records (tasks, calendar events, pending invites,
     // notifications) are NOT wiped and may remain until beta support removes them.
-    if (familyId) {
-      setBusy(true)
-      try {
-        await resetFamilyDataRpc(familyId)
-      } catch (e) {
-        console.warn('cloud reset', e)
-        setBusy(false)
-        showToast("Couldn't start over right now — nothing was cleared")
-        return
-      }
-      setBusy(false)
-    }
-    // Clear the on-device copies (these always succeed locally).
-    clearLogs()
-    clearMom()
-    clearMemories()
-    clearAppointments()
-    clearInbox()
-    clearPartner()
-    clearProfile()
-    // reset_family_data already reset MY canonical name to the 'Me' placeholder in the
-    // same transaction. resetMe() (idempotent reset_my_identity) refetches the
-    // household so firstRun recomputes to 'creator' and Stage routes into onboarding,
-    // staying signed in. The signed-out/demo path has no cloud identity.
-    let identityOk = true
-    if (familyId) {
-      setBusy(true)
-      const res = await resetMe()
-      setBusy(false)
-      identityOk = res.ok
-      if (!res.ok) console.warn('reset identity', res.error)
+    const result = await runStartOver({
+      signedIn: !!familyId,
+      resetCloud: () => resetFamilyDataRpc(familyId as string),
+      refreshHousehold: refresh,
+      clearLocal: () => {
+        clearLogs()
+        clearMom()
+        clearMemories()
+        clearAppointments()
+        clearInbox()
+        clearPartner()
+        clearProfile()
+      },
+    })
+    setBusy(false)
+    if (result === 'failed') {
+      showToast("Couldn't start over right now — nothing was cleared")
+      return
     }
     showToast(
-      identityOk
+      result === 'reset'
         ? 'Starting fresh — let’s set things up'
         : 'Cleared — reload MamaHQ to finish setting things up',
     )
-    // Close the overlay. When identity was reset, firstRun is now 'creator' and Stage
-    // renders onboarding underneath; the user never leaves the session. If the cloud
-    // identity reset failed, we still close (local data is gone) and the user can set
-    // their name again from Settings → Account.
     closeOverlay()
   }
 

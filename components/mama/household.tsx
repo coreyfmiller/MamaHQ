@@ -56,6 +56,8 @@ interface HouseholdCtx {
   loadError: boolean
   /** PR6 — re-attempt a failed household load. */
   retry: () => void
+  /** Awaitable re-read of canonical household people; resolves ok/failed. */
+  refresh: () => Promise<boolean>
   /** The current user's connected person (owner-person), if resolved. */
   me: HouseholdPerson | null
   /** Beta Phase 2 — authoritative first-run signal, derived from cloud household
@@ -95,6 +97,7 @@ const Ctx = createContext<HouseholdCtx>({
   hydrated: false,
   loadError: false,
   retry: () => {},
+  refresh: async () => false,
   me: null,
   firstRun: null,
   savePerson: () => {},
@@ -402,8 +405,22 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
       .catch(() => setLoadError(true))
   }
 
+  // Awaitable re-read of canonical household people (Start Over uses this right after
+  // the authoritative reset so firstRun reflects the reset owner name).
+  const refresh: HouseholdCtx['refresh'] = async () => {
+    if (!familyId) return true
+    try {
+      const ok = await loadHousehold(familyId)
+      setLoadError(!ok)
+      return ok
+    } catch {
+      setLoadError(true)
+      return false
+    }
+  }
+
   const value = useMemo(
-    () => ({ people, hydrated, loadError, retry, me, firstRun, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe, resetMe }),
+    () => ({ people, hydrated, loadError, retry, refresh, me, firstRun, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe, resetMe }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [people, hydrated, loadError, me, firstRun, familyId],
   )
