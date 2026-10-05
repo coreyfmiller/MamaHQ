@@ -398,7 +398,9 @@ function Patterns() {
       return d.getFullYear() === y.getFullYear() && d.getMonth() === y.getMonth() && d.getDate() === y.getDate()
     })
 
-    out.push({ label: 'Feeds today', value: String(today.filter((l) => l.kind === 'feed').length) })
+    const feedCount = today.filter((l) => l.kind === 'feed').length
+    // Count-aware label so "1" reads as "Feeding today / 1", not "Feeds today / 1".
+    out.push({ label: feedCount === 1 ? 'Feeding today' : 'Feedings today', value: String(feedCount) })
 
     // Typical time between today's feeds (needs at least 2 feeds to be meaningful).
     const feedTimes = today.filter((l) => l.kind === 'feed').map((l) => new Date(l.createdAt).getTime()).sort((a, b) => a - b)
