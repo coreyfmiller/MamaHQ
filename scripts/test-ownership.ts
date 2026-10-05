@@ -196,6 +196,16 @@ async function main() {
   await A.from('mom_items').insert({ family_id: fam, kind: 'task', text: 'Call pediatrician' })
   const accountless = await addPerson(mom.client, fam, 'Aunt Jo', 'other')
 
+  // Regression setup (0018): establish the family's dormant care_responsibility row
+  // pointing at the baby. Reproduces the production state where Start Over hit
+  // 23505 on care_responsibility_family_subject (baby delete set subject_baby_id
+  // NULL → collided with the family's coalesce(NULL) uniqueness slot) and aborted.
+  await test('setup: care_responsibility row exists for the baby before Start Over', async () => {
+    const { error } = await mom.client.rpc('ensure_care_responsibility', { p_family_id: fam })
+    assert(!error, `ensure_care_responsibility failed: ${error?.message}`)
+    assert((await count('care_responsibility', fam)) >= 1, 'a care row exists')
+  })
+
   await test('a joined member cannot Start Over (server rejects)', async () => {
     const { error } = await partner.client.rpc('reset_family_data', { p_family_id: fam })
     assert(error, 'expected member reset to be rejected')
@@ -216,12 +226,15 @@ async function main() {
     assert(error, 'expected anon reset to be rejected')
   })
 
-  await test('the owner can Start Over: Baby/logs/to-dos/account-less people cleared', async () => {
+  await test('the owner can Start Over even with a care_responsibility row (no 23505)', async () => {
     const { error } = await mom.client.rpc('reset_family_data', { p_family_id: fam })
-    assert(!error, `owner reset failed: ${error?.message}`)
+    // Regression: this used to fail with 23505 on care_responsibility_family_subject.
+    assert(!error, `owner reset failed: ${error?.code ?? ''} ${error?.message}`)
     assertEqual(await count('babies', fam), 0, 'baby cleared')
     assertEqual(await count('logs', fam), 0, 'logs cleared')
     assertEqual(await count('mom_items', fam), 0, 'mom items cleared')
+    assertEqual(await count('care_responsibility', fam), 0, 'dormant care_responsibility cleared')
+    assertEqual(await count('care_handoffs', fam), 0, 'dormant care_handoffs cleared')
     const { data } = await A.from('household_people').select('id').eq('id', accountless).maybeSingle()
     assertEqual(data, null, 'account-less person cleared')
   })
