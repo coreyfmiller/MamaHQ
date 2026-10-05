@@ -22,7 +22,6 @@ export type Overlay =
   | 'grocery'
   | 'people'
   | 'tasks'
-  | 'careHandoff'
   | 'calendar'
   | 'calendarCompose'
   | 'notifications'

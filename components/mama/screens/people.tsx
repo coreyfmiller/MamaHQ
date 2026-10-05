@@ -5,7 +5,8 @@ import { Users, UserPlus, Link2, X, Check, Share2, Loader2, ChevronRight } from 
 import { useNav } from '../context'
 import { useHousehold, type HouseholdPerson } from '../household'
 import { shareInvite, copyInvite, canNativeShare } from '../invite-share'
-import { Card, Screen, Scroll, StatusBar, TopBar } from '../ui'
+import { Card, Screen, Scroll, StatusBar, TopBar, SummaryLoading, SummaryError } from '../ui'
+import { loadState } from '@/lib/load-state'
 
 // Local id generator so we can create a person AND generate their invite against the
 // same id in one action (savePerson would otherwise mint the id internally).
@@ -21,7 +22,8 @@ function newPersonId(): string {
 // design: this proves + uses household membership, it is not a settings product.
 export function PeopleScreen() {
   const { closeOverlay, openOverlay, showToast } = useNav()
-  const { people, savePerson, invitePerson, revokeInvite } = useHousehold()
+  const { people, hydrated, loadError, retry, savePerson, invitePerson, revokeInvite } = useHousehold()
+  const peopleState = loadState({ hydrated, loadError, count: people.length })
   // The freshly-generated invite link, kept in memory per person so we can surface it
   // for the user to share. The link is a credential — never logged, never sent by us.
   const [inviteUrls, setInviteUrls] = useState<Record<string, string>>({})
@@ -62,7 +64,7 @@ export function PeopleScreen() {
         </header>
 
         <div className="space-y-2">
-          {people.map((p) => (
+          {peopleState === 'ready' && people.map((p) => (
             <PersonRow
               key={p.id}
               person={p}
@@ -99,9 +101,15 @@ export function PeopleScreen() {
               }}
             />
           ))}
-          {people.length === 0 && (
+          {/* PR6: Loading ≠ Empty ≠ Failed — never "No people yet" while loading or
+              after a failed read. */}
+          {peopleState === 'failed' ? (
+            <SummaryError label="Couldn't load your household." onRetry={retry} />
+          ) : peopleState === 'loading' ? (
+            <SummaryLoading label="Loading your household…" />
+          ) : peopleState === 'empty' ? (
             <p className="pt-2 text-center text-[14px] text-muted-foreground">No people yet.</p>
-          )}
+          ) : null}
         </div>
 
         {/* Invite a brand-new adult. This is the entry point that makes a solo
@@ -311,7 +319,7 @@ function InviteSomeoneNew({
           if (e.key === 'Enter' && name.trim() && !busy) submit()
         }}
         placeholder="Their name (e.g. Alex)"
-        className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-[15px] outline-none focus:border-primary"
+        className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-[16px] outline-none focus:border-primary"
       />
       {error && <p className="text-[13px] text-destructive">{error}</p>}
       <div className="flex items-center gap-2">

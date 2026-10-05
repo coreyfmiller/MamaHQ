@@ -66,6 +66,8 @@ interface TasksCtx {
   /** True when the last load FAILED (so aggregators can show a truthful error, not
    *  an empty list). Cleared on a successful (re)load. */
   loadError: boolean
+  /** PR6 — re-attempt a failed load (Retry on error states). */
+  retry: () => void
   /** Open tasks (status = open). */
   open: Task[]
   /** Completed tasks. */
@@ -96,6 +98,7 @@ const Ctx = createContext<TasksCtx>({
   hydrated: false,
   available: false,
   loadError: false,
+  retry: () => {},
   open: [],
   completed: [],
   mine: [],
@@ -367,6 +370,9 @@ export function TasksProvider({ children }: { children: ReactNode }) {
       hydrated,
       available: Boolean(familyId),
       loadError,
+      retry: () => {
+        if (familyId) reload(familyId).catch(() => {})
+      },
       open,
       completed,
       mine,

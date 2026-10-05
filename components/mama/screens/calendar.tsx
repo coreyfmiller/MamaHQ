@@ -5,7 +5,7 @@ import { CalendarDays, Plus, MapPin, ChevronLeft, ChevronRight } from 'lucide-re
 import { useNav } from '../context'
 import { useHousehold } from '../household'
 import { useCalendar, type CalendarEvent } from '../calendar'
-import { Card, CardLabel, Screen, Scroll, Segmented, StatusBar, TopBar } from '../ui'
+import { Card, CardLabel, Screen, Scroll, Segmented, StatusBar, TopBar, SummaryError } from '../ui'
 
 // Step 10 — the shared Calendar surface. Small but useful: Upcoming (chronological)
 // and a selected Day agenda. The value is structured household commitments — what's
@@ -15,7 +15,7 @@ type View = 'upcoming' | 'mine' | 'day'
 
 export function CalendarScreen() {
   const { closeOverlay, composeEvent } = useNav()
-  const { available, hydrated, upcoming, mine, onDay } = useCalendar()
+  const { available, hydrated, loadError, refresh, upcoming, mine, onDay } = useCalendar()
   const { people, me } = useHousehold()
   const [view, setView] = useState<View>('upcoming')
   const [day, setDay] = useState<Date>(() => new Date())
@@ -91,7 +91,10 @@ export function CalendarScreen() {
               </div>
             )}
 
-            {!hydrated ? (
+            {/* PR6: Loading ≠ Empty ≠ Failed. */}
+            {loadError ? (
+              <SummaryError label="Couldn't load your calendar." onRetry={() => void refresh().catch(() => {})} />
+            ) : !hydrated ? (
               <p className="py-6 text-center text-[14px] text-muted-foreground">Loading…</p>
             ) : list.length === 0 ? (
               <EmptyState view={view} onAdd={() => composeEvent(null)} />

@@ -43,8 +43,13 @@ export const viewport: Viewport = {
   themeColor: '#f2ede2',
   width: 'device-width',
   initialScale: 1,
-  // App-like feel: prevent zoom jumps on input focus while one-handed at 3am.
-  maximumScale: 1,
+  // PR6 — no maximumScale: pinch-zoom must stay available (WCAG 1.4.4). iOS focus-
+  // zoom is avoided instead by keeping form inputs at >= 16px.
+  // viewport-fit=cover makes env(safe-area-inset-*) real, so the bottom nav, sheets
+  // and the top spacer respect the notch/home indicator.
+  viewportFit: 'cover',
+  // On-screen keyboard resizes the layout viewport, so inputs in sheets stay visible.
+  interactiveWidget: 'resizes-content',
 }
 
 export default function RootLayout({

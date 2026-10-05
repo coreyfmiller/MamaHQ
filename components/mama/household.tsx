@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useAuth } from './auth'
 import * as db from '@/lib/supabase/data'
 import { generateInviteToken, sha256Hex, inviteUrl } from '@/lib/household/invite-token'
+import { BOOTSTRAP_PLACEHOLDER_NAMES, isBootstrapPlaceholder, placeholderNameError } from '@/lib/onboarding'
 
 // The Household Person foundation on the client. A Person participates in the
 // household whether or not they have a MamaHQ account (`userId` null = no account).
@@ -39,16 +40,24 @@ const STORAGE_KEY = 'mamahq.proto.household.v1'
 // (accept_household_invitation, 0009). These are NOT real identities — they are the
 // signal that this user still needs to establish who they are in the household. A
 // name equal to one of these means "identity not yet set". (Beta Phase 2.)
-export const PLACEHOLDER_NAMES = new Set(['Me', 'Member'])
+// Canonical definition lives in lib/onboarding (pure, shared with the placeholder-
+// collision guard); re-exported here for existing imports.
+export const PLACEHOLDER_NAMES = BOOTSTRAP_PLACEHOLDER_NAMES
 
 /** True when a display name is still a bootstrap placeholder (identity not set). */
 export function isPlaceholderName(name: string | undefined | null): boolean {
-  return !!name && PLACEHOLDER_NAMES.has(name.trim())
+  return isBootstrapPlaceholder(name)
 }
 
 interface HouseholdCtx {
   people: HouseholdPerson[]
   hydrated: boolean
+  /** PR6 — the signed-in people read failed. */
+  loadError: boolean
+  /** PR6 — re-attempt a failed household load. */
+  retry: () => void
+  /** Awaitable re-read of canonical household people; resolves ok/failed. */
+  refresh: () => Promise<boolean>
   /** The current user's connected person (owner-person), if resolved. */
   me: HouseholdPerson | null
   /** Beta Phase 2 — authoritative first-run signal, derived from cloud household
@@ -86,6 +95,9 @@ interface HouseholdCtx {
 const Ctx = createContext<HouseholdCtx>({
   people: [],
   hydrated: false,
+  loadError: false,
+  retry: () => {},
+  refresh: async () => false,
   me: null,
   firstRun: null,
   savePerson: () => {},
@@ -141,6 +153,9 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   const [invitations, setInvitations] = useState<db.DbHouseholdInvitation[]>([])
   const [localPeople, setLocalPeople] = useState<HouseholdPerson[]>([])
   const [hydrated, setHydrated] = useState(false)
+  // PR6 — the signed-in people read failed (Loading ≠ Empty ≠ Failed): surfaces show
+  // "couldn't load" + Retry instead of a false "Just you for now".
+  const [loadError, setLoadError] = useState(false)
 
   // Load people + membership + invitations together so account status is derived
   // from durable state, not display text.
@@ -159,17 +174,20 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true
     setHydrated(false)
+    setLoadError(false)
 
     if (familyId) {
       loadHousehold(familyId)
         .then((ok) => {
           if (!alive) return
           if (!ok) setLocalPeople(readLocal())
+          setLoadError(!ok)
           setHydrated(true)
         })
         .catch(() => {
           if (!alive) return
           setLocalPeople(readLocal())
+          setLoadError(true)
           setHydrated(true)
         })
       return () => {
@@ -303,6 +321,11 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
     if (!familyId) return { ok: false, error: 'not signed in' }
     const name = displayName.trim()
     if (!name) return { ok: false, error: 'name is required' }
+    // PR6 — saving exactly "Me"/"Member" would read as "not set yet" and silently
+    // loop first-run. Explain instead of looping (covers onboarding, partner join,
+    // and Settings, which all rename through here).
+    const collision = placeholderNameError(name)
+    if (collision) return { ok: false, error: collision }
     try {
       await db.setMyDisplayNameRpc(familyId, name)
       await loadHousehold(familyId)
@@ -375,10 +398,31 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   // Settings → Account → Your name. A placeholder is left visible (and editable) rather
   // than guessed.
 
+  const retry = () => {
+    if (!familyId) return
+    loadHousehold(familyId)
+      .then((ok) => setLoadError(!ok))
+      .catch(() => setLoadError(true))
+  }
+
+  // Awaitable re-read of canonical household people (Start Over uses this right after
+  // the authoritative reset so firstRun reflects the reset owner name).
+  const refresh: HouseholdCtx['refresh'] = async () => {
+    if (!familyId) return true
+    try {
+      const ok = await loadHousehold(familyId)
+      setLoadError(!ok)
+      return ok
+    } catch {
+      setLoadError(true)
+      return false
+    }
+  }
+
   const value = useMemo(
-    () => ({ people, hydrated, me, firstRun, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe, resetMe }),
+    () => ({ people, hydrated, loadError, retry, refresh, me, firstRun, savePerson, removePerson, clearHousehold, invitePerson, revokeInvite, renameMe, resetMe }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [people, hydrated, me, firstRun, familyId],
+    [people, hydrated, loadError, me, firstRun, familyId],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

@@ -22,8 +22,7 @@ import type {
 import { TELL_INTERPRETER_VERSION, TELL_SCHEMA_VERSION } from './contract.ts'
 
 // Canonical person as the resolver needs it. `hasAccount` = a connected account
-// (can be a care-handoff recipient / can later accept). `isMe` = linked to the
-// current authenticated account.
+// (can later accept a task). `isMe` = linked to the current authenticated account.
 export interface CanonicalPerson {
   id: string
   displayName: string
@@ -241,32 +240,6 @@ function resolveOne(raw: RawProposal, ctx: ResolveContext): ResolvedProposal {
         responsible,
         location: raw.location ?? null,
         notes: raw.notes ?? null,
-      }
-    }
-
-    case 'CARE_HANDOFF_PROPOSE': {
-      const r = resolvePerson(raw.toRef, ctx, 'recipient')
-      let recipient = r.ref
-      if (r.issue) {
-        issues.push(r.issue)
-      } else if (recipient.personId) {
-        // Care handoff recipient MUST be a connected account (only they can accept).
-        const person = ctx.people.find((p) => p.id === recipient.personId)
-        if (person && !person.hasAccount) {
-          issues.push({
-            code: 'recipient_not_connected',
-            message: `${person.displayName} doesn’t have their own MamaHQ account, so they can’t accept a care handoff.`,
-            field: 'recipient',
-          })
-          recipient = { ...recipient }
-        }
-      }
-      return {
-        id,
-        kind: 'CARE_HANDOFF_PROPOSE',
-        status: issues.length ? 'needs_clarification' : 'ready',
-        issues,
-        recipient,
       }
     }
   }

@@ -99,19 +99,14 @@ const rawCalendarCreateSchema = z
   })
   .strict()
 
-const rawCareHandoffSchema = z
-  .object({
-    type: z.literal('CARE_HANDOFF_PROPOSE'),
-    // Who to hand the baby to. Must resolve to a CONNECTED account downstream.
-    toRef: personRefSchema,
-  })
-  .strict()
-
+// PR6 — care handoff is RETIRED from MamaHQ 2.0. There is deliberately no
+// CARE_HANDOFF_PROPOSE schema: a model that emits one fails validation (fail-safe),
+// and the prompt routes such requests to `unsupported`. The care backend stays
+// dormant in the database; Tell can no longer reach it.
 export const rawProposalSchema = z.discriminatedUnion('type', [
   rawGroceryAddSchema,
   rawTaskCreateSchema,
   rawCalendarCreateSchema,
-  rawCareHandoffSchema,
 ])
 export type RawProposal = z.infer<typeof rawProposalSchema>
 
@@ -149,7 +144,6 @@ export type ProposalKind =
   | 'GROCERY_ADD'
   | 'TASK_CREATE'
   | 'CALENDAR_CREATE'
-  | 'CARE_HANDOFF_PROPOSE'
 
 // A clarification the user must resolve before a proposal can execute. Deterministic
 // (not raw model confidence): the real question is "can MamaHQ safely execute this?"
@@ -158,7 +152,6 @@ export type IssueCode =
   | 'unknown_person' // no household match — do not invent people
   | 'missing_date' // calendar/timed task needs a date
   | 'missing_time' // calendar timed event needs a time
-  | 'recipient_not_connected' // care handoff target has no account
   | 'no_me_person' // "me" but the account is not linked to a person
   | 'invalid_reference' // a reference could not be validated
   | 'grocery_needs_confirmation' // grocery action resolver requires a choice
@@ -168,7 +161,7 @@ export interface ProposalIssue {
   // Human sentence explaining the actual ambiguity (not "low confidence").
   message: string
   // For ambiguous_person: which field + the candidate person ids to choose from.
-  field?: 'assignee' | 'responsible' | 'participant' | 'recipient'
+  field?: 'assignee' | 'responsible' | 'participant'
   candidates?: { personId: string; displayName: string }[]
 }
 
@@ -224,16 +217,10 @@ export interface ResolvedCalendarCreate extends BaseResolved {
   notes: string | null
 }
 
-export interface ResolvedCareHandoff extends BaseResolved {
-  kind: 'CARE_HANDOFF_PROPOSE'
-  recipient: ResolvedPersonRef | null
-}
-
 export type ResolvedProposal =
   | ResolvedGroceryAdd
   | ResolvedTaskCreate
   | ResolvedCalendarCreate
-  | ResolvedCareHandoff
 
 export interface UnsupportedNote {
   text: string

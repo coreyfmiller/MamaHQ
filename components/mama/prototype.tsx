@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { PrototypeProvider, useNav } from './context'
 import { AuthProvider, useAuth } from './auth'
 import { SignInScreen } from './screens/sign-in'
@@ -52,7 +52,6 @@ import { ReadScreen } from './screens/read'
 import { GroceryScreen } from './screens/grocery'
 import { PeopleScreen } from './screens/people'
 import { TasksScreen } from './screens/tasks'
-import { CareHandoffScreen } from './screens/care-handoff'
 import { CalendarScreen } from './screens/calendar'
 import { CalendarComposeScreen } from './screens/calendar-compose'
 import { NotificationsScreen } from './screens/notifications'
@@ -91,8 +90,9 @@ function AuthGate({ children }: { children: ReactNode }) {
 
 function Stage() {
   const { overlay, closeOverlay, toast, onboardingDismissed } = useNav()
-  const { firstRun, hydrated } = useHousehold()
+  const { firstRun, hydrated, me } = useHousehold()
   const { profile, hydrated: profileHydrated, loadFailed: profileLoadFailed } = useProfile()
+  const [partnerJoinStarted, setPartnerJoinStarted] = useState(false)
 
   // Beta Phase 2 — first-run routing is driven by AUTHORITATIVE household identity
   // (useHousehold().firstRun), not by device-local profile/baby presence. This is
@@ -109,14 +109,24 @@ function Stage() {
   // step is resolved from PERSISTED data only (canonical person name + canonical Baby
   // row), so partial setups resume at the right step, established households go
   // straight in, and Start Over naturally lands back at step 1. See lib/onboarding.ts.
-  const route = resolveSetupRoute({
+  //
+  // PR6 — partner join: once the join flow is on screen it is LATCHED for the session
+  // until the partner taps through (dismissOnboarding), because saving their name
+  // flips firstRun to 'done' mid-flow and would otherwise unmount the welcome step.
+  // The latch is set in an effect (never during render) the first time we route there.
+  const routeInput = {
     firstRun,
     householdHydrated: hydrated,
     profileHydrated,
     profileLoadFailed,
     profile,
     partnerJoinDismissed: onboardingDismissed,
-  })
+    role: me?.role ?? null,
+  }
+  const route = resolveSetupRoute({ ...routeInput, partnerJoinStarted })
+  useEffect(() => {
+    if (route === 'partner-join' && !partnerJoinStarted) setPartnerJoinStarted(true)
+  }, [route, partnerJoinStarted])
 
   if (route === 'loading') {
     return (
@@ -169,9 +179,8 @@ function Stage() {
       <FullOverlay open={overlay === 'tasks'}>
         <TasksScreen />
       </FullOverlay>
-      <FullOverlay open={overlay === 'careHandoff'}>
-        <CareHandoffScreen />
-      </FullOverlay>
+      {/* PR6: the careHandoff overlay is retired from the 2.0 UI and no longer
+          mounted. screens/care-handoff.tsx + the care backend remain dormant. */}
       <FullOverlay open={overlay === 'calendar'}>
         <CalendarScreen />
       </FullOverlay>

@@ -5,13 +5,15 @@ import Image from 'next/image'
 import { Heart, Plus, Trash2, ImagePlus, X } from 'lucide-react'
 import { useNav } from '../context'
 import { useMemories } from '../memories'
-import { Scroll, StatusBar, TopBar } from '../ui'
+import { Scroll, StatusBar, TopBar, SummaryLoading, SummaryError } from '../ui'
 import { downscaleImage } from '@/lib/utils'
+import { loadState } from '@/lib/load-state'
 
 export function MemoriesScreen() {
   const { closeOverlay, showToast } = useNav()
-  const { memories, addMemory, removeMemory } = useMemories()
+  const { memories, hydrated, loadError, retry, addMemory, removeMemory } = useMemories()
   const [adding, setAdding] = useState(false)
+  const state = loadState({ hydrated, loadError, count: memories.length })
 
   return (
     <div className="flex h-full flex-col bg-blush-soft/40">
@@ -33,7 +35,11 @@ export function MemoriesScreen() {
       />
 
       <Scroll className="px-6 pb-8">
-        {memories.length === 0 ? (
+        {state === 'loading' ? (
+          <div className="mt-4"><SummaryLoading label="Loading memories…" /></div>
+        ) : state === 'failed' ? (
+          <div className="mt-4"><SummaryError label="Couldn't load your memories." onRetry={retry} /></div>
+        ) : state === 'empty' ? (
           <EmptyState onAdd={() => setAdding(true)} />
         ) : (
           <div className="mt-2 grid grid-cols-2 gap-3">
@@ -62,10 +68,10 @@ export function MemoriesScreen() {
       {adding && (
         <AddMemory
           onClose={() => setAdding(false)}
-          onSave={(photo, caption) => {
-            addMemory(photo, caption)
+          onSave={async (photo, caption) => {
             setAdding(false)
-            showToast('Saved to Memories')
+            const res = await addMemory(photo, caption)
+            showToast(res.ok ? 'Saved to Memories' : "Couldn't save that memory — please try again")
           }}
         />
       )}

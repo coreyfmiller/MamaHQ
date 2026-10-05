@@ -66,6 +66,8 @@ interface GroceryCtx {
    *  Only meaningful when signed in with a family; local (signed-out) mode never
    *  sets it. Cleared on a successful (re)load. */
   loadError: boolean
+  /** PR6 — re-attempt a failed cloud load (Retry on error states). */
+  retry: () => void
   active: GroceryItem[]
   completed: GroceryItem[]
   /** Add an item. Pass canonicalItemId when it came from a catalog selection. */
@@ -97,6 +99,7 @@ const Ctx = createContext<GroceryCtx>({
   items: [],
   hydrated: false,
   loadError: false,
+  retry: () => {},
   active: [],
   completed: [],
   addItem: () => {},
@@ -539,9 +542,16 @@ export function GroceryProvider({ children }: { children: ReactNode }) {
   const active = useMemo(() => items.filter((i) => i.status === 'active'), [items])
   const completed = useMemo(() => items.filter((i) => i.status === 'completed'), [items])
 
+  const retry = () => {
+    if (!familyId) return
+    reloadCloud(familyId)
+      .then(() => setLoadError(false))
+      .catch(() => setLoadError(true))
+  }
+
   const value = useMemo(
     () => ({
-      items, hydrated, loadError, active, completed, addItem, addResolved, editItem, completeItem, restoreItem, removeItem, clearGrocery,
+      items, hydrated, loadError, retry, active, completed, addItem, addResolved, editItem, completeItem, restoreItem, removeItem, clearGrocery,
       householdVariants, householdDefaultFor, householdVariantForItem, setHouseholdUsual,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

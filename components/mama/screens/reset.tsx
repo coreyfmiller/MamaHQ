@@ -12,8 +12,14 @@ import { useInbox } from '../inbox/store'
 import { usePartner } from '../partner'
 import { useAuth } from '../auth'
 import { useHousehold } from '../household'
-import { clearFamilyData } from '@/lib/supabase/data'
-import { resetConfirmationMatches, RESET_CONFIRM_WORD } from '@/lib/reset-confirm'
+import { resetFamilyDataRpc } from '@/lib/supabase/data'
+import {
+  resetConfirmationMatches,
+  canStartOver,
+  runStartOver,
+  RESET_CONFIRM_WORD,
+  START_OVER_OWNER_ONLY,
+} from '@/lib/reset-confirm'
 import { TopBar } from '../ui'
 
 /**
@@ -46,7 +52,10 @@ export function ResetScreen() {
   const { clearInbox } = useInbox()
   const { clearPartner } = usePartner()
   const { familyId } = useAuth()
-  const { resetMe } = useHousehold()
+  const { refresh, me } = useHousehold()
+  // PR6 — owner-only. The DB (0017 reset_family_data) is authoritative; this only
+  // avoids offering a joined member an action the server will refuse.
+  const mayStartOver = canStartOver({ signedIn: !!familyId, role: me?.role })
 
   const babyName = (profile?.babyName ?? '').trim()
   const hasBaby = babyName.length > 0
@@ -61,55 +70,40 @@ export function ResetScreen() {
   const [busy, setBusy] = useState(false)
 
   const doReset = async () => {
-    if (!matches || busy) return
-    // Clear the on-device copies immediately (these always succeed locally).
-    clearLogs()
-    clearMom()
-    clearMemories()
-    clearAppointments()
-    clearInbox()
-    clearPartner()
-    clearProfile()
-    // Clear the cloud family data. Truthfulness (Beta Launch Fixes): this removes the
-    // baby profile, logs, mood/to-dos/questions, memories and grocery, but some SHARED
-    // household records (tasks, calendar events, care handoffs, and any pending
-    // invites) are RPC-protected and are NOT wiped by this client path — they can
-    // remain until beta support removes them. So we do NOT claim "everything was
-    // erased". We also await the cloud clear so we can tell the truth if it fails
-    // rather than firing an unconditional success toast.
-    let cloudOk = true
-    if (familyId) {
-      setBusy(true)
-      try {
-        await clearFamilyData(familyId)
-      } catch (e) {
-        console.warn('cloud reset', e)
-        cloudOk = false
-      } finally {
-        setBusy(false)
-      }
-    }
-    // Reset MY canonical identity back to the 'Me' placeholder (staying signed in),
-    // so firstRun recomputes to 'creator' and Stage routes into real onboarding. Only
-    // meaningful when signed in with a family; the signed-out/demo path has no cloud
-    // identity and simply returns to the (now empty) local app.
-    let identityOk = true
-    if (familyId) {
-      setBusy(true)
-      const res = await resetMe()
-      setBusy(false)
-      identityOk = res.ok
-      if (!res.ok) console.warn('reset identity', res.error)
+    if (!matches || busy || !mayStartOver) return
+    setBusy(true)
+    // runStartOver (lib/reset-confirm): owner-only transactional reset_family_data RPC
+    // (clears Baby/logs/etc. AND resets my canonical name to the 'Me' placeholder) →
+    // re-read canonical household people → clear on-device copies. The household
+    // re-read happens BEFORE local data is cleared, so the router goes straight to
+    // the onboarding NAME step — never via a stale name to the Baby step. If the
+    // server reset fails, nothing is cleared.
+    // Truthfulness: shared RPC-only records (tasks, calendar events, pending invites,
+    // notifications) are NOT wiped and may remain until beta support removes them.
+    const result = await runStartOver({
+      signedIn: !!familyId,
+      resetCloud: () => resetFamilyDataRpc(familyId as string),
+      refreshHousehold: refresh,
+      clearLocal: () => {
+        clearLogs()
+        clearMom()
+        clearMemories()
+        clearAppointments()
+        clearInbox()
+        clearPartner()
+        clearProfile()
+      },
+    })
+    setBusy(false)
+    if (result === 'failed') {
+      showToast("Couldn't start over right now — nothing was cleared")
+      return
     }
     showToast(
-      cloudOk && identityOk
+      result === 'reset'
         ? 'Starting fresh — let’s set things up'
-        : "Cleared on this device — some cloud data couldn't be reached",
+        : 'Cleared — reload MamaHQ to finish setting things up',
     )
-    // Close the overlay. When identity was reset, firstRun is now 'creator' and Stage
-    // renders onboarding underneath; the user never leaves the session. If the cloud
-    // identity reset failed, we still close (local data is gone) and the user can set
-    // their name again from Settings → Account.
     closeOverlay()
   }
 
@@ -132,11 +126,16 @@ export function ResetScreen() {
           undone.
         </p>
         <p className="mx-auto mt-3 max-w-[19rem] text-center text-[13px] leading-relaxed text-muted-foreground">
-          Shared items like tasks, calendar events and care hand-offs may stay with your household.
-          To permanently delete your whole account and household, contact beta support.
+          People who have joined your household keep their accounts. Shared tasks and calendar
+          events may stay with your household. To permanently delete your whole account and
+          household, contact beta support.
         </p>
 
-        {!acknowledged ? (
+        {!mayStartOver ? (
+          <p role="alert" className="mx-auto mt-8 max-w-[19rem] text-center text-[14px] font-medium text-foreground">
+            {START_OVER_OWNER_ONLY}
+          </p>
+        ) : !acknowledged ? (
           <div className="mt-8 space-y-3">
             <button
               onClick={() => setAcknowledged(true)}

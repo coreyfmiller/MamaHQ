@@ -83,6 +83,8 @@ jobs:
         run: pnpm run test:reset-confirm
       - name: First-run onboarding completeness tests
         run: pnpm run test:onboarding
+      - name: PR6 closed-beta hardening tests
+        run: pnpm run test:pr6
 
       - name: TypeScript
         run: pnpm run typecheck
@@ -127,7 +129,7 @@ jobs:
       - name: Start local Supabase (Docker)
         run: supabase start
 
-      - name: Clean-provision from authoritative migrations (empty DB -> 0001..0015)
+      - name: Clean-provision from authoritative migrations (empty DB -> 0001..0017)
         # `db reset` drops the local db and replays every file in supabase/migrations
         # in order. This IS the clean-provision proof: it fails if any migration
         # cannot apply from scratch.
@@ -192,6 +194,8 @@ jobs:
 
       - name: Owner-family bootstrap integrity tests (0015 — duplicate-family fix)
         run: node scripts/test-bootstrap.ts
+      - name: Ownership / membership / privilege hardening tests (0017, PR6)
+        run: node scripts/test-ownership.ts
 
       - name: Stop local Supabase
         if: always()
