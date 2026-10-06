@@ -270,6 +270,20 @@ const V = 1
   ok(usesJsonMode, 'adapter uses json_object response_format')
   ok(sendsJsonWord, 'adapter sends a message containing the word "json" (json_object precondition)')
 }
+{
+  // REGRESSION GUARD: the raw contract envelope names the actions array "proposals".
+  // The model only emits the right shape if the prompt tells it the exact top-level
+  // key — without it the model guessed "actions", Zod rejected it, and every request
+  // failed with "I couldn't sort that out right now". Assert the prompt pins the
+  // envelope so the model can't drift back to "actions".
+  ok(/"proposals"/.test(TELL_SYSTEM_PROMPT), 'system prompt names the "proposals" output array explicitly')
+  ok(/NOT\s+"actions"/i.test(TELL_SYSTEM_PROMPT), 'system prompt warns the array is not called "actions"')
+  // And the schema it must satisfy really does require "proposals" (not "actions").
+  const envProbe = rawInterpretationSchema.safeParse({ version: V, actions: [] })
+  ok(!envProbe.success, 'schema rejects an "actions"-keyed envelope (strict)')
+  const envOk = rawInterpretationSchema.safeParse({ version: V, proposals: [] })
+  ok(envOk.success, 'schema accepts a "proposals"-keyed envelope')
+}
 
 /* ============================ UNSUPPORTED + INJECTION ============================ */
 {
