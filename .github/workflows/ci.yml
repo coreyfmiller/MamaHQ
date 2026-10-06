@@ -75,6 +75,8 @@ jobs:
         run: pnpm run test:first90
       - name: First 90 Days temporal-correctness guard
         run: pnpm run test:first90-temporal
+      - name: Baby History tests
+        run: pnpm run test:baby-history
 
       - name: Log duplicate-submission guard tests (Beta Phase 5)
         run: pnpm run test:log-dedupe
