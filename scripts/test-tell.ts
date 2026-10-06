@@ -16,6 +16,8 @@ import { rawInterpretationSchema } from '../lib/tell/contract.ts'
 import { resolveInterpretation, type CanonicalPerson, type ResolveContext } from '../lib/tell/resolve.ts'
 import type { RawInterpretation } from '../lib/tell/contract.ts'
 import { TELL_SYSTEM_PROMPT } from '../lib/tell/prompt.ts'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 let passed = 0
 let failed = 0
@@ -250,6 +252,23 @@ const V = 1
   // The prompt no longer advertises a care-handoff action and routes it to unsupported.
   ok(!TELL_SYSTEM_PROMPT.includes('CARE_HANDOFF_PROPOSE'), 'system prompt does not offer CARE_HANDOFF_PROPOSE')
   ok(/hand off baby care/i.test(TELL_SYSTEM_PROMPT), 'system prompt routes take-over requests to unsupported')
+}
+{
+  // REGRESSION GUARD: OpenAI's json_object response_format REQUIRES the literal word
+  // "json" somewhere in the messages, or the API 400s and the whole feature fails
+  // ("I couldn't sort that out right now"). We read the adapter SOURCE (importing it
+  // pulls the OpenAI SDK + TS parameter-property syntax Node's strip-only loader
+  // rejects) and assert that when json_object mode is used, a message carrying the
+  // word "json" is sent. This caught a real outage: the prompt was reworded and the
+  // word "json" disappeared, breaking every Tell request in every environment.
+  const adapterSrc = readFileSync(
+    fileURLToPath(new URL('../lib/tell/openai-adapter.ts', import.meta.url)),
+    'utf8',
+  )
+  const usesJsonMode = /response_format[\s\S]*?json_object/.test(adapterSrc)
+  const sendsJsonWord = /JSON_MODE_INSTRUCTION\s*=\s*['"`][^'"`]*json/i.test(adapterSrc)
+  ok(usesJsonMode, 'adapter uses json_object response_format')
+  ok(sendsJsonWord, 'adapter sends a message containing the word "json" (json_object precondition)')
 }
 
 /* ============================ UNSUPPORTED + INJECTION ============================ */

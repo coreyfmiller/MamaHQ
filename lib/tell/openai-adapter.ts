@@ -32,6 +32,14 @@ const RESPONSE_FORMAT = {
   type: 'json_object' as const,
 }
 
+// OpenAI's json_object response_format has a hard precondition: the word "json" MUST
+// appear somewhere in the messages, or the API rejects the request with a 400. We do
+// NOT rely on the product prompt happening to contain it (a prompt edit silently
+// broke the whole feature once). This adapter-owned instruction guarantees the
+// precondition is always met, keeping the JSON-mode contract where it belongs.
+export const JSON_MODE_INSTRUCTION =
+  'Respond with a single valid JSON object only, with no text before or after the JSON.'
+
 export class OpenAIInterpreter implements Interpreter {
   readonly name = 'openai'
   private client: OpenAI
@@ -55,6 +63,8 @@ export class OpenAIInterpreter implements Interpreter {
         response_format: RESPONSE_FORMAT,
         messages: [
           { role: 'system', content: TELL_SYSTEM_PROMPT },
+          // Guarantees the json_object precondition regardless of prompt wording.
+          { role: 'system', content: JSON_MODE_INSTRUCTION },
           { role: 'system', content: buildContextMessage(context) },
           // User text is DATA. It is clearly delimited and the system prompt has
           // already instructed the model to treat it as untrusted input.
