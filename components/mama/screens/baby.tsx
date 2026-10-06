@@ -18,6 +18,14 @@ import {
   isSameDay,
 } from '../logs'
 import { useMemories } from '../memories'
+import {
+  buildHistory,
+  dayLabel,
+  daySummaryCells,
+  emptyDaysNote,
+  localDayKey,
+  DEFAULT_HISTORY_WINDOW_DAYS,
+} from '@/lib/baby-history'
 import { NameAvatar } from '../name-avatar'
 import { CategoryChip } from '../event-meta'
 import { BottomNav, Screen, Scroll, Segmented, StatusBar } from '../ui'
@@ -38,7 +46,7 @@ import { SleepControl } from '../sleep-control'
 //   • sleep duration only from completed sleeps (endedAt set).
 // Loading ≠ Empty ≠ Failed is honored via logs.hydrated / logs.loadError.
 
-type BabyTab = 'timeline' | 'patterns' | 'memories'
+type BabyTab = 'timeline' | 'patterns' | 'history' | 'memories'
 
 export function BabyScreen() {
   const { openQuickLog } = useNav()
@@ -74,6 +82,7 @@ export function BabyScreen() {
             options={[
               { value: 'timeline', label: 'Timeline' },
               { value: 'patterns', label: 'Patterns' },
+              { value: 'history', label: 'History' },
               { value: 'memories', label: 'Memories' },
             ]}
           />
@@ -86,7 +95,11 @@ export function BabyScreen() {
                 {loadError ? (
                   <>
                     <AlertCircle className="size-3.5 shrink-0 text-peach" strokeWidth={2} />
-                    {tab === 'timeline' ? 'Timeline unavailable until activity loads.' : 'Patterns unavailable until activity loads.'}
+                    {tab === 'timeline'
+                      ? 'Timeline unavailable until activity loads.'
+                      : tab === 'patterns'
+                        ? 'Patterns unavailable until activity loads.'
+                        : 'History unavailable until activity loads.'}
                   </>
                 ) : (
                   <>
@@ -98,6 +111,7 @@ export function BabyScreen() {
               <>
                 {tab === 'timeline' && <Timeline />}
                 {tab === 'patterns' && <Patterns />}
+                {tab === 'history' && <History />}
               </>
             )}
             {tab === 'memories' && <MemoriesPreview />}
@@ -371,6 +385,96 @@ function Timeline() {
             <div className="pt-0.5">
               <p className="text-[12px] text-muted-foreground">{clockTime(e.createdAt)}</p>
               <p className="text-[14.5px] font-semibold leading-snug">
+                {title}
+                {liveDetail && <span className="font-normal text-muted-foreground"> · {liveDetail}</span>}
+              </p>
+            </div>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/* ── History (last 14 days) ───────────────────────────────────────────────────
+ * A per-day summary of WHAT WAS RECORDED over the last two weeks — the multi-day
+ * payoff that makes daily logging worth it (and useful at a pediatrician visit).
+ * Reports logged counts only, never "what happened": days with nothing logged are
+ * absent (surfaced as a quiet footnote), never shown as "0". Tapping a day expands
+ * that day's chronological entries inline (reusing describeLog). Read-only; derived
+ * entirely from the already-loaded logs — no new data, no history fetch. */
+function History() {
+  const now = useNow(60_000)
+  const { logs } = useLogs()
+  const [openDay, setOpenDay] = useState<string | null>(null)
+
+  const result = useMemo(() => buildHistory(logs, now, DEFAULT_HISTORY_WINDOW_DAYS), [logs, now])
+
+  if (logs.length === 0 || result.days.length === 0) {
+    return (
+      <p className="px-1 text-[13px] text-muted-foreground/80">
+        Activity will appear here as you log it over the days ahead.
+      </p>
+    )
+  }
+
+  const note = emptyDaysNote(result.emptyDayCount)
+
+  return (
+    <div className="space-y-3">
+      <p className="px-1 text-[12.5px] leading-relaxed text-muted-foreground">
+        What you&apos;ve recorded over the last two weeks.
+      </p>
+      <div className="overflow-hidden rounded-2xl ring-1 ring-border/50">
+        {result.days.map((d, i) => {
+          const cells = daySummaryCells(d)
+          const expanded = openDay === d.dayKey
+          return (
+            <div key={d.dayKey} className={i > 0 ? 'border-t border-border/50' : ''}>
+              <button
+                onClick={() => setOpenDay(expanded ? null : d.dayKey)}
+                aria-expanded={expanded}
+                className="flex w-full items-center justify-between gap-3 bg-card px-4 py-3 text-left transition-colors active:bg-muted"
+              >
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold leading-tight">{dayLabel(d.dayKey, now)}</p>
+                  <p className="mt-0.5 truncate text-[13px] text-muted-foreground">{cells.join(' · ')}</p>
+                </div>
+                <ChevronRight className={`size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`} />
+              </button>
+              {expanded && <DayDetail dayKey={d.dayKey} now={now} />}
+            </div>
+          )
+        })}
+      </div>
+      {note && <p className="px-1 text-[12px] text-muted-foreground/70">{note}</p>}
+    </div>
+  )
+}
+
+// One expanded day's chronological entries — the same describeLog trail Timeline
+// uses, scoped to the selected local day. Newest first.
+function DayDetail({ dayKey, now }: { dayKey: string; now: Date }) {
+  const { logs } = useLogs()
+  const entries = useMemo(
+    () => logs.filter((l) => localDayKey(new Date(l.createdAt)) === dayKey),
+    [logs, dayKey],
+  )
+  if (entries.length === 0) return null
+  return (
+    <ol className="relative bg-muted/20 px-4 py-3">
+      {entries.map((e, i) => {
+        const { title, detail } = describeLog(e)
+        const liveDetail = e.kind === 'sleep' && !e.endedAt ? `in progress · ${elapsed(e.createdAt, null, now)}` : detail
+        return (
+          <li key={e.id} className="relative flex gap-3 pb-3 last:pb-0">
+            <div className="relative flex flex-col items-center">
+              <CategoryChip category={e.kind} size="sm" />
+              {i < entries.length - 1 && <span className="mt-1 w-px flex-1 bg-border" />}
+            </div>
+            <div className="pt-0.5">
+              <p className="text-[12px] text-muted-foreground">{clockTime(e.createdAt)}</p>
+              <p className="text-[14px] font-semibold leading-snug">
                 {title}
                 {liveDetail && <span className="font-normal text-muted-foreground"> · {liveDetail}</span>}
               </p>
