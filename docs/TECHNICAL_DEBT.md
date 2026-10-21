@@ -1,11 +1,20 @@
 # MamaHQ — Technical Debt Register
 
+**Reviewed October 2026** against `main` at Beta Phases 1–6 + Beta Launch Fixes + PR6,
+migrations `0001 → 0018`.
+
 A living record of known debt and deferred architecture. Each entry: **status**,
 **why it matters**, **dependency**, **suggested future milestone**. No dates are
 invented; milestones are relative/ordinal.
 
 Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
-(deliberately postponed), `advisory` (works, but flagged for future attention).
+(deliberately postponed), `advisory` (works, but flagged for future attention),
+`RESOLVED` (kept with its resolution so the history stays readable).
+
+> **When a step resolves an entry, mark it RESOLVED in the same pass.** Three entries
+> here (Tell's LLM architecture, Tell→Grocery, and the "unused `openai` dependency")
+> described a rule-based prototype for weeks after Step 12 shipped a real model-backed
+> interpreter, which contradicted this file's own later Step 12 section.
 
 ---
 
@@ -148,18 +157,21 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
 - **Suggested milestone:** post-partner, alongside realtime.
 
 ### Tell MamaHQ → Grocery integration
-- **Status:** absent.
-- **Why it matters:** the capture inbox does rule-based extraction but is not wired
-  into the Grocery resolver, and there is no multi-item grocery parse from free text.
-- **Dependency:** the Grocery resolver/actions layers (already built).
-- **Suggested milestone:** a focused "capture → grocery" step.
+- **Status:** RESOLVED in Step 12.
+- Tell proposes `GROCERY_ADD` and executes it through the existing trusted grocery
+  RPCs, including multi-item parses from one sentence. The remaining untargeted
+  domain is Meals, which has no store to write to yet. (This entry previously read
+  "absent", describing the retired rule-based Inbox rather than Tell.)
 
 ### Tell MamaHQ LLM architecture
-- **Status:** absent (rule-based only; `openai` dep present but unused).
-- **Why it matters:** current interpretation is deterministic/rule-based; there is no
-  model-backed understanding. "AI" is aspirational today.
-- **Dependency:** a server-side LLM integration + safety/validation design.
-- **Suggested milestone:** a dedicated AI step, after Grocery depth.
+- **Status:** RESOLVED in Step 12.
+- Interpretation is model-backed and server-side: `/api/tell` → provider-agnostic
+  `Interpreter` → OpenAI adapter → strict Zod validation → deterministic reference and
+  time resolution → user confirmation → trusted domain RPCs. "AI" is no longer
+  aspirational. See `docs/TELL_MAMAHQ.md`.
+- **Residual:** the provider is OpenAI (`gpt-4o-mini`), which conflicts with the
+  workspace `gemini-flash-latest` standard. Tracked as a product/vendor decision in
+  `ROADMAP.md`, not as debt — the adapter seam makes a swap cheap.
 
 ### Meals
 - **Status:** absent (no tables, domain, or UI).
@@ -225,10 +237,10 @@ Status values: `absent` (not built), `partial` (some scaffolding), `deferred`
 - **Suggested milestone:** optional one-line additive migration (add the membership
   guard or `revoke execute … from authenticated`) if the auth surface is revisited.
 
-### Unused `openai` dependency
-- **Status:** advisory.
-- **Why it matters:** `openai` is in `dependencies` but imported nowhere. Harmless
-  but misleading; remove when the AI direction is decided (or keep if imminent).
+### ~~Unused `openai` dependency~~
+- **Status:** RESOLVED — no longer true as of Step 12.
+- `openai` is imported by `lib/tell/openai-adapter.ts`, the one module permitted to
+  touch the SDK. The dependency is load-bearing.
 
 ### Editorial `.docx` in `public/`
 - **Status:** advisory (see `docs/EDITORIAL_DOCX.md`).
